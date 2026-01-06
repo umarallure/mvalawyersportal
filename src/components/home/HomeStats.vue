@@ -17,8 +17,8 @@ function formatCurrency(value: number): string {
 }
 
 const baseStats = [{
-  title: 'Customers',
-  icon: 'i-lucide-users',
+  title: 'Retainers',
+  icon: 'i-lucide-briefcase',
   minValue: 400,
   maxValue: 1000,
   minVariation: -15,
@@ -71,7 +71,7 @@ watch([() => props.period, () => props.range], () => {
       :key="index"
       :icon="stat.icon"
       :title="stat.title"
-      to="/customers"
+      to="/retainers"
       variant="subtle"
       :ui="{
         container: 'gap-y-1.5',

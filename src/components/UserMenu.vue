@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
+import { useRouter } from 'vue-router'
 import type { DropdownMenuItem } from '@nuxt/ui'
 import { useColorMode } from '@vueuse/core'
+
+import { useAuth } from '../composables/useAuth'
 
 defineProps<{
   collapsed?: boolean
@@ -9,17 +12,30 @@ defineProps<{
 
 const colorMode = useColorMode()
 const appConfig = useAppConfig()
+const router = useRouter()
+const auth = useAuth()
 
 const colors = ['red', 'orange', 'amber', 'yellow', 'lime', 'green', 'emerald', 'teal', 'cyan', 'sky', 'blue', 'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose']
 const neutrals = ['slate', 'gray', 'zinc', 'neutral', 'stone']
 
-const user = ref({
-  name: 'Benjamin Canac',
-  avatar: {
-    src: 'https://github.com/benjamincanac.png',
-    alt: 'Benjamin Canac'
+const user = computed(() => {
+  const email = auth.state.value.user?.email ?? 'Account'
+  return {
+    name: email,
+    avatar: {
+      src: 'https://github.com/benjamincanac.png',
+      alt: email
+    }
   }
 })
+
+const handleLogout = async () => {
+  try {
+    await auth.signOut()
+  } finally {
+    await router.push('/login')
+  }
+}
 
 const items = computed<DropdownMenuItem[][]>(() => ([[{
   type: 'label',
@@ -131,7 +147,11 @@ const items = computed<DropdownMenuItem[][]>(() => ([[{
   target: '_blank'
 }], [{
   label: 'Log out',
-  icon: 'i-lucide-log-out'
+  icon: 'i-lucide-log-out',
+  onSelect: (e) => {
+    e.preventDefault()
+    handleLogout()
+  }
 }]]))
 </script>
 

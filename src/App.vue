@@ -10,9 +10,9 @@ const route = useRoute()
 const open = ref(false)
 
 const links = [[{
-  label: 'Home',
+  label: 'Dashboard',
   icon: 'i-lucide-house',
-  to: '/',
+  to: '/dashboard',
   onSelect: () => {
     open.value = false
   }
@@ -25,9 +25,9 @@ const links = [[{
     open.value = false
   }
 }, {
-  label: 'Customers',
-  icon: 'i-lucide-users',
-  to: '/customers',
+  label: 'Retainers',
+  icon: 'i-lucide-briefcase',
+  to: '/retainers',
   onSelect: () => {
     open.value = false
   }
@@ -75,6 +75,8 @@ const links = [[{
   target: '_blank'
 }]] satisfies NavigationMenuItem[][]
 
+const isPublicPage = computed(() => ['/login', '/'].includes(route.path))
+
 const groups = computed(() => [{
   id: 'links',
   label: 'Go to',
@@ -116,7 +118,15 @@ if (cookie.value !== 'accepted') {
 <template>
   <Suspense>
     <UApp>
-      <UDashboardGroup unit="rem" storage="local">
+      <template v-if="isPublicPage">
+        <RouterView />
+      </template>
+
+      <UDashboardGroup
+        v-else
+        unit="rem"
+        storage="local"
+      >
         <UDashboardSidebar
           id="default"
           v-model:open="open"
