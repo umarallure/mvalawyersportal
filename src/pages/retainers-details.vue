@@ -85,7 +85,7 @@ const orderedEntries = computed(() => {
 
 function labelize(key: string) {
   return key
-    .replaceAll('_', ' ')
+    .split('_').join(' ')
     .replace(/\s+/g, ' ')
     .trim()
 }

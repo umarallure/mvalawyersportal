@@ -75,7 +75,7 @@ const links = [[{
   target: '_blank'
 }]] satisfies NavigationMenuItem[][]
 
-const isPublicPage = computed(() => ['/login', '/'].includes(route.path))
+const isPublicPage = computed(() => ['/login', '/', '/get-started'].includes(route.path))
 
 const groups = computed(() => [{
   id: 'links',

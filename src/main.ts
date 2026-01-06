@@ -12,6 +12,7 @@ const app = createApp(App)
 const router = createRouter({
   routes: [
     { path: '/', component: () => import('./pages/index.vue'), meta: { public: true } },
+    { path: '/get-started', component: () => import('./pages/get-started.vue'), meta: { public: true } },
     { path: '/login', component: () => import('./pages/login.vue'), meta: { public: true } },
     { path: '/dashboard', component: () => import('./pages/dashboard.vue') },
     { path: '/inbox', component: () => import('./pages/inbox.vue') },

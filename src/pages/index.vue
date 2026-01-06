@@ -58,7 +58,7 @@ const steps = [{
         <div class="absolute top-20 right-12 h-48 w-48 rounded-full bg-[#f7c480]/30 blur-[90px]" />
       </div>
 
-      <header class="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6 lg:px-10">
+      <header class="flex w-full items-center justify-between px-6 py-6 lg:px-10">
         <div class="flex items-center gap-3">
           <img :src="BRANDING.logo" alt="Lawyer Portal" class="h-10 w-auto" />
         </div>
@@ -66,16 +66,10 @@ const steps = [{
           <RouterLink to="/login" class="rounded-full border border-white/15 px-4 py-2 transition hover:border-white/40 hover:text-white">
             Log in
           </RouterLink>
-          <RouterLink
-            to="/dashboard"
-            class="rounded-full bg-white px-5 py-2 text-sm font-semibold uppercase tracking-wide text-[#141010]"
-          >
-            Launch app
-          </RouterLink>
         </div>
       </header>
 
-      <main class="mx-auto flex w-full max-w-6xl flex-col gap-14 px-6 pb-20 pt-10 lg:px-10 lg:pb-32 lg:pt-16">
+      <main class="flex w-full flex-col gap-14 px-6 pb-20 pt-10 lg:px-10 lg:pb-32 lg:pt-16">
         <section class="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
           <div class="space-y-6">
             <h1 class="text-4xl font-semibold leading-tight text-white md:text-5xl lg:text-6xl">
@@ -98,10 +92,10 @@ const steps = [{
             </div>
             <div class="flex flex-col gap-3 sm:flex-row">
               <RouterLink
-                to="/dashboard"
+                to="/get-started"
                 class="flex-1 rounded-xl bg-[#AE4010] px-5 py-3 text-center text-sm font-semibold uppercase tracking-wide text-white shadow-lg shadow-[#AE4010]/40 transition hover:translate-y-0.5"
               >
-                Explore the app
+                Get started
               </RouterLink>
               <RouterLink
                 to="/login"
