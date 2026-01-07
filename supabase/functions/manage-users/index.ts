@@ -9,6 +9,7 @@ type AppUserRow = {
   email: string
   display_name: string | null
   role: Role | null
+  center_id: string | null
   created_at: string
   updated_at: string
 }
@@ -114,6 +115,7 @@ Deno.serve(async (req) => {
       const email = String(body?.email ?? '').trim().toLowerCase()
       const password = String(body?.password ?? '')
       const role = body?.role === undefined || body?.role === null ? null : String(body.role)
+      const centerId = body?.center_id === undefined || body?.center_id === null ? null : String(body.center_id)
 
       if (!email) return json(400, { error: 'email is required' })
       if (!password) return json(400, { error: 'password is required' })
@@ -137,7 +139,8 @@ Deno.serve(async (req) => {
           user_id: userId,
           email,
           display_name: null,
-          role: role as Role | null
+          role: role as Role | null,
+          center_id: centerId
         })
 
       if (upsertErr) return json(500, { error: upsertErr.message })
@@ -158,13 +161,18 @@ Deno.serve(async (req) => {
 
       const userId = String(body?.user_id ?? '').trim()
       const role = body?.role === undefined || body?.role === null ? null : String(body.role)
+      const centerId = body?.center_id === undefined ? undefined : (body?.center_id === null ? null : String(body.center_id))
 
       if (!userId) return json(400, { error: 'user_id is required' })
       if (role !== null && !validateRole(role)) return json(400, { error: 'invalid role' })
 
+      const patch: Record<string, unknown> = {}
+      if (role !== undefined) patch.role = role as Role | null
+      if (centerId !== undefined) patch.center_id = centerId
+
       const { error: updateErr } = await supabaseAdmin
         .from('app_users')
-        .update({ role: role as Role | null })
+        .update(patch)
         .eq('user_id', userId)
 
       if (updateErr) return json(500, { error: updateErr.message })

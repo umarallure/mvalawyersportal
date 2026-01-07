@@ -5,19 +5,14 @@ import type { TableColumn } from '@nuxt/ui'
 
 import { useAuth } from '../composables/useAuth'
 import {
-  listUsers,
-  createUser,
-  updateUser,
-  deleteUser,
-  type ManageUserRow,
-  type ManageUserRole
-} from '../lib/manage-users'
-import { listCenters, type CenterRow } from '../lib/centers'
-import UserModal from '../components/users/UserModal.vue'
-import DeleteUserConfirmModal from '../components/users/DeleteUserConfirmModal.vue'
-
-type Role = ManageUserRole
-type AppUserRow = ManageUserRow
+  listCenters,
+  createCenter,
+  updateCenter,
+  deleteCenter,
+  type CenterRow
+} from '../lib/centers'
+import CenterModal from '../components/centers/CenterModal.vue'
+import DeleteCenterConfirmModal from '../components/centers/DeleteCenterConfirmModal.vue'
 
 const auth = useAuth()
 const router = useRouter()
@@ -25,7 +20,6 @@ const toast = useToast()
 
 const isAdmin = computed(() => auth.state.value.profile?.role === 'admin')
 
-const users = ref<AppUserRow[]>([])
 const centers = ref<CenterRow[]>([])
 const loading = ref(false)
 const errorMessage = ref<string | null>(null)
@@ -34,9 +28,9 @@ const query = ref('')
 
 const isCreateOpen = ref(false)
 
-const editing = ref<AppUserRow | null>(null)
+const editing = ref<CenterRow | null>(null)
 
-const userModalOpen = computed({
+const centerModalOpen = computed({
   get: () => isCreateOpen.value,
   set: (value: boolean) => {
     isCreateOpen.value = value
@@ -45,53 +39,42 @@ const userModalOpen = computed({
 
 const isBusy = computed(() => loading.value)
 
-const filteredUsers = computed(() => {
+const filteredCenters = computed(() => {
   const q = query.value.trim().toLowerCase()
-  if (!q) return users.value
+  if (!q) return centers.value
 
-  return users.value.filter((u) => {
+  return centers.value.filter((c) => {
     const haystack = [
-      u.email,
-      u.display_name ?? '',
-      u.role ?? ''
+      c.center_name,
+      c.lead_vendor ?? '',
+      c.contact_email ?? ''
     ].join(' ').toLowerCase()
 
     return haystack.includes(q)
   })
 })
 
-const columns: TableColumn<AppUserRow>[] = [
-  { accessorKey: 'email', header: 'Email' },
-  { accessorKey: 'display_name', header: 'Display name' },
-  { accessorKey: 'role', header: 'Role' },
+const columns: TableColumn<CenterRow>[] = [
+  { accessorKey: 'center_name', header: 'Center name' },
+  { accessorKey: 'lead_vendor', header: 'Lead vendor' },
+  { accessorKey: 'contact_email', header: 'Contact email' },
   { accessorKey: 'actions', header: '' }
 ]
 
 const deleteConfirmOpen = ref(false)
-const deleteTarget = ref<AppUserRow | null>(null)
+const deleteTarget = ref<CenterRow | null>(null)
 
-const token = computed(() => auth.state.value.session?.access_token ?? '')
-
-const loadUsers = async () => {
+const loadCenters = async () => {
   loading.value = true
   errorMessage.value = null
 
   try {
-    const data = await listUsers(token.value)
-    users.value = data.users
+    centers.value = await listCenters()
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Unable to load users'
+    const msg = err instanceof Error ? err.message : 'Unable to load centers'
     errorMessage.value = msg
   } finally {
     loading.value = false
-  }
-}
-
-const loadCenters = async () => {
-  try {
-    centers.value = await listCenters()
-  } catch (err) {
-    console.error('Failed to load centers:', err)
   }
 }
 
@@ -102,57 +85,56 @@ const openCreate = () => {
   isCreateOpen.value = true
 }
 
-const handleUserSubmit = async (
+const handleCenterSubmit = async (
   payload:
-    | { mode: 'create'; email: string; password: string; role: Role | null; center_id: string | null }
-    | { mode: 'edit'; user_id: string; role: Role | null; center_id: string | null }
+    | { mode: 'create'; center_name: string; lead_vendor: string; contact_email: string }
+    | { mode: 'edit'; id: string; center_name: string; lead_vendor: string; contact_email: string }
 ) => {
   loading.value = true
   errorMessage.value = null
 
   try {
     if (payload.mode === 'create') {
-      await createUser(token.value, {
-        email: payload.email,
-        password: payload.password,
-        role: payload.role,
-        center_id: payload.center_id
+      await createCenter({
+        center_name: payload.center_name,
+        lead_vendor: payload.lead_vendor,
+        contact_email: payload.contact_email
       })
 
       isCreateOpen.value = false
       toast.add({
-        title: 'User created',
+        title: 'Center created',
         color: 'success'
       })
-      await loadUsers()
+      await loadCenters()
       return
     }
 
-    await updateUser(token.value, {
-      user_id: payload.user_id,
-      role: payload.role,
-      center_id: payload.center_id
+    await updateCenter(payload.id, {
+      center_name: payload.center_name,
+      lead_vendor: payload.lead_vendor,
+      contact_email: payload.contact_email
     })
 
     isCreateOpen.value = false
     toast.add({
-      title: 'User updated',
+      title: 'Center updated',
       color: 'success'
     })
-    await loadUsers()
+    await loadCenters()
   } catch (err) {
     const msg = err instanceof Error
       ? err.message
       : payload.mode === 'create'
-        ? 'Unable to create user'
-        : 'Unable to update user'
+        ? 'Unable to create center'
+        : 'Unable to update center'
     errorMessage.value = msg
   } finally {
     loading.value = false
   }
 }
 
-const startEdit = (row: AppUserRow) => {
+const startEdit = (row: CenterRow) => {
   isCreateOpen.value = false
   deleteConfirmOpen.value = false
   deleteTarget.value = null
@@ -160,12 +142,7 @@ const startEdit = (row: AppUserRow) => {
   isCreateOpen.value = true
 }
 
-const requestDelete = (row: AppUserRow) => {
-  if (row.user_id === auth.state.value.user?.id) {
-    errorMessage.value = 'You cannot delete your own account.'
-    return
-  }
-
+const requestDelete = (row: CenterRow) => {
   isCreateOpen.value = false
   editing.value = null
   deleteTarget.value = row
@@ -179,19 +156,19 @@ const confirmDelete = async () => {
   errorMessage.value = null
 
   try {
-    await deleteUser(token.value, deleteTarget.value.user_id)
+    await deleteCenter(deleteTarget.value.id)
 
     deleteConfirmOpen.value = false
     deleteTarget.value = null
 
     toast.add({
-      title: 'User deleted',
+      title: 'Center deleted',
       color: 'success'
     })
 
-    await loadUsers()
+    await loadCenters()
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Unable to delete user'
+    const msg = err instanceof Error ? err.message : 'Unable to delete center'
     errorMessage.value = msg
   } finally {
     loading.value = false
@@ -206,18 +183,16 @@ onMounted(async () => {
   }
 
   await loadCenters()
-  await loadUsers()
 })
 </script>
 
 <template>
-  <UDashboardPanel id="users">
+  <UDashboardPanel id="centers">
     <template #header>
-      <UDashboardNavbar title="Users">
+      <UDashboardNavbar title="Centers">
         <template #leading>
           <UDashboardSidebarCollapse />
         </template>
-
       </UDashboardNavbar>
 
       <UDashboardToolbar>
@@ -227,11 +202,11 @@ onMounted(async () => {
               v-model="query"
               class="max-w-md"
               icon="i-lucide-search"
-              placeholder="Search by email, name, role..."
+              placeholder="Search by name, vendor, email..."
             />
             <UBadge
               variant="subtle"
-              :label="`${filteredUsers.length} users`"
+              :label="`${filteredCenters.length} centers`"
             />
           </div>
 
@@ -240,7 +215,7 @@ onMounted(async () => {
             variant="outline"
             icon="i-lucide-refresh-cw"
             :loading="isBusy"
-            @click="loadUsers"
+            @click="loadCenters"
           >
             Refresh
           </UButton>
@@ -251,7 +226,7 @@ onMounted(async () => {
     <template #body>
       <div class="space-y-4">
         <p class="text-sm text-white/70">
-          Manage roles and access. Creating a user will send an invite email from Supabase.
+          Manage centers and their information. Add, edit, or remove centers as needed.
         </p>
 
         <UAlert
@@ -266,12 +241,12 @@ onMounted(async () => {
           <template #header>
             <div class="flex items-center justify-between gap-3">
               <div>
-                <h3 class="text-base font-semibold text-white">Users</h3>
-                <p class="text-sm text-white/70">Invite teammates and manage their roles.</p>
+                <h3 class="text-base font-semibold text-white">Centers</h3>
+                <p class="text-sm text-white/70">View and manage all centers.</p>
               </div>
               <UButton
-                label="Add user"
-                icon="i-lucide-user-plus"
+                label="Add center"
+                icon="i-lucide-plus"
                 class="rounded-full"
                 :disabled="isBusy"
                 @click="openCreate"
@@ -280,7 +255,7 @@ onMounted(async () => {
           </template>
           <UTable
             class="mt-0"
-            :data="filteredUsers"
+            :data="filteredCenters"
             :loading="isBusy"
             :columns="columns"
             :ui="{
@@ -291,24 +266,18 @@ onMounted(async () => {
               td: 'border-b border-default'
             }"
           >
-            <template #email-cell="{ row }">
+            <template #center_name-cell="{ row }">
               <div class="flex flex-col">
-                <span class="text-sm font-medium text-white/90">{{ row.original.email }}</span>
+                <span class="text-sm font-medium text-white/90">{{ row.original.center_name }}</span>
               </div>
             </template>
 
-            <template #display_name-cell="{ row }">
-              <span class="text-sm text-white/80">{{ row.original.display_name || '—' }}</span>
+            <template #lead_vendor-cell="{ row }">
+              <span class="text-sm text-white/80">{{ row.original.lead_vendor || '—' }}</span>
             </template>
 
-            <template #role-cell="{ row }">
-              <UBadge
-                v-if="row.original.role"
-                variant="subtle"
-                class="capitalize"
-                :label="row.original.role"
-              />
-              <span v-else class="text-sm text-white/60">—</span>
+            <template #contact_email-cell="{ row }">
+              <span class="text-sm text-white/80">{{ row.original.contact_email || '—' }}</span>
             </template>
 
             <template #actions-cell="{ row }">
@@ -333,23 +302,22 @@ onMounted(async () => {
             </template>
           </UTable>
 
-          <div v-if="!isBusy && filteredUsers.length === 0" class="p-6 text-center text-sm text-white/70">
-            No users found.
+          <div v-if="!isBusy && filteredCenters.length === 0" class="p-6 text-center text-sm text-white/70">
+            No centers found.
           </div>
         </UPageCard>
 
-        <UserModal
-          v-model:open="userModalOpen"
-          :user="editing"
-          :centers="centers"
+        <CenterModal
+          v-model:open="centerModalOpen"
+          :center="editing"
           :loading="isBusy"
-          @submit="handleUserSubmit"
+          @submit="handleCenterSubmit"
           @after:leave="editing = null"
         />
 
-        <DeleteUserConfirmModal
+        <DeleteCenterConfirmModal
           v-model:open="deleteConfirmOpen"
-          :user="deleteTarget"
+          :center="deleteTarget"
           :loading="isBusy"
           @confirm="confirmDelete"
         />

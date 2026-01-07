@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import type { TableColumn } from '@nuxt/ui'
 
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../composables/useAuth'
 
 type DailyDealFlow = {
   id: string
@@ -19,6 +20,7 @@ type DailyDealFlow = {
 }
 
 const router = useRouter()
+const auth = useAuth()
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -77,9 +79,43 @@ const load = async () => {
   error.value = null
 
   try {
-    const { data, error: supaError } = await supabase
+    await auth.init()
+    
+    const userId = auth.state.value.user?.id
+    const userRole = auth.state.value.profile?.role
+    
+    let queryBuilder = supabase
       .from('daily_deal_flow')
       .select('id,submission_id,insured_name,client_phone_number,lead_vendor,date,status,agent,carrier,created_at')
+
+    // If user is a lawyer, only show leads assigned to them
+    if (userRole === 'lawyer' && userId) {
+      queryBuilder = queryBuilder.eq('assigned_attorney_id', userId)
+    } else if (!userRole) {
+      // If no role, filter by lead vendor matching user's center
+      // Get user's center first
+      const { data: userData } = await supabase
+        .from('app_users')
+        .select('center_id')
+        .eq('user_id', userId || '')
+        .maybeSingle()
+      
+      if (userData?.center_id) {
+        // Get center's lead vendor
+        const { data: centerData } = await supabase
+          .from('centers')
+          .select('lead_vendor')
+          .eq('id', userData.center_id)
+          .maybeSingle()
+        
+        if (centerData?.lead_vendor) {
+          queryBuilder = queryBuilder.eq('lead_vendor', centerData.lead_vendor)
+        }
+      }
+    }
+    // Admin and agent roles see all leads (no filter)
+
+    const { data, error: supaError } = await queryBuilder
       .order('created_at', { ascending: false })
       .limit(250)
 

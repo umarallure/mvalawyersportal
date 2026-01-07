@@ -2,7 +2,7 @@
 @import "@nuxt/ui";
 
 @theme static {
-  --font-sans: 'Public Sans', sans-serif;
+  --font-sans: 'Montserrat', sans-serif;
 
   --color-green-50: oklch(90.98% 0.04338 166.72);
   --color-green-100: oklch(88.46% 0.05417 166.29);
@@ -41,6 +41,10 @@
 }
 
 .dark {
+  --ap-bg: #202020;
+  --ap-surface: #202020;
+  --ap-surface-soft: #202020;
+  --ap-panel: #202020;
   --ui-primary: var(--ui-color-primary-500);
   --ui-bg: var(--ap-bg);
   --ui-bg-elevated: var(--ap-surface);

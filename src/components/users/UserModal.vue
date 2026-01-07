@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onUpdated, ref } from 'vue'
 import type { ManageUserRole, ManageUserRow } from '../../lib/manage-users'
+import type { CenterRow } from '../../lib/centers'
 
 const props = defineProps<{
   open: boolean
   user?: ManageUserRow | null
   loading?: boolean
+  centers?: CenterRow[]
 }>()
 
 const emit = defineEmits<{
@@ -13,16 +15,18 @@ const emit = defineEmits<{
   'after:leave': []
   'submit': [
     payload:
-      | { mode: 'create'; email: string; password: string; role: ManageUserRole | null }
-      | { mode: 'edit'; user_id: string; role: ManageUserRole | null }
+      | { mode: 'create'; email: string; password: string; role: ManageUserRole | null; center_id: string | null }
+      | { mode: 'edit'; user_id: string; role: ManageUserRole | null; center_id: string | null }
   ]
 }>()
 
 const NO_ROLE = '__none__' as const
+const NO_CENTER = '__none__' as const
 
 const email = ref('')
 const password = ref('')
 const role = ref<ManageUserRole | typeof NO_ROLE>(NO_ROLE)
+const centerId = ref<string | typeof NO_CENTER>(NO_CENTER)
 
 const roleOptions = [
   { value: NO_ROLE, label: 'No role' },
@@ -31,18 +35,28 @@ const roleOptions = [
   { value: 'agent', label: 'Agent' }
 ]
 
+const centerOptions = computed(() => {
+  const centers = props.centers || []
+  return [
+    { value: NO_CENTER, label: 'No center' },
+    ...centers.map(c => ({ value: c.id, label: c.center_name }))
+  ]
+})
+
 const isEditMode = computed(() => Boolean(props.user))
 
 const resetForm = () => {
   email.value = ''
   password.value = ''
   role.value = NO_ROLE
+  centerId.value = NO_CENTER
 }
 
 const setFromUser = (user: ManageUserRow) => {
   email.value = user.email
   password.value = ''
   role.value = (user.role ?? NO_ROLE) as ManageUserRole | typeof NO_ROLE
+  centerId.value = (user.center_id ?? NO_CENTER) as string | typeof NO_CENTER
 }
 
 const previousOpen = ref(props.open)
@@ -81,7 +95,8 @@ const handleSubmit = () => {
     emit('submit', {
       mode: 'edit',
       user_id: props.user.user_id,
-      role: role.value === NO_ROLE ? null : (role.value as ManageUserRole)
+      role: role.value === NO_ROLE ? null : (role.value as ManageUserRole),
+      center_id: centerId.value === NO_CENTER ? null : centerId.value
     })
     return
   }
@@ -91,7 +106,8 @@ const handleSubmit = () => {
     mode: 'create',
     email: email.value.trim(),
     password: password.value,
-    role: role.value === NO_ROLE ? null : (role.value as ManageUserRole)
+    role: role.value === NO_ROLE ? null : (role.value as ManageUserRole),
+    center_id: centerId.value === NO_CENTER ? null : centerId.value
   })
 }
 
@@ -135,6 +151,10 @@ const handleUpdateOpen = (value: boolean) => {
 
         <UFormField label="Role">
           <USelect v-model="role" :items="roleOptions" value-key="value" label-key="label" />
+        </UFormField>
+
+        <UFormField label="Center" description="Optional: Assign user to a center">
+          <USelect v-model="centerId" :items="centerOptions" value-key="value" label-key="label" />
         </UFormField>
 
         <div class="flex justify-end gap-2">

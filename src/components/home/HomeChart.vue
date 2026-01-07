@@ -28,10 +28,7 @@ watch([() => props.period, () => props.range], () => {
     monthly: eachMonthOfInterval
   } as Record<Period, typeof eachDayOfInterval>)[props.period](props.range)
 
-  const min = 1000
-  const max = 10000
-
-  data.value = dates.map(date => ({ date, amount: Math.floor(Math.random() * (max - min + 1)) + min }))
+  data.value = dates.map(date => ({ date, amount: 0 }))
 }, { immediate: true })
 
 const x = (_: DataRecord, i: number) => i

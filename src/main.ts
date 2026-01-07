@@ -18,6 +18,7 @@ const router = createRouter({
     { path: '/retainers', component: () => import('./pages/retainers.vue') },
     { path: '/retainers/:id', component: () => import('./pages/retainers-details.vue') },
     { path: '/users', component: () => import('./pages/users.vue'), meta: { requiresAdmin: true } },
+    { path: '/centers', component: () => import('./pages/centers.vue'), meta: { requiresAdmin: true } },
     {
       path: '/settings',
       component: () => import('./pages/settings.vue'),

@@ -51,8 +51,8 @@ const stats = ref<Stat[]>([])
 
 watch([() => props.period, () => props.range], () => {
   stats.value = baseStats.map((stat) => {
-    const value = randomInt(stat.minValue, stat.maxValue)
-    const variation = randomInt(stat.minVariation, stat.maxVariation)
+    const value = 0
+    const variation = 0
 
     return {
       title: stat.title,

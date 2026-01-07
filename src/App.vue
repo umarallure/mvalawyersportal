@@ -46,6 +46,13 @@ const links = computed(() => [[{
   onSelect: () => {
     open.value = false
   }
+}, {
+  label: 'Centers',
+  icon: 'i-lucide-building-2',
+  to: '/centers',
+  onSelect: () => {
+    open.value = false
+  }
 }] : []), {
   label: 'Settings',
   to: '/settings',
