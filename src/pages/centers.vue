@@ -18,7 +18,7 @@ const auth = useAuth()
 const router = useRouter()
 const toast = useToast()
 
-const isAdmin = computed(() => auth.state.value.profile?.role === 'admin')
+const isSuperAdmin = computed(() => auth.state.value.profile?.role === 'super_admin')
 
 const centers = ref<CenterRow[]>([])
 const loading = ref(false)
@@ -177,7 +177,7 @@ const confirmDelete = async () => {
 
 onMounted(async () => {
   await auth.init()
-  if (!isAdmin.value) {
+  if (!isSuperAdmin.value) {
     await router.replace('/dashboard')
     return
   }
@@ -225,7 +225,7 @@ onMounted(async () => {
 
     <template #body>
       <div class="space-y-4">
-        <p class="text-sm text-white/70">
+        <p class="text-sm text-black dark:text-white/70">
           Manage centers and their information. Add, edit, or remove centers as needed.
         </p>
 
@@ -242,7 +242,7 @@ onMounted(async () => {
             <div class="flex items-center justify-between gap-3">
               <div>
                 <h3 class="text-base font-semibold text-white">Centers</h3>
-                <p class="text-sm text-white/70">View and manage all centers.</p>
+                <p class="text-sm text-black dark:text-white/70">View and manage all centers.</p>
               </div>
               <UButton
                 label="Add center"
@@ -268,16 +268,16 @@ onMounted(async () => {
           >
             <template #center_name-cell="{ row }">
               <div class="flex flex-col">
-                <span class="text-sm font-medium text-white/90">{{ row.original.center_name }}</span>
+                <span class="text-sm font-medium text-black dark:text-white/90">{{ row.original.center_name }}</span>
               </div>
             </template>
 
             <template #lead_vendor-cell="{ row }">
-              <span class="text-sm text-white/80">{{ row.original.lead_vendor || '—' }}</span>
+              <span class="text-sm text-black dark:text-white/80">{{ row.original.lead_vendor || '—' }}</span>
             </template>
 
             <template #contact_email-cell="{ row }">
-              <span class="text-sm text-white/80">{{ row.original.contact_email || '—' }}</span>
+              <span class="text-sm text-black dark:text-white/80">{{ row.original.contact_email || '—' }}</span>
             </template>
 
             <template #actions-cell="{ row }">
@@ -302,7 +302,7 @@ onMounted(async () => {
             </template>
           </UTable>
 
-          <div v-if="!isBusy && filteredCenters.length === 0" class="p-6 text-center text-sm text-white/70">
+          <div v-if="!isBusy && filteredCenters.length === 0" class="p-6 text-center text-sm text-black dark:text-white/70">
             No centers found.
           </div>
         </UPageCard>

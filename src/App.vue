@@ -39,7 +39,7 @@ const links = computed(() => [[{
   onSelect: () => {
     open.value = false
   }
-}, ...(auth.state.value.profile?.role === 'admin' ? [{
+}, ...(auth.state.value.profile?.role === 'super_admin' ? [{
   label: 'Users',
   icon: 'i-lucide-users',
   to: '/users',

@@ -17,6 +17,8 @@
 }
 
 :root {
+  font-family: var(--font-sans);
+
   --ap-bg: #0f0f10;
   --ap-surface: #131313;
   --ap-surface-soft: #111010;
@@ -38,6 +40,18 @@
   --ui-color-primary-500: var(--ap-accent);
   --ui-color-primary-600: var(--ap-accent-dark);
   --ui-color-primary-700: var(--ap-accent-dark);
+}
+
+html,
+body {
+  font-family: var(--font-sans);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
 }
 
 .dark {

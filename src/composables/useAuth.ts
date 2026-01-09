@@ -4,7 +4,7 @@ import type { Session, User } from '@supabase/supabase-js'
 
 import { supabase } from '../lib/supabase'
 
-export type AppRole = 'admin' | 'lawyer' | 'agent'
+export type AppRole = 'super_admin' | 'admin' | 'lawyer' | 'agent'
 
 export type AppUserProfile = {
   user_id: string

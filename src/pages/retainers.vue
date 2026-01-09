@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { TableColumn } from '@nuxt/ui'
 
@@ -26,26 +26,53 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const query = ref('')
 
+const leadVendorFilter = ref('All')
+const statusFilter = ref('All')
+
+const pageSize = 25
+const currentPage = ref(1)
+
+const totalCount = ref(0)
+const availableLeadVendors = ref<string[]>([])
+const availableStatuses = ref<string[]>([])
+
 const rows = ref<DailyDealFlow[]>([])
 
-const filteredRows = computed(() => {
-  const q = query.value.trim().toLowerCase()
-  if (!q) return rows.value
-
-  return rows.value.filter((r) => {
-    const haystack = [
-      r.submission_id,
-      r.insured_name ?? '',
-      r.client_phone_number ?? '',
-      r.lead_vendor ?? '',
-      r.status ?? '',
-      r.agent ?? '',
-      r.carrier ?? ''
-    ].join(' ').toLowerCase()
-
-    return haystack.includes(q)
-  })
+const leadVendorOptions = computed(() => {
+  return ['All', ...availableLeadVendors.value]
 })
+
+const statusOptions = computed(() => {
+  return ['All', ...availableStatuses.value]
+})
+
+const pageCount = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize)))
+
+const displayPage = computed(() => Math.min(Math.max(1, currentPage.value), pageCount.value))
+
+const pagedRows = computed(() => rows.value)
+
+const canPrev = computed(() => currentPage.value > 1)
+const canNext = computed(() => currentPage.value < pageCount.value)
+
+const goPrev = () => {
+  if (!canPrev.value) return
+  currentPage.value -= 1
+}
+
+const goNext = () => {
+  if (!canNext.value) return
+  currentPage.value += 1
+}
+
+const resetPagination = () => {
+  currentPage.value = 1
+}
+
+const normalizeFilterValue = (value: string | null | undefined) => {
+  const v = String(value ?? '').trim()
+  return v.length ? v : '—'
+}
 
 const columns: TableColumn<DailyDealFlow>[] = [
   {
@@ -61,12 +88,12 @@ const columns: TableColumn<DailyDealFlow>[] = [
     header: 'Phone Number'
   },
   {
-    accessorKey: 'status',
-    header: 'Status'
+    accessorKey: 'lead_vendor',
+    header: 'Lead vendor'
   },
   {
-    accessorKey: 'agent',
-    header: 'Assigned Lawyer'
+    accessorKey: 'status',
+    header: 'Status'
   },
   {
     accessorKey: 'actions',
@@ -94,48 +121,83 @@ const load = async () => {
 
   try {
     await auth.init()
-    
-    const userId = auth.state.value.user?.id
-    const userRole = auth.state.value.profile?.role
-    
+
+    const userId = auth.state.value.user?.id ?? null
+    const userRole = auth.state.value.profile?.role ?? null
+
+    const q = query.value.trim()
+    const from = (displayPage.value - 1) * pageSize
+    const to = from + pageSize - 1
+
     let queryBuilder = supabase
       .from('daily_deal_flow')
-      .select('id,submission_id,insured_name,client_phone_number,lead_vendor,date,status,agent,carrier,created_at')
+      .select('id,submission_id,insured_name,client_phone_number,lead_vendor,date,status,agent,carrier,created_at', { count: 'exact' })
 
-    // If user is a lawyer, only show leads assigned to them
     if (userRole === 'lawyer' && userId) {
       queryBuilder = queryBuilder.eq('assigned_attorney_id', userId)
-    } else if (!userRole) {
-      // If no role, filter by lead vendor matching user's center
-      // Get user's center first
+    } else if (!userRole && userId) {
       const { data: userData } = await supabase
         .from('app_users')
         .select('center_id')
-        .eq('user_id', userId || '')
+        .eq('user_id', userId)
         .maybeSingle()
-      
+
       if (userData?.center_id) {
-        // Get center's lead vendor
         const { data: centerData } = await supabase
           .from('centers')
           .select('lead_vendor')
           .eq('id', userData.center_id)
           .maybeSingle()
-        
+
         if (centerData?.lead_vendor) {
           queryBuilder = queryBuilder.eq('lead_vendor', centerData.lead_vendor)
+        } else {
+          rows.value = []
+          totalCount.value = 0
+          return
         }
+      } else {
+        rows.value = []
+        totalCount.value = 0
+        return
       }
     }
-    // Admin and agent roles see all leads (no filter)
 
-    const { data, error: supaError } = await queryBuilder
+    if (leadVendorFilter.value !== 'All') {
+      const v = normalizeFilterValue(leadVendorFilter.value)
+      queryBuilder = v === '—'
+        ? queryBuilder.is('lead_vendor', null)
+        : queryBuilder.eq('lead_vendor', v)
+    }
+
+    if (statusFilter.value !== 'All') {
+      const s = normalizeFilterValue(statusFilter.value)
+      queryBuilder = s === '—'
+        ? queryBuilder.is('status', null)
+        : queryBuilder.eq('status', s)
+    }
+
+    if (q) {
+      const pattern = `%${q.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`
+      queryBuilder = queryBuilder.or([
+        `submission_id.ilike.${pattern}`,
+        `insured_name.ilike.${pattern}`,
+        `client_phone_number.ilike.${pattern}`,
+        `lead_vendor.ilike.${pattern}`,
+        `status.ilike.${pattern}`,
+        `agent.ilike.${pattern}`,
+        `carrier.ilike.${pattern}`
+      ].join(','))
+    }
+
+    const { data, count, error: supaError } = await queryBuilder
       .order('created_at', { ascending: false })
-      .limit(250)
+      .range(from, to)
 
     if (supaError) throw supaError
 
     rows.value = (data ?? []) as DailyDealFlow[]
+    totalCount.value = count ?? 0
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Failed to load retainers'
     error.value = msg
@@ -144,7 +206,91 @@ const load = async () => {
   }
 }
 
-onMounted(load)
+const loadFilterOptions = async () => {
+  try {
+    await auth.init()
+    const userId = auth.state.value.user?.id ?? null
+    const userRole = auth.state.value.profile?.role ?? null
+
+    let qb = supabase
+      .from('daily_deal_flow')
+      .select('lead_vendor,status')
+      .order('created_at', { ascending: false })
+      .limit(1000)
+
+    if (userRole === 'lawyer' && userId) {
+      qb = qb.eq('assigned_attorney_id', userId)
+    } else if (!userRole && userId) {
+      const { data: userData } = await supabase
+        .from('app_users')
+        .select('center_id')
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      if (userData?.center_id) {
+        const { data: centerData } = await supabase
+          .from('centers')
+          .select('lead_vendor')
+          .eq('id', userData.center_id)
+          .maybeSingle()
+
+        if (centerData?.lead_vendor) {
+          qb = qb.eq('lead_vendor', centerData.lead_vendor)
+        } else {
+          availableLeadVendors.value = ['—']
+          availableStatuses.value = ['—']
+          return
+        }
+      } else {
+        availableLeadVendors.value = ['—']
+        availableStatuses.value = ['—']
+        return
+      }
+    }
+
+    const { data, error: optErr } = await qb
+    if (optErr) throw optErr
+
+    const vendorSet = new Set<string>()
+    const statusSet = new Set<string>()
+    for (const r of (data ?? []) as Array<{ lead_vendor: string | null; status: string | null }>) {
+      vendorSet.add(normalizeFilterValue(r.lead_vendor))
+      statusSet.add(normalizeFilterValue(r.status))
+    }
+
+    const vendors = Array.from(vendorSet)
+    const statuses = Array.from(statusSet)
+    vendors.sort((a, b) => a.localeCompare(b))
+    statuses.sort((a, b) => a.localeCompare(b))
+
+    availableLeadVendors.value = vendors
+    availableStatuses.value = statuses
+  } catch {
+  }
+}
+
+onMounted(async () => {
+  await loadFilterOptions()
+  await load()
+})
+
+watch([query, leadVendorFilter, statusFilter], () => {
+  if (currentPage.value !== 1) {
+    resetPagination()
+    return
+  }
+  load().catch(() => {
+  })
+})
+
+watch(currentPage, () => {
+  load().catch(() => {
+  })
+})
+
+watch(pageCount, () => {
+  if (currentPage.value > pageCount.value) currentPage.value = pageCount.value
+})
 
 const openRow = (row: DailyDealFlow) => {
   router.push(`/retainers/${row.id}`)
@@ -174,17 +320,32 @@ const openRow = (row: DailyDealFlow) => {
     </template>
 
     <template #body>
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <UInput
-          v-model="query"
-          class="max-w-md"
-          icon="i-lucide-search"
-          placeholder="Search by name, phone..."
-        />
+      <div class="flex h-full min-h-0 flex-col">
+      <div class="flex w-full flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-1 flex-wrap items-center gap-3">
+          <UInput
+            v-model="query"
+            class="max-w-md"
+            icon="i-lucide-search"
+            placeholder="Search by name, phone..."
+          />
+
+          <USelect
+            v-model="leadVendorFilter"
+            :items="leadVendorOptions"
+            class="w-56"
+          />
+
+          <USelect
+            v-model="statusFilter"
+            :items="statusOptions"
+            class="w-56"
+          />
+        </div>
 
         <UBadge
           variant="subtle"
-          :label="`${filteredRows.length} leads`"
+          :label="`${totalCount} leads`"
         />
       </div>
 
@@ -197,11 +358,12 @@ const openRow = (row: DailyDealFlow) => {
         :description="error"
       />
 
-      <UPageCard variant="subtle" class="mt-4">
+      <UPageCard variant="subtle" class="relative mt-4 flex flex-1 min-h-0 flex-col p-0!">
+        <div class="flex-1 min-h-0 overflow-y-auto p-4 pb-16">
         <UTable
           class="mt-0"
           :loading="loading"
-          :data="filteredRows"
+          :data="pagedRows"
           :columns="columns"
           :ui="{
             base: 'table-fixed border-separate border-spacing-0',
@@ -212,15 +374,19 @@ const openRow = (row: DailyDealFlow) => {
           }"
         >
           <template #date-cell="{ row }">
-            <span class="text-sm text-white/80">{{ formatDate(row.original.date) }}</span>
+            <span class="text-sm text-black dark:text-white/80">{{ formatDate(row.original.date) }}</span>
           </template>
 
           <template #insured_name-cell="{ row }">
-            <span class="text-sm text-white/90">{{ row.original.insured_name ?? '—' }}</span>
+            <span class="text-sm text-black dark:text-white/90">{{ row.original.insured_name ?? '—' }}</span>
           </template>
 
           <template #client_phone_number-cell="{ row }">
-            <span class="text-sm text-white/80">{{ row.original.client_phone_number ?? '—' }}</span>
+            <span class="text-sm text-black dark:text-white/80">{{ row.original.client_phone_number ?? '—' }}</span>
+          </template>
+
+          <template #lead_vendor-cell="{ row }">
+            <span class="text-sm text-black dark:text-white/80">{{ row.original.lead_vendor ?? '—' }}</span>
           </template>
 
           <template #status-cell="{ row }">
@@ -231,10 +397,6 @@ const openRow = (row: DailyDealFlow) => {
             >
               {{ row.original.status ?? '—' }}
             </UBadge>
-          </template>
-
-          <template #agent-cell="{ row }">
-            <span class="text-sm text-white/80">{{ row.original.agent ?? '—' }}</span>
           </template>
 
           <template #actions-cell="{ row }">
@@ -250,7 +412,35 @@ const openRow = (row: DailyDealFlow) => {
             </div>
           </template>
         </UTable>
+        </div>
+
+        <div class="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 border-t border-default bg-elevated/50 px-4 py-2">
+          <span class="text-xs text-dimmed">Page {{ displayPage }} of {{ pageCount }}</span>
+
+          <div class="flex items-center justify-end gap-2">
+          <UButton
+            size="sm"
+            color="neutral"
+            variant="outline"
+            :disabled="!canPrev"
+            @click="goPrev"
+          >
+            Previous
+          </UButton>
+
+          <UButton
+            size="sm"
+            color="neutral"
+            variant="outline"
+            :disabled="!canNext"
+            @click="goNext"
+          >
+            Next
+          </UButton>
+          </div>
+        </div>
       </UPageCard>
+      </div>
     </template>
   </UDashboardPanel>
 </template>

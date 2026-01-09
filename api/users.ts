@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
-type Role = 'admin' | 'lawyer' | 'agent'
+type Role = 'super_admin' | 'admin' | 'lawyer' | 'agent'
 
 type AppUserRow = {
   user_id: string
@@ -32,7 +32,7 @@ const getBearerToken = (req: VercelRequest) => {
   return parts[1]
 }
 
-const requireAdmin = async (req: VercelRequest) => {
+const requireSuperAdmin = async (req: VercelRequest) => {
   const supabaseUrl = getEnv('SUPABASE_URL')
   const supabaseAnonKey = getEnv('SUPABASE_ANON_KEY')
   const serviceRoleKey = getEnv('SUPABASE_SERVICE_ROLE_KEY')
@@ -59,8 +59,8 @@ const requireAdmin = async (req: VercelRequest) => {
     return { ok: false as const, status: 500, error: roleErr.message }
   }
 
-  if (!roleRow || roleRow.role !== 'admin') {
-    return { ok: false as const, status: 403, error: 'Admin access required' }
+  if (!roleRow || roleRow.role !== 'super_admin') {
+    return { ok: false as const, status: 403, error: 'Super admin access required' }
   }
 
   return { ok: true as const, requesterId, supabaseAdmin }
@@ -68,7 +68,7 @@ const requireAdmin = async (req: VercelRequest) => {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    const admin = await requireAdmin(req)
+    const admin = await requireSuperAdmin(req)
     if (!admin.ok) return json(res, admin.status, { error: admin.error })
 
     const supabaseUrl = getEnv('SUPABASE_URL')
@@ -94,7 +94,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const role = body?.role === null || body?.role === undefined ? null : String(body.role) as Role
 
       if (!email.length) return json(res, 400, { error: 'email is required' })
-      if (role && !['admin', 'lawyer', 'agent'].includes(role)) return json(res, 400, { error: 'invalid role' })
+      if (role && !['super_admin', 'admin', 'lawyer', 'agent'].includes(role)) return json(res, 400, { error: 'invalid role' })
 
       const { data: inviteData, error: inviteErr } = await createClient(supabaseUrl, serviceRoleKey)
         .auth.admin.inviteUserByEmail(email, {
@@ -138,7 +138,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         : (body.display_name === null ? null : String(body.display_name).trim())
 
       if (!userId.length) return json(res, 400, { error: 'user_id is required' })
-      if (role !== undefined && role !== null && !['admin', 'lawyer', 'agent'].includes(role)) {
+      if (role !== undefined && role !== null && !['super_admin', 'admin', 'lawyer', 'agent'].includes(role)) {
         return json(res, 400, { error: 'invalid role' })
       }
 

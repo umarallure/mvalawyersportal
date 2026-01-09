@@ -1,8 +1,3 @@
-/**
- * Attorney Profile API Client
- * Handles direct communication with Supabase database
- */
-
 import { supabase } from './supabase'
 
 export interface AttorneyProfileData {
@@ -125,4 +120,49 @@ export async function updateAvailabilityStatus(
   }
 
   return profile
+}
+
+export async function getAttorneyNameMapByUserIds(userIds: string[]) {
+  const ids = Array.from(new Set(userIds.map(v => String(v)).filter(Boolean)))
+  if (!ids.length) return {} as Record<string, string>
+
+  const { data: profiles, error: profileErr } = await supabase
+    .from('attorney_profiles')
+    .select('user_id,full_name')
+    .in('user_id', ids)
+
+  if (profileErr) {
+    throw new Error(profileErr.message || 'Failed to fetch attorney profiles')
+  }
+
+  const profileNameById: Record<string, string> = {}
+  const profileNameRawById: Record<string, string | null> = {}
+  for (const p of (profiles ?? []) as Array<{ user_id: string; full_name: string | null }>) {
+    profileNameRawById[p.user_id] = p.full_name
+    const name = (p.full_name ?? '').trim()
+    if (name) profileNameById[p.user_id] = name
+  }
+
+  const missingIds = ids.filter((id) => {
+    const raw = profileNameRawById[id]
+    return !raw || !raw.trim()
+  })
+
+  if (!missingIds.length) return profileNameById
+
+  const { data: users, error: userErr } = await supabase
+    .from('app_users')
+    .select('user_id,display_name')
+    .in('user_id', missingIds)
+
+  if (userErr) {
+    throw new Error(userErr.message || 'Failed to fetch app user display names')
+  }
+
+  for (const u of (users ?? []) as Array<{ user_id: string; display_name: string | null }>) {
+    const name = (u.display_name ?? '').trim()
+    if (name) profileNameById[u.user_id] = name
+  }
+
+  return profileNameById
 }

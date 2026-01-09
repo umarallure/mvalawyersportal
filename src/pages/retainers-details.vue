@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../composables/useAuth'
+import { getAttorneyNameMapByUserIds } from '../lib/attorney-profile'
 
 type DailyDealFlow = Record<string, unknown> & {
   id: string
@@ -23,6 +24,7 @@ const id = computed(() => route.params.id as string)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const row = ref<DailyDealFlow | null>(null)
+const assignedAttorneyName = ref<string>('—')
 
 const activeTab = ref('basic')
 
@@ -102,6 +104,14 @@ const load = async () => {
     }
 
     row.value = data as DailyDealFlow
+
+    const assignedId = (data as any)?.assigned_attorney_id as string | null | undefined
+    if (assignedId) {
+      const map = await getAttorneyNameMapByUserIds([assignedId])
+      assignedAttorneyName.value = map[assignedId] ?? '—'
+    } else {
+      assignedAttorneyName.value = '—'
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Failed to load lead'
     error.value = msg
@@ -166,9 +176,15 @@ const basicInfoFields = computed(() => {
     ['contact_address', 'Contact Address'],
     ['status', 'Status'],
     ['lead_vendor', 'Lead Vendor'],
-    ['agent', 'Agent'],
+    ['assigned_attorney', 'Assigned Attorney'],
     ['date', 'Date']
-  ].map(([key, label]) => ({ key, label, value: (row.value as any)[key] }))
+  ].map(([key, label]) => {
+    if (key === 'assigned_attorney') {
+      return { key, label, value: assignedAttorneyName.value }
+    }
+
+    return { key, label, value: (row.value as any)[key] }
+  })
 })
 
 const accidentDetailsFields = computed(() => {

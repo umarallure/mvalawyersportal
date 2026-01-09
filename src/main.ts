@@ -17,8 +17,8 @@ const router = createRouter({
     { path: '/inbox', component: () => import('./pages/inbox.vue') },
     { path: '/retainers', component: () => import('./pages/retainers.vue') },
     { path: '/retainers/:id', component: () => import('./pages/retainers-details.vue') },
-    { path: '/users', component: () => import('./pages/users.vue'), meta: { requiresAdmin: true } },
-    { path: '/centers', component: () => import('./pages/centers.vue'), meta: { requiresAdmin: true } },
+    { path: '/users', component: () => import('./pages/users.vue'), meta: { requiresSuperAdmin: true } },
+    { path: '/centers', component: () => import('./pages/centers.vue'), meta: { requiresSuperAdmin: true } },
     {
       path: '/settings',
       component: () => import('./pages/settings.vue'),
@@ -40,8 +40,10 @@ router.beforeEach(async (to) => {
 
   const isPublic = Boolean(to.meta.public)
   const isLoggedIn = Boolean(auth.state.value.user)
-  const requiresAdmin = Boolean(to.meta.requiresAdmin)
-  const isAdmin = auth.state.value.profile?.role === 'admin'
+  const requiresSuperAdmin = Boolean(to.meta.requiresSuperAdmin)
+  const isSuperAdmin = auth.state.value.profile?.role === 'super_admin'
+  const role = auth.state.value.profile?.role
+  const isRoleAllowed = role === 'super_admin' || role === 'admin' || role === 'lawyer'
 
   if (to.path === '/login' && isLoggedIn) {
     return { path: '/dashboard' }
@@ -49,12 +51,17 @@ router.beforeEach(async (to) => {
 
   if (isPublic) return true
 
-  if (requiresAdmin) {
+  if (isLoggedIn && !isRoleAllowed) {
+    await auth.signOut()
+    return { path: '/login', query: { reason: 'role_blocked' } }
+  }
+
+  if (requiresSuperAdmin) {
     if (!isLoggedIn) {
       return { path: '/login', query: { redirect: to.fullPath } }
     }
 
-    if (!isAdmin) {
+    if (!isSuperAdmin) {
       return { path: '/dashboard' }
     }
 
