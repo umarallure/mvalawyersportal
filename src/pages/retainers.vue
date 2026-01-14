@@ -14,6 +14,8 @@ type DailyDealFlow = {
   lead_vendor: string | null
   date: string | null
   status: string | null
+  assigned_attorney_id?: string | null
+  assigned_attorney_name?: string | null
   agent: string | null
   carrier: string | null
   created_at: string | null
@@ -23,13 +25,17 @@ const router = useRouter()
 const auth = useAuth()
 
 const isSuperAdmin = computed(() => auth.state.value.profile?.role === 'super_admin')
+const isAdmin = computed(() => auth.state.value.profile?.role === 'admin')
+const canSeeAssignments = computed(() => isSuperAdmin.value || isAdmin.value)
+
+const PENDING_APPROVAL = 'Pending Approval'
 
 const loading = ref(false)
 const error = ref<string | null>(null)
 const query = ref('')
 
 const leadVendorFilter = ref('All')
-const statusFilter = ref('All')
+const statusFilter = ref(PENDING_APPROVAL)
 
 const pageSize = 25
 const currentPage = ref(1)
@@ -45,7 +51,7 @@ const leadVendorOptions = computed(() => {
 })
 
 const statusOptions = computed(() => {
-  return ['All', ...availableStatuses.value]
+  return [PENDING_APPROVAL]
 })
 
 const pageCount = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize)))
@@ -99,6 +105,13 @@ const columns = computed(() => {
     })
   }
 
+  if (canSeeAssignments.value) {
+    cols.push({
+      accessorKey: 'assigned_attorney_name',
+      header: 'Assigned Attorney'
+    })
+  }
+
   cols.push(
     {
       accessorKey: 'status',
@@ -143,7 +156,9 @@ const load = async () => {
 
     let queryBuilder = supabase
       .from('daily_deal_flow')
-      .select('id,submission_id,insured_name,client_phone_number,lead_vendor,date,status,agent,carrier,created_at', { count: 'exact' })
+      .select('id,submission_id,insured_name,client_phone_number,lead_vendor,date,status,assigned_attorney_id,agent,carrier,created_at', { count: 'exact' })
+
+    queryBuilder = queryBuilder.eq('status', PENDING_APPROVAL)
 
     if (userRole === 'lawyer' && userId) {
       queryBuilder = queryBuilder.eq('assigned_attorney_id', userId)
@@ -182,12 +197,7 @@ const load = async () => {
         : queryBuilder.eq('lead_vendor', v)
     }
 
-    if (statusFilter.value !== 'All') {
-      const s = normalizeFilterValue(statusFilter.value)
-      queryBuilder = s === '—'
-        ? queryBuilder.is('status', null)
-        : queryBuilder.eq('status', s)
-    }
+    statusFilter.value = PENDING_APPROVAL
 
     if (q) {
       const pattern = `%${q.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`
@@ -208,7 +218,36 @@ const load = async () => {
 
     if (supaError) throw supaError
 
-    rows.value = (data ?? []) as DailyDealFlow[]
+    const dealFlows = (data ?? []) as DailyDealFlow[]
+
+    if (canSeeAssignments.value) {
+      const attorneyIds = [...new Set(dealFlows
+        .map(d => d.assigned_attorney_id)
+        .filter((id): id is string => Boolean(id))
+      )]
+
+      if (attorneyIds.length) {
+        const { data: attorneys, error: attorneysError } = await supabase
+          .from('attorney_profiles')
+          .select('user_id,full_name')
+          .in('user_id', attorneyIds)
+
+        if (attorneysError) throw attorneysError
+
+        const attorneyNameByUserId = new Map(
+          (attorneys ?? []).map((a: any) => [String(a.user_id), String(a.full_name ?? '').trim()])
+        )
+
+        dealFlows.forEach((flow) => {
+          const id = flow.assigned_attorney_id ?? null
+          if (!id) return
+          const name = attorneyNameByUserId.get(id) ?? ''
+          flow.assigned_attorney_name = name.length ? name : null
+        })
+      }
+    }
+
+    rows.value = dealFlows
     totalCount.value = count ?? 0
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Failed to load retainers'
@@ -229,11 +268,16 @@ const loadFilterOptions = async () => {
       leadVendorFilter.value = 'All'
     }
 
+    availableStatuses.value = [PENDING_APPROVAL]
+    statusFilter.value = PENDING_APPROVAL
+
     let qb = supabase
       .from('daily_deal_flow')
       .select('lead_vendor,status')
       .order('created_at', { ascending: false })
       .limit(1000)
+
+    qb = qb.eq('status', PENDING_APPROVAL)
 
     if (userRole === 'lawyer' && userId) {
       qb = qb.eq('assigned_attorney_id', userId)
@@ -283,7 +327,7 @@ const loadFilterOptions = async () => {
     if (userRole === 'super_admin') {
       availableLeadVendors.value = vendors
     }
-    availableStatuses.value = statuses
+    availableStatuses.value = [PENDING_APPROVAL]
   } catch {
   }
 }

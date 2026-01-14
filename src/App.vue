@@ -78,7 +78,7 @@ const links = computed(() => [[{
   label: 'Settings',
   to: '/settings',
   icon: 'i-lucide-settings',
-  defaultOpen: false,
+  defaultOpen: route.path.startsWith('/settings'),
   type: 'trigger',
   children: [{
     label: 'General',
@@ -159,7 +159,7 @@ if (cookie.value !== 'accepted') {
           collapsible
           resizable
           class="bg-elevated/25"
-          :ui="{ footer: 'lg:border-t lg:border-default' }"
+          :ui="{ header: 'px-0', footer: 'lg:border-t lg:border-default' }"
         >
           <template #header="{ collapsed }">
             <TeamsMenu :collapsed="collapsed" />

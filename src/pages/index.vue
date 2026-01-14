@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
-import { BRANDING } from '../lib/branding'
 
 const modules = [{
   title: 'Intake & screening',
@@ -59,9 +58,6 @@ const steps = [{
       </div>
 
       <header class="flex w-full items-center justify-between px-6 py-6 lg:px-10">
-        <div class="flex items-center gap-3">
-          <img :src="BRANDING.logo" alt="Lawyer Portal" class="h-10 w-auto" />
-        </div>
         <div class="hidden items-center gap-3 text-sm font-medium text-white/70 lg:flex">
           <RouterLink to="/login" class="rounded-full border border-white/15 px-4 py-2 transition hover:border-white/40 hover:text-white">
             Log in

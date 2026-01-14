@@ -5,6 +5,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import ui from '@nuxt/ui/vue-plugin'
 import App from './App.vue'
 import { useAuth } from './composables/useAuth'
+import { useAttorneyProfile } from './composables/useAttorneyProfile'
 
 const app = createApp(App)
 
@@ -38,6 +39,7 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   const auth = useAuth()
+  const attorneyProfile = useAttorneyProfile()
 
   await auth.init()
 
@@ -48,7 +50,18 @@ router.beforeEach(async (to) => {
   const role = auth.state.value.profile?.role
   const isRoleAllowed = role === 'super_admin' || role === 'admin' || role === 'lawyer'
 
+  const userId = auth.state.value.user?.id ?? null
+  const lawyerCompletion = async () => {
+    if (role !== 'lawyer' || !userId) return null
+    await attorneyProfile.loadProfile(userId)
+    return attorneyProfile.completionPercentage.value
+  }
+
   if (to.path === '/login' && isLoggedIn) {
+    const completion = await lawyerCompletion()
+    if (completion !== null && completion <= 50) {
+      return { path: '/settings/attorney-profile' }
+    }
     return { path: '/dashboard' }
   }
 
@@ -69,6 +82,13 @@ router.beforeEach(async (to) => {
     }
 
     return true
+  }
+
+  if (isLoggedIn && role === 'lawyer') {
+    const completion = await lawyerCompletion()
+    if (completion !== null && completion <= 50 && to.path !== '/settings/attorney-profile') {
+      return { path: '/settings/attorney-profile' }
+    }
   }
 
   if (isLoggedIn) return true
