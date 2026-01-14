@@ -93,16 +93,10 @@ const steps = [{
             <div class="flex flex-col gap-3 sm:flex-row">
               <RouterLink
                 to="/get-started"
-                class="flex-1 rounded-xl bg-[var(--ap-accent)] px-5 py-3 text-center text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition hover:translate-y-0.5"
+                class="inline-flex items-center justify-center rounded-xl bg-[var(--ap-accent)] px-6 py-3 text-center text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition hover:translate-y-0.5 sm:w-auto"
                 style="box-shadow: 0 15px 30px var(--ap-accent-shadow);"
               >
                 Get started
-              </RouterLink>
-              <RouterLink
-                to="/login"
-                class="flex-1 rounded-xl border border-white/15 px-5 py-3 text-center text-sm font-semibold uppercase tracking-wide text-white/80 transition hover:border-white/40 hover:text-white"
-              >
-                Sign in to workspace
               </RouterLink>
             </div>
           </div>
@@ -203,29 +197,6 @@ const steps = [{
                 <p class="text-sm text-white/70">{{ stat.label }}</p>
               </div>
             </div>
-          </div>
-        </section>
-
-        <section class="rounded-3xl border border-white/10 bg-white/5 p-8 text-center">
-          <p class="text-xs uppercase tracking-[0.4em] text-white/60">Ready to build?</p>
-          <h2 class="mt-4 text-3xl font-semibold text-white">Plug the Lawyer Portal into your existing stack.</h2>
-          <p class="mx-auto mt-3 max-w-3xl text-sm text-white/70">
-            Reuse your Supabase models, reconfigure RBAC, and keep your analytics intact. We ship a Vue and Next.js
-            starter so your engineers stay in flow.
-          </p>
-          <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-            <RouterLink
-              to="/dashboard"
-              class="rounded-full bg-white px-5 py-2 text-sm font-semibold uppercase tracking-wide text-[var(--ap-text-dark)]"
-            >
-              Browse the dashboard
-            </RouterLink>
-            <RouterLink
-              to="/login"
-              class="rounded-full border border-white/20 px-5 py-2 text-sm font-semibold uppercase tracking-wide text-white/80"
-            >
-              Access your workspace
-            </RouterLink>
           </div>
         </section>
       </main>
