@@ -3,50 +3,50 @@ import { RouterLink } from 'vue-router'
 import { BRANDING } from '../lib/branding'
 
 const modules = [{
-  title: 'Retainers',
-  description: 'Centralize every retainer agreement, milestone, and renewal reminder.',
+  title: 'Intake & screening',
+  description: 'Capture retainer details, conflicts, injuries, and treatment info in a consistent flow your staff can follow.',
   icon: 'i-lucide-briefcase'
 }, {
-  title: 'Profiling',
-  description: 'Capture intake data, medical history, and claims insight in seconds.',
+  title: 'Retainers & e-sign',
+  description: 'Send engagement letters, track signature status, and keep signed PDFs attached to the matter record.',
   icon: 'i-lucide-id-card'
 }, {
-  title: 'On-Boarding',
-  description: 'Automate welcome packets, discovery calls, and paralegal workflows.',
+  title: 'Case ops',
+  description: 'Standardize tasks, deadlines, and document requests so nothing falls through between staff and counsel.',
   icon: 'i-lucide-clipboard-list'
 }]
 
 const highlights = [{
-  title: 'Purpose-built for MVA',
-  body: 'Templates, questionnaires, and reports tuned for motor vehicle accident matters.'
+  title: 'Built for personal injury firms',
+  body: 'Matter-centric views for clients, treatment, providers, and documents. No more wrestling with spreadsheets.'
 }, {
-  title: 'Audit-readiness',
-  body: 'Traceable notes, immutable timelines, and exports that stand up in review.'
+  title: 'Team visibility',
+  body: 'See what’s assigned, what’s overdue, and what’s ready for review across cases and staff.'
 }, {
-  title: 'Secure collaboration',
-  body: 'Role-based workspaces so counsel, paralegals, and investigators stay in sync.'
+  title: 'Role-based access',
+  body: 'Give attorneys, paralegals, and admins the right access without exposing sensitive matter data.'
 }]
 
 const stats = [{
-  value: '78%',
-  label: 'Faster intake to retainer'
+  value: 'Pipeline view',
+  label: 'See new, pending, signed, and dropped retainers in one place'
 }, {
-  value: '45%',
-  label: 'Reduction in admin load'
+  value: 'Coverage map',
+  label: 'Understand where your cases are coming from and where you have coverage'
 }, {
-  value: '24/7',
-  label: 'Client visibility'
+  value: 'Finance ready',
+  label: 'Stay on top of invoices, payments, and chargebacks without chasing updates'
 }]
 
 const steps = [{
-  title: 'Import active matters',
-  copy: 'Bring in your spreadsheets, Clio exports, or CSVs and we map them to our schema.'
+  title: 'Review new retainers',
+  copy: 'Review new retainer requests, key facts, and contact details. Move fast without digging through messages.'
 }, {
-  title: 'Configure roles',
-  copy: 'Assign lead counsel, support staff, or outside adjusters in one place.'
+  title: 'Track fulfillment outcomes',
+  copy: 'See what’s signed, dropped, or returned for follow-up. Keep context for every decision.'
 }, {
-  title: 'Launch client portal',
-  copy: 'Share status updates, documents, and invoices without juggling email threads.'
+  title: 'Stay on top of billing',
+  copy: 'Track invoices and payment status in one view so you know what’s outstanding.'
 }]
 </script>
 
@@ -73,21 +73,20 @@ const steps = [{
         <section class="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
           <div class="space-y-6">
             <h1 class="text-4xl font-semibold leading-tight text-white md:text-5xl lg:text-6xl">
-              Modern legal workflows for retainers, profiling, and onboarding.
+              A modern intake and retainer workspace for personal injury firms.
             </h1>
             <p class="text-base leading-relaxed text-white/70 md:text-lg">
-              Give every attorney, paralegal, and claims partner a single workspace—from first notification
-              of loss to signed engagement letter. Centralize intake, automate follow-ups, and surface the exact
-              data your firm needs to win.
+              Keep intake, engagement letters, tasks, and case documents in one place. Reduce handoff mistakes,
+              speed up retainer collection, and give your team a reliable view of what’s happening on every matter.
             </p>
             <div class="flex flex-col gap-3 text-sm text-white/70 sm:flex-row sm:items-center sm:gap-6">
               <div class="flex items-center gap-2">
                 <span class="text-2xl font-bold text-white">250+</span>
-                active matters orchestrated each month.
+                matters managed across participating firms.
               </div>
               <div class="flex items-center gap-2">
                 <span class="text-2xl font-bold text-white">12</span>
-                boutique firms scaling with Lawyer Portal.
+                firms using structured PI workflows.
               </div>
             </div>
             <div class="flex flex-col gap-3 sm:flex-row">
@@ -104,24 +103,24 @@ const steps = [{
           <div class="rounded-[32px] border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/60 backdrop-blur-xl">
             <div class="rounded-3xl border border-white/10 bg-black/30 p-6">
               <div class="flex items-center justify-between text-xs uppercase tracking-[0.4em] text-white/50">
-                <span>Live workflow</span>
-                <span>January docket</span>
+                <span>Workflow snapshot</span>
+                <span>This month</span>
               </div>
               <div class="mt-6 space-y-4">
                 <div class="rounded-2xl bg-white/5 p-4">
                   <p class="text-xs uppercase tracking-[0.4em] text-white/50">Retainers</p>
                   <p class="mt-2 text-3xl font-semibold text-white">42 matters</p>
-                  <p class="text-sm text-white/60">Next steps automatically routed to lead counsel.</p>
+                  <p class="text-sm text-white/60">New retainers ready for review and signature follow-up.</p>
                 </div>
                 <div class="rounded-2xl bg-white/5 p-4">
-                  <p class="text-xs uppercase tracking-[0.4em] text-white/50">Profiling</p>
+                  <p class="text-xs uppercase tracking-[0.4em] text-white/50">Fulfillment</p>
                   <p class="mt-2 text-3xl font-semibold text-white">17 pending</p>
-                  <p class="text-sm text-white/60">Medical + claims history ready for paralegals.</p>
+                  <p class="text-sm text-white/60">Cases pending outcome updates or additional information.</p>
                 </div>
                 <div class="rounded-2xl bg-white/5 p-4">
-                  <p class="text-xs uppercase tracking-[0.4em] text-white/50">On-Boarding</p>
+                  <p class="text-xs uppercase tracking-[0.4em] text-white/50">Invoicing</p>
                   <p class="mt-2 text-3xl font-semibold text-white">8 welcomes</p>
-                  <p class="text-sm text-white/60">Clients tracking tasks inside the shared portal.</p>
+                  <p class="text-sm text-white/60">Invoices to review and payment status to confirm.</p>
                 </div>
               </div>
             </div>
@@ -141,7 +140,7 @@ const steps = [{
           <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <p class="text-xs uppercase tracking-[0.4em] text-white/50">Modules</p>
-              <h2 class="mt-1 text-3xl font-semibold text-white">One surface for every MVA milestone.</h2>
+              <h2 class="mt-1 text-3xl font-semibold text-white">Everything your team needs to move a retainer to signature.</h2>
             </div>
             <RouterLink to="/dashboard" class="text-sm font-semibold text-[var(--ap-highlight)] hover:text-white">
               See dashboard view →
@@ -168,8 +167,8 @@ const steps = [{
 
         <section class="grid gap-6 rounded-3xl border border-white/10 bg-black/20 p-6 lg:grid-cols-[1.1fr_0.9fr]">
           <div class="space-y-6">
-            <p class="text-xs uppercase tracking-[0.4em] text-white/50">Implementation</p>
-            <h2 class="text-3xl font-semibold text-white">Launch in a weekend.</h2>
+            <p class="text-xs uppercase tracking-[0.4em] text-white/50">How teams use it</p>
+            <h2 class="text-3xl font-semibold text-white">Built around your retainer workflow.</h2>
             <div class="space-y-4">
               <div
                 v-for="(step, index) in steps"
@@ -189,7 +188,7 @@ const steps = [{
           <div class="flex flex-col justify-between rounded-3xl border border-white/10 bg-gradient-to-b from-[var(--ap-accent)] to-[var(--ap-accent-dark)] p-6">
             <div>
               <p class="text-xs uppercase tracking-[0.4em] text-white/60">Impact</p>
-              <h3 class="mt-2 text-3xl font-semibold text-white">Operational clarity from day one.</h3>
+              <h3 class="mt-2 text-3xl font-semibold text-white">A clearer pipeline for attorneys and staff.</h3>
             </div>
             <div class="mt-6 grid gap-4">
               <div v-for="stat in stats" :key="stat.label" class="rounded-2xl bg-black/30 p-4">
