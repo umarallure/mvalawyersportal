@@ -1,169 +1,259 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import usSvgFallbackRaw from '../assets/us.svg?raw'
 
-type StateStatus = 'active' | 'low' | 'inactive'
+import { useAuth } from '../composables/useAuth'
+import { createOrder, listOpenOrderCountsByState } from '../lib/orders'
+import { US_STATES } from '../lib/us-states'
 
-type StateIntake = {
+const US_SVG_ASSET_URL = new URL('../assets/us.svg', import.meta.url).toString()
+
+type CompetitionStatus = 'light' | 'moderate' | 'heavy'
+
+type StateCompetition = {
   code: string
   name: string
-  currentVolume: number
-  targetVolume: number
-  salesNext30Days: number
-  status: StateStatus
-  fulfilled: number
-  pending: number
+  openOrders: number
+  status: CompetitionStatus
 }
 
+const auth = useAuth()
 const loading = ref(false)
-const tooltip = ref({ open: false, x: 0, y: 0, state: null as StateIntake | null })
+const tooltip = ref({ open: false, x: 0, y: 0, state: null as StateCompetition | null })
 const mapRoot = ref<HTMLDivElement | null>(null)
 const tooltipEl = ref<HTMLDivElement | null>(null)
-const selectedStatus = ref<'all' | StateStatus>('all')
 
-type IntakeOrder = {
-  id: string
-  stateCode: string
-  volume: number
-  salesForecast: number
-  days: number
-  createdAt: string
+const states = ref<StateCompetition[]>([])
+
+const stateByCode = computed(() => {
+  const map = new Map<string, StateCompetition>()
+  states.value.forEach(s => map.set(s.code, s))
+  return map
+})
+
+const totalOpenOrders = computed(() => states.value.reduce((sum, s) => sum + s.openOrders, 0))
+
+const toCompetitionStatus = (openOrders: number): CompetitionStatus => {
+  if (openOrders < 10) return 'light'
+  if (openOrders <= 20) return 'moderate'
+  return 'heavy'
+}
+
+const getStatusColor = (status: CompetitionStatus) => {
+  if (status === 'light') return '#22c55e'
+  if (status === 'moderate') return '#eab308'
+  return '#ef4444'
+}
+
+const getStatusLabel = (status: CompetitionStatus) => {
+  if (status === 'light') return 'Light Competition'
+  if (status === 'moderate') return 'Moderate Competition'
+  return 'Heavy Competition'
+}
+
+const refreshCounts = async () => {
+  loading.value = true
+  try {
+    const rows = await listOpenOrderCountsByState()
+    const counts = new Map(rows.map(r => [String(r.state_code).toUpperCase(), Number(r.open_orders) || 0]))
+
+    states.value = US_STATES.map((s) => {
+      const openOrders = counts.get(s.code) ?? 0
+      return {
+        code: s.code,
+        name: s.name,
+        openOrders,
+        status: toCompetitionStatus(openOrders)
+      }
+    })
+  } finally {
+    loading.value = false
+  }
 }
 
 const createOrderOpen = ref(false)
+const createOrderConfirmOpen = ref(false)
+
+const pendingStateCode = ref<string | null>(null)
+
 const orderForm = ref({
   stateCode: '' as string,
-  volume: 1 as number,
-  salesForecast: 5 as number,
-  days: 30 as number
+  caseType: 'Motor Vehicle Accident' as string,
+  caseSubType: '' as string,
+  injurySeverity: [] as string[],
+  liabilityStatus: 'clear_only' as 'clear_only' | 'disputed_ok',
+  insuranceStatus: 'insured_only' as 'insured_only' | 'uninsured_ok',
+  minimumCaseValue: 25000 as number,
+  medicalTreatment: 'ongoing' as string,
+  languages: ['English'] as string[],
+  noPriorAttorney: true as boolean,
+  quotaTotal: 10 as number,
+  expiresAt: '' as string
 })
 
 const resetOrderForm = () => {
   orderForm.value = {
     stateCode: '',
-    volume: 1,
-    salesForecast: 5,
-    days: 30
+    caseType: 'Motor Vehicle Accident',
+    caseSubType: '',
+    injurySeverity: [],
+    liabilityStatus: 'clear_only',
+    insuranceStatus: 'insured_only',
+    minimumCaseValue: 25000,
+    medicalTreatment: 'ongoing',
+    languages: ['English'],
+    noPriorAttorney: true,
+    quotaTotal: 10,
+    expiresAt: ''
   }
 }
 
-const orders = ref<IntakeOrder[]>([])
-
 const openCreateOrder = () => {
+  pendingStateCode.value = null
+  createOrderConfirmOpen.value = false
+  createOrderOpen.value = true
+}
+
+const openCreateOrderForState = (stateCode: string) => {
+  const code = String(stateCode || '').trim().toUpperCase()
+  if (!code) return
+  pendingStateCode.value = code
+  createOrderConfirmOpen.value = true
+}
+
+const confirmCreateOrderForState = () => {
+  const code = pendingStateCode.value
+  createOrderConfirmOpen.value = false
+  if (!code) return
+  orderForm.value.stateCode = code
   createOrderOpen.value = true
 }
 
 const handleCreateOrderOpenUpdate = (v: boolean) => {
   createOrderOpen.value = v
+  if (!v) {
+    pendingStateCode.value = null
+  }
 }
 
-const mockStates = ref<StateIntake[]>([
-  { code: 'CA', name: 'California', currentVolume: 45, targetVolume: 50, salesNext30Days: 5, status: 'active', fulfilled: 40, pending: 5 },
-  { code: 'TX', name: 'Texas', currentVolume: 38, targetVolume: 40, salesNext30Days: 4, status: 'active', fulfilled: 35, pending: 3 },
-  { code: 'FL', name: 'Florida', currentVolume: 22, targetVolume: 30, salesNext30Days: 3, status: 'low', fulfilled: 20, pending: 2 },
-  { code: 'NY', name: 'New York', currentVolume: 35, targetVolume: 40, salesNext30Days: 5, status: 'active', fulfilled: 32, pending: 3 },
-  { code: 'PA', name: 'Pennsylvania', currentVolume: 18, targetVolume: 25, salesNext30Days: 2, status: 'low', fulfilled: 16, pending: 2 },
-  { code: 'IL', name: 'Illinois', currentVolume: 28, targetVolume: 30, salesNext30Days: 3, status: 'active', fulfilled: 25, pending: 3 },
-  { code: 'OH', name: 'Ohio', currentVolume: 15, targetVolume: 20, salesNext30Days: 2, status: 'low', fulfilled: 13, pending: 2 },
-  { code: 'GA', name: 'Georgia', currentVolume: 20, targetVolume: 25, salesNext30Days: 3, status: 'low', fulfilled: 18, pending: 2 },
-  { code: 'NC', name: 'North Carolina', currentVolume: 12, targetVolume: 15, salesNext30Days: 1, status: 'low', fulfilled: 11, pending: 1 },
-  { code: 'MI', name: 'Michigan', currentVolume: 8, targetVolume: 15, salesNext30Days: 1, status: 'low', fulfilled: 7, pending: 1 },
-  { code: 'WA', name: 'Washington', currentVolume: 25, targetVolume: 30, salesNext30Days: 4, status: 'active', fulfilled: 22, pending: 3 },
-  { code: 'AZ', name: 'Arizona', currentVolume: 16, targetVolume: 20, salesNext30Days: 2, status: 'low', fulfilled: 14, pending: 2 },
-  { code: 'MA', name: 'Massachusetts', currentVolume: 19, targetVolume: 25, salesNext30Days: 3, status: 'low', fulfilled: 17, pending: 2 },
-  { code: 'TN', name: 'Tennessee', currentVolume: 10, targetVolume: 15, salesNext30Days: 1, status: 'low', fulfilled: 9, pending: 1 },
-  { code: 'CO', name: 'Colorado', currentVolume: 14, targetVolume: 20, salesNext30Days: 2, status: 'low', fulfilled: 12, pending: 2 },
-  { code: 'OR', name: 'Oregon', currentVolume: 11, targetVolume: 15, salesNext30Days: 1, status: 'low', fulfilled: 10, pending: 1 },
-  { code: 'NV', name: 'Nevada', currentVolume: 9, targetVolume: 12, salesNext30Days: 1, status: 'low', fulfilled: 8, pending: 1 },
-  { code: 'VA', name: 'Virginia', currentVolume: 13, targetVolume: 18, salesNext30Days: 2, status: 'low', fulfilled: 11, pending: 2 },
-  { code: 'MN', name: 'Minnesota', currentVolume: 7, targetVolume: 12, salesNext30Days: 1, status: 'low', fulfilled: 6, pending: 1 },
-  { code: 'WI', name: 'Wisconsin', currentVolume: 6, targetVolume: 10, salesNext30Days: 1, status: 'low', fulfilled: 5, pending: 1 }
-])
-
-const filteredStates = computed(() => {
-  if (selectedStatus.value === 'all') return mockStates.value
-  return mockStates.value.filter(s => s.status === selectedStatus.value)
-})
-
-const stateByCode = computed(() => {
-  const map = new Map<string, StateIntake>()
-  mockStates.value.forEach(s => map.set(s.code, s))
-  return map
-})
-
-const totalVolume = computed(() => mockStates.value.reduce((sum, s) => sum + s.currentVolume, 0))
-const totalTarget = computed(() => mockStates.value.reduce((sum, s) => sum + s.targetVolume, 0))
-const totalFulfilled = computed(() => mockStates.value.reduce((sum, s) => sum + s.fulfilled, 0))
-const totalPending = computed(() => mockStates.value.reduce((sum, s) => sum + s.pending, 0))
-
-const statusOptions = [
-  { label: 'All States', value: 'all' },
-  { label: 'Active', value: 'active' },
-  { label: 'Low Volume', value: 'low' },
-  { label: 'Inactive', value: 'inactive' }
+const injurySeverityOptions = [
+  { label: 'Minor', value: 'minor' },
+  { label: 'Moderate', value: 'moderate' },
+  { label: 'Severe', value: 'severe' },
+  { label: 'Catastrophic', value: 'catastrophic' }
 ]
 
-const orderDaysOptions = [
-  { label: 'Next 7 days', value: 7 },
-  { label: 'Next 14 days', value: 14 },
-  { label: 'Next 30 days', value: 30 },
-  { label: 'Next 60 days', value: 60 }
+const caseCategoryOptions = [
+  { label: 'Motor Vehicle Accident', value: 'Motor Vehicle Accident' },
+  { label: 'Slip & Fall', value: 'Slip & Fall' },
+  { label: 'Workplace Injury', value: 'Workplace Injury' },
+  { label: 'Medical Malpractice', value: 'Medical Malpractice' },
+  { label: 'Other', value: 'Other' }
+]
+
+const subCategoriesByCategory: Record<string, Array<{ label: string, value: string }>> = {
+  'Motor Vehicle Accident': [
+    { label: 'Rear-end', value: 'Rear-end' },
+    { label: 'T-Bone', value: 'T-Bone' },
+    { label: 'Head-on', value: 'Head-on' },
+    { label: 'Pedestrian', value: 'Pedestrian' },
+    { label: 'Rideshare (Uber/Lyft)', value: 'Rideshare (Uber/Lyft)' },
+    { label: 'Hit & Run', value: 'Hit & Run' },
+    { label: 'Uninsured/Underinsured', value: 'Uninsured/Underinsured' }
+  ],
+  'Slip & Fall': [
+    { label: 'Premises liability', value: 'Premises liability' },
+    { label: 'Trip & fall', value: 'Trip & fall' },
+    { label: 'Wet floor', value: 'Wet floor' }
+  ],
+  'Workplace Injury': [
+    { label: 'Workers\' comp', value: "Workers' comp" },
+    { label: 'Third-party liability', value: 'Third-party liability' }
+  ],
+  'Medical Malpractice': [
+    { label: 'Misdiagnosis', value: 'Misdiagnosis' },
+    { label: 'Surgical error', value: 'Surgical error' }
+  ],
+  'Other': []
+}
+
+const caseSubCategoryOptions = computed(() => {
+  return subCategoriesByCategory[String(orderForm.value.caseType || '')] ?? []
+})
+
+watch(
+  () => orderForm.value.caseType,
+  () => {
+    orderForm.value.caseSubType = ''
+  }
+)
+
+const liabilityOptions = [
+  { label: 'Clear liability only', value: 'clear_only' },
+  { label: 'Disputed acceptable', value: 'disputed_ok' }
+]
+
+const insuranceOptions = [
+  { label: 'Insured only', value: 'insured_only' },
+  { label: 'Uninsured acceptable', value: 'uninsured_ok' }
+]
+
+const medicalTreatmentOptions = [
+  { label: 'ER Visit', value: 'er' },
+  { label: 'Ongoing Treatment', value: 'ongoing' },
+  { label: 'Surgery', value: 'surgery' }
+]
+
+const languageOptions = [
+  'English',
+  'Spanish'
 ]
 
 const orderStateOptions = computed(() => {
-  return mockStates.value
+  return US_STATES
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((s) => ({ label: `${s.name} (${s.code})`, value: s.code }))
 })
 
-const createOrder = () => {
+const submitCreateOrder = async () => {
+  const userId = auth.state.value.user?.id ?? null
+  if (!userId) return
+
   const stateCode = String(orderForm.value.stateCode || '').trim().toUpperCase()
-  const volume = Number(orderForm.value.volume)
-  const salesForecast = Number(orderForm.value.salesForecast)
-  const days = Number(orderForm.value.days)
+  if (!stateCode) return
 
-  if (!stateCode || !Number.isFinite(volume) || volume <= 0) return
-  if (!Number.isFinite(salesForecast) || salesForecast < 0) return
-  if (!Number.isFinite(days) || days <= 0) return
+  const quotaTotal = Number(orderForm.value.quotaTotal)
+  if (!Number.isFinite(quotaTotal) || quotaTotal <= 0) return
 
-  orders.value.unshift({
-    id: `O-${Math.random().toString(16).slice(2, 10).toUpperCase()}`,
-    stateCode,
-    volume: Math.round(volume),
-    salesForecast: Math.round(salesForecast),
-    days: Math.round(days),
-    createdAt: new Date().toISOString()
+  const expiresAt = String(orderForm.value.expiresAt || '').trim()
+  if (!expiresAt) return
+
+  await createOrder({
+    lawyer_id: userId,
+    target_states: [stateCode],
+    case_type: String(orderForm.value.caseType || '').trim(),
+    case_subtype: String(orderForm.value.caseSubType || '').trim() || null,
+    quota_total: Math.round(quotaTotal),
+    expires_at: new Date(expiresAt).toISOString(),
+    criteria: {
+      injury_severity: orderForm.value.injurySeverity,
+      liability_status: orderForm.value.liabilityStatus,
+      insurance_status: orderForm.value.insuranceStatus,
+      minimum_case_value: Number(orderForm.value.minimumCaseValue) || null,
+      medical_treatment: orderForm.value.medicalTreatment,
+      languages: orderForm.value.languages,
+      no_prior_attorney: orderForm.value.noPriorAttorney
+    }
   })
-
-  const idx = mockStates.value.findIndex((s) => s.code === stateCode)
-  if (idx !== -1) {
-    const s = mockStates.value[idx]
-    s.currentVolume += Math.round(volume)
-    s.pending += Math.round(volume)
-    if (days === 30) s.salesNext30Days += Math.round(salesForecast)
-    s.status = s.currentVolume >= s.targetVolume ? 'active' : 'low'
-  }
 
   createOrderOpen.value = false
   resetOrderForm()
+  await refreshCounts()
   applyMapColors()
 }
 
-const getStatusColor = (status: StateStatus) => {
-  if (status === 'active') return '#22c55e'
-  if (status === 'low') return '#eab308'
-  return '#ef4444'
-}
-
-const getStatusLabel = (status: StateStatus) => {
-  if (status === 'active') return 'Active'
-  if (status === 'low') return 'Low Volume'
-  return 'Inactive'
-}
-
-const US_SVG_URL = 'https://simplemaps.com/static/demos/resources/svg-library/svgs/us.svg'
-const US_SVG_CACHE_KEY = 'lawyer-us-map-svg-cache-v1'
+const MAP_PATH_SELECTOR = 'path[data-id], path[id]'
 
 const applyMapColors = () => {
   const root = mapRoot.value
@@ -171,22 +261,21 @@ const applyMapColors = () => {
   const svg = root.querySelector('svg')
   if (!svg) return
 
-  const visibleSet = new Set(filteredStates.value.map(s => s.code))
-  const paths = svg.querySelectorAll('path[data-id]')
+  const paths = svg.querySelectorAll(MAP_PATH_SELECTOR)
   paths.forEach((p) => {
+    const path = p as SVGPathElement
     const code = p.getAttribute('data-id') || p.getAttribute('id')
     if (!code) return
     const state = stateByCode.value.get(code)
-    const isVisible = selectedStatus.value === 'all' ? true : visibleSet.has(code)
 
-    const fill = state && isVisible ? getStatusColor(state.status) : '#e5e7eb'
+    const fill = state ? getStatusColor(state.status) : '#e5e7eb'
     const stroke = '#0b0b0b'
 
-    p.style.setProperty('fill', fill, 'important')
-    p.style.setProperty('stroke', stroke, 'important')
-    p.style.setProperty('stroke-width', '0.8', 'important')
-    p.style.cursor = state ? 'pointer' : 'default'
-    p.style.opacity = isVisible ? '1' : '0.15'
+    path.style.setProperty('fill', fill, 'important')
+    path.style.setProperty('stroke', stroke, 'important')
+    path.style.setProperty('stroke-width', '0.8', 'important')
+    path.style.cursor = state ? 'pointer' : 'default'
+    path.style.opacity = '1'
   })
 
   applyStateLabels()
@@ -205,7 +294,7 @@ const applyStateLabels = () => {
   g.setAttribute('id', 'state-labels')
   g.setAttribute('pointer-events', 'none')
 
-  const paths = svg.querySelectorAll('path[data-id]')
+  const paths = svg.querySelectorAll(MAP_PATH_SELECTOR)
   paths.forEach((p) => {
     const code = p.getAttribute('data-id') || p.getAttribute('id')
     if (!code) return
@@ -221,8 +310,7 @@ const applyStateLabels = () => {
     const cy = bbox.y + bbox.height / 2
 
     const state = stateByCode.value.get(code)
-    const isVisible = selectedStatus.value === 'all' ? true : filteredStates.value.some(s => s.code === code)
-    if (!isVisible) return
+    if (!state) return
 
     const fontSize = Math.max(6, Math.min(bbox.width, bbox.height) / 3)
     const fill = '#ffffff'
@@ -284,16 +372,27 @@ const handleMouseMove = (evt: MouseEvent) => {
   tooltip.value.y = Math.max(4, Math.min(rawY, maxY))
 }
 
+const handleStateClick = (evt: Event) => {
+  const target = evt.target as HTMLElement | null
+  if (!target) return
+  const code = target.getAttribute('data-id') || target.getAttribute('id')
+  if (!code) return
+  const state = stateByCode.value.get(code) ?? null
+  if (!state) return
+  openCreateOrderForState(state.code)
+}
+
 const bindSvgEvents = () => {
   const root = mapRoot.value
   if (!root) return
   const svg = root.querySelector('svg')
   if (!svg) return
 
-  const paths = svg.querySelectorAll('path[data-id]')
+  const paths = svg.querySelectorAll(MAP_PATH_SELECTOR)
   paths.forEach((p) => {
     p.addEventListener('mouseenter', handleStateEnter)
     p.addEventListener('mouseleave', handleStateLeave)
+    p.addEventListener('click', handleStateClick)
   })
 
   svg.addEventListener('mousemove', handleMouseMove)
@@ -305,46 +404,53 @@ const unbindSvgEvents = () => {
   const svg = root.querySelector('svg')
   if (!svg) return
 
-  const paths = svg.querySelectorAll('path[data-id]')
+  const paths = svg.querySelectorAll(MAP_PATH_SELECTOR)
   paths.forEach((p) => {
     p.removeEventListener('mouseenter', handleStateEnter)
     p.removeEventListener('mouseleave', handleStateLeave)
+    p.removeEventListener('click', handleStateClick)
   })
 
   svg.removeEventListener('mousemove', handleMouseMove)
+}
+
+const mountSvg = async () => {
+  await nextTick()
+  if (!mapRoot.value) return
+
+  let svgMarkup = ''
+  try {
+    const res = await fetch(US_SVG_ASSET_URL)
+    if (!res.ok) throw new Error('Failed to load bundled SVG')
+    svgMarkup = await res.text()
+  } catch {
+    svgMarkup = usSvgFallbackRaw
+  }
+
+  mapRoot.value.innerHTML = svgMarkup
+
+  await nextTick()
+  const svg = mapRoot.value.querySelector('svg') as SVGSVGElement | null
+  if (svg) {
+    svg.removeAttribute('width')
+    svg.removeAttribute('height')
+    svg.style.width = '100%'
+    svg.style.height = '100%'
+    svg.style.display = 'block'
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet')
+  }
 }
 
 onMounted(() => {
   const run = async () => {
     if (!mapRoot.value) return
 
-    try {
-      const res = await fetch(US_SVG_URL)
-      if (!res.ok) throw new Error('Failed to load map')
-      const svgText = await res.text()
+    await auth.init()
+    await refreshCounts()
 
-      try {
-        localStorage.setItem(US_SVG_CACHE_KEY, svgText)
-      } catch {
-        // ignore
-      }
-
-      mapRoot.value.innerHTML = svgText
-      bindSvgEvents()
-      applyMapColors()
-    } catch {
-      const cached = (() => {
-        try {
-          return localStorage.getItem(US_SVG_CACHE_KEY)
-        } catch {
-          return null
-        }
-      })()
-
-      mapRoot.value.innerHTML = cached || usSvgFallbackRaw
-      bindSvgEvents()
-      applyMapColors()
-    }
+    await mountSvg()
+    bindSvgEvents()
+    applyMapColors()
   }
 
   void run()
@@ -354,25 +460,15 @@ onUnmounted(() => {
   unbindSvgEvents()
 })
 
-watch([selectedStatus, filteredStates], () => {
+watch(states, () => {
   applyMapColors()
 })
-
-const columns = [
-  { accessorKey: 'name', header: 'State' },
-  { accessorKey: 'currentVolume', header: 'Current Volume' },
-  { accessorKey: 'targetVolume', header: 'Target Volume' },
-  { accessorKey: 'salesNext30Days', header: 'Sales (Next 30 Days)' },
-  { accessorKey: 'fulfilled', header: 'Fulfilled' },
-  { accessorKey: 'pending', header: 'Pending' },
-  { accessorKey: 'status', header: 'Status' }
-]
 </script>
 
 <template>
   <UDashboardPanel id="intake-map">
     <template #header>
-      <UDashboardNavbar title="Intake Map - State Volume Tracking">
+      <UDashboardNavbar title="Intake Map">
         <template #leading>
           <UDashboardSidebarCollapse />
         </template>
@@ -392,6 +488,7 @@ const columns = [
             variant="outline"
             icon="i-lucide-refresh-cw"
             :loading="loading"
+            @click="refreshCounts"
           >
             Refresh
           </UButton>
@@ -402,6 +499,40 @@ const columns = [
     <template #body>
       <div class="space-y-4">
         <UModal
+          v-if="createOrderConfirmOpen"
+          :open="true"
+          title="Create order"
+          :dismissible="false"
+          @update:open="(v) => { createOrderConfirmOpen = v }"
+        >
+          <template #body>
+            <div class="space-y-4">
+              <div class="text-sm text-muted">
+                Are you sure you want to create an order for
+                <span class="font-semibold">{{ pendingStateCode }}</span>?
+              </div>
+
+              <div class="flex items-center justify-end gap-2">
+                <UButton
+                  color="neutral"
+                  variant="outline"
+                  @click="() => { createOrderConfirmOpen = false; pendingStateCode = null }"
+                >
+                  Cancel
+                </UButton>
+                <UButton
+                  color="primary"
+                  variant="solid"
+                  @click="confirmCreateOrderForState"
+                >
+                  Continue
+                </UButton>
+              </div>
+            </div>
+          </template>
+        </UModal>
+
+        <UModal
           v-if="createOrderOpen"
           :open="true"
           title="Create Intake Order"
@@ -410,7 +541,7 @@ const columns = [
         >
           <template #body="{ close }">
             <div class="space-y-4">
-              <div class="text-sm text-muted">Choose a state, volume, and forecast window.</div>
+              <div class="text-sm text-muted">Define your demand packet for the selected geography.</div>
 
               <UFormField label="State" required>
                 <USelect
@@ -422,21 +553,90 @@ const columns = [
                 />
               </UFormField>
 
-              <UFormField label="Volume" description="How many orders do you want?" required>
-                <UInput v-model.number="orderForm.volume" type="number" min="1" />
-              </UFormField>
-
-              <UFormField label="Sales Forecast" description="Expected sales in the selected window">
-                <UInput v-model.number="orderForm.salesForecast" type="number" min="0" />
-              </UFormField>
-
-              <UFormField label="Days Window" description="Forecast window for the sales estimate" required>
+              <UFormField label="Case category" required>
                 <USelect
-                  v-model="orderForm.days"
-                  :items="orderDaysOptions"
+                  v-model="orderForm.caseType"
+                  :items="caseCategoryOptions"
+                  value-key="value"
+                  label-key="label"
+                  placeholder="Select case category"
+                />
+              </UFormField>
+
+              <UFormField label="Sub-category">
+                <USelect
+                  v-model="orderForm.caseSubType"
+                  :items="caseSubCategoryOptions"
+                  value-key="value"
+                  label-key="label"
+                  :disabled="caseSubCategoryOptions.length === 0"
+                  placeholder="Select sub-category"
+                />
+              </UFormField>
+
+              <UFormField label="Injury severity" required>
+                <USelect
+                  v-model="orderForm.injurySeverity"
+                  :items="injurySeverityOptions"
+                  value-key="value"
+                  label-key="label"
+                  multiple
+                  placeholder="Select injury severities"
+                />
+              </UFormField>
+
+              <UFormField label="Liability status" required>
+                <USelect
+                  v-model="orderForm.liabilityStatus"
+                  :items="liabilityOptions"
+                  value-key="value"
+                  label-key="label"
+                  placeholder="Select liability"
+                />
+              </UFormField>
+
+              <UFormField label="Insurance status" required>
+                <USelect
+                  v-model="orderForm.insuranceStatus"
+                  :items="insuranceOptions"
+                  value-key="value"
+                  label-key="label"
+                  placeholder="Select insurance"
+                />
+              </UFormField>
+
+              <UFormField label="Minimum estimated case value" required>
+                <UInput v-model.number="orderForm.minimumCaseValue" type="number" min="0" />
+              </UFormField>
+
+              <UFormField label="Medical treatment" required>
+                <USelect
+                  v-model="orderForm.medicalTreatment"
+                  :items="medicalTreatmentOptions"
                   value-key="value"
                   label-key="label"
                 />
+              </UFormField>
+
+              <UFormField label="Languages" required>
+                <UInputMenu
+                  v-model="orderForm.languages"
+                  :items="languageOptions"
+                  multiple
+                  placeholder="Select languages"
+                />
+              </UFormField>
+
+              <UFormField label="Client requirements">
+                <UCheckbox v-model="orderForm.noPriorAttorney" label="No prior attorney" />
+              </UFormField>
+
+              <UFormField label="Quota" description="Total number of cases needed" required>
+                <UInput v-model.number="orderForm.quotaTotal" type="number" min="1" />
+              </UFormField>
+
+              <UFormField label="Expiration" description="Date when this order stops accepting retainers" required>
+                <UInput v-model="orderForm.expiresAt" type="date" />
               </UFormField>
 
               <div class="flex items-center justify-end gap-2">
@@ -450,8 +650,8 @@ const columns = [
                 <UButton
                   color="primary"
                   variant="solid"
-                  :disabled="!String(orderForm.stateCode || '').trim() || Number(orderForm.volume) <= 0"
-                  @click="() => { createOrder(); close() }"
+                  :disabled="!String(orderForm.stateCode || '').trim() || Number(orderForm.quotaTotal) <= 0 || !String(orderForm.expiresAt || '').trim()"
+                  @click="async () => { await submitCreateOrder(); close() }"
                 >
                   Create
                 </UButton>
@@ -460,44 +660,14 @@ const columns = [
           </template>
         </UModal>
 
-        <div class="grid gap-4 sm:grid-cols-4">
+        <div class="grid gap-4 sm:grid-cols-3">
           <UCard>
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-muted">Total Volume</p>
-                <p class="text-2xl font-semibold">{{ totalVolume }}</p>
+                <p class="text-sm text-muted">Open Orders (All States)</p>
+                <p class="text-2xl font-semibold">{{ totalOpenOrders }}</p>
               </div>
-              <UIcon name="i-lucide-trending-up" class="size-8 text-primary" />
-            </div>
-          </UCard>
-
-          <UCard>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-muted">Target Volume</p>
-                <p class="text-2xl font-semibold">{{ totalTarget }}</p>
-              </div>
-              <UIcon name="i-lucide-target" class="size-8 text-primary" />
-            </div>
-          </UCard>
-
-          <UCard>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-muted">Fulfilled</p>
-                <p class="text-2xl font-semibold">{{ totalFulfilled }}</p>
-              </div>
-              <UIcon name="i-lucide-check-circle" class="size-8 text-success" />
-            </div>
-          </UCard>
-
-          <UCard>
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-muted">Pending</p>
-                <p class="text-2xl font-semibold">{{ totalPending }}</p>
-              </div>
-              <UIcon name="i-lucide-clock" class="size-8 text-warning" />
+              <UIcon name="i-lucide-activity" class="size-8 text-primary" />
             </div>
           </UCard>
         </div>
@@ -505,44 +675,32 @@ const columns = [
         <div>
           <UCard>
             <div class="space-y-3">
-              <h3 class="font-semibold">Status Legend</h3>
+              <h3 class="font-semibold">Competition Legend</h3>
               <div class="grid gap-3 sm:grid-cols-3">
                 <div class="flex items-center gap-2">
                   <div class="size-4 rounded-full bg-green-500" />
-                  <span class="text-sm">Active - Meeting Target</span>
+                  <span class="text-sm">Light (&lt; 10 open orders)</span>
                 </div>
                 <div class="flex items-center gap-2">
                   <div class="size-4 rounded-full bg-yellow-500" />
-                  <span class="text-sm">Low Volume - Below Target</span>
+                  <span class="text-sm">Moderate (10–20 open orders)</span>
                 </div>
                 <div class="flex items-center gap-2">
                   <div class="size-4 rounded-full bg-red-500" />
-                  <span class="text-sm">Inactive - No Volume</span>
+                  <span class="text-sm">Heavy (&gt; 20 open orders)</span>
                 </div>
               </div>
             </div>
           </UCard>
         </div>
 
-        <div class="flex items-center justify-between">
-          <USelect
-            v-model="selectedStatus"
-            class="w-64"
-            :items="statusOptions"
-            value-key="value"
-            label-key="label"
-          />
-
-          <UBadge variant="subtle" :label="`${filteredStates.length} states`" />
-        </div>
-
         <UCard :ui="{ body: 'p-4' }">
           <div class="relative">
             <div
               ref="mapRoot"
-              class="w-full overflow-auto rounded-lg bg-white"
-              style="max-height: 520px;"
-            />
+              class="w-full rounded-lg bg-white overflow-hidden"
+              style="height: 520px;"
+            ></div>
 
             <div
               v-if="tooltip.open && tooltip.state"
@@ -553,50 +711,17 @@ const columns = [
               <div class="font-semibold">{{ tooltip.state.name }} ({{ tooltip.state.code }})</div>
               <div class="mt-1 flex items-center gap-2">
                 <UBadge
-                  :color="tooltip.state.status === 'active' ? 'success' : tooltip.state.status === 'low' ? 'warning' : 'error'"
+                  :color="tooltip.state.status === 'light' ? 'success' : tooltip.state.status === 'moderate' ? 'warning' : 'error'"
                   variant="subtle"
                   :label="getStatusLabel(tooltip.state.status)"
                   size="xs"
                 />
               </div>
               <div class="mt-2 space-y-1 text-xs text-muted">
-                <div>Current: {{ tooltip.state.currentVolume }} / Target: {{ tooltip.state.targetVolume }}</div>
-                <div>Sales (30d): {{ tooltip.state.salesNext30Days }}</div>
-                <div>Fulfilled: {{ tooltip.state.fulfilled }} | Pending: {{ tooltip.state.pending }}</div>
+                <div>Open orders: {{ tooltip.state.openOrders }}</div>
               </div>
             </div>
           </div>
-        </UCard>
-
-        <UCard :ui="{ body: 'p-0' }">
-          <UTable
-            :data="filteredStates"
-            :columns="columns"
-            :ui="{
-              base: 'w-full',
-              thead: '[&>tr]:bg-elevated/50',
-              tbody: '[&>tr]:hover:bg-muted/50',
-              th: 'px-4 py-3 text-left',
-              td: 'px-4 py-3 align-top'
-            }"
-          >
-            <template #status-cell="{ row }">
-              <UBadge
-                :color="row.original.status === 'active' ? 'success' : row.original.status === 'low' ? 'warning' : 'error'"
-                variant="subtle"
-                :label="getStatusLabel(row.original.status)"
-                size="xs"
-              />
-            </template>
-
-            <template #currentVolume-cell="{ row }">
-              <div class="font-semibold">{{ row.original.currentVolume }}</div>
-            </template>
-
-            <template #targetVolume-cell="{ row }">
-              <div class="font-semibold">{{ row.original.targetVolume }}</div>
-            </template>
-          </UTable>
         </UCard>
       </div>
     </template>

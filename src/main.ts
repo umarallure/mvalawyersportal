@@ -37,7 +37,7 @@ const router = createRouter({
   history: createWebHistory()
 })
 
-router.beforeEach(async (to) => {
+router.beforeEach(async (to, from) => {
   const auth = useAuth()
   const attorneyProfile = useAttorneyProfile()
 
@@ -57,10 +57,17 @@ router.beforeEach(async (to) => {
     return attorneyProfile.completionPercentage.value
   }
 
+  if (from.path === '/login' && isLoggedIn) {
+    const completion = await lawyerCompletion()
+    if (completion !== null && completion < 50 && !to.path.startsWith('/settings')) {
+      return { path: '/settings' }
+    }
+  }
+
   if (to.path === '/login' && isLoggedIn) {
     const completion = await lawyerCompletion()
-    if (completion !== null && completion <= 50) {
-      return { path: '/settings/attorney-profile' }
+    if (completion !== null && completion < 50) {
+      return { path: '/settings' }
     }
     return { path: '/dashboard' }
   }
@@ -82,13 +89,6 @@ router.beforeEach(async (to) => {
     }
 
     return true
-  }
-
-  if (isLoggedIn && role === 'lawyer') {
-    const completion = await lawyerCompletion()
-    if (completion !== null && completion <= 50 && to.path !== '/settings/attorney-profile') {
-      return { path: '/settings/attorney-profile' }
-    }
   }
 
   if (isLoggedIn) return true

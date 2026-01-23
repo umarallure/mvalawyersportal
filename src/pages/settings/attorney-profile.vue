@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import * as z from 'zod'
 import { computed, onMounted, ref, watch } from 'vue'
-import { onBeforeRouteLeave } from 'vue-router'
-import type { FormSubmitEvent } from '@nuxt/ui'
+import { onBeforeRouteLeave, useRouter, type RouteLocationRaw } from 'vue-router'
 
 import { useAuth } from '../../composables/useAuth'
 import { useAttorneyProfile } from '../../composables/useAttorneyProfile'
@@ -55,6 +54,8 @@ const userId = computed(() => auth.state.value.user?.id ?? '')
 
 const profile = attorneyProfile.draft as unknown as { value: Partial<GeneralInfoSchema> }
 
+const router = useRouter()
+
 const hydrateFromAuth = () => {
   const p = auth.state.value.profile
   const email = p?.email ?? auth.state.value.user?.email ?? ''
@@ -85,7 +86,7 @@ watch(
   }
 )
 
-async function onSubmit(event: FormSubmitEvent<GeneralInfoSchema>) {
+async function onSubmit() {
   if (!userId.value) return
 
   saving.value = true
@@ -139,7 +140,7 @@ const startEditing = () => {
 }
 
 const unsavedOpen = ref(false)
-const pendingNav = ref<null | (() => void)>(null)
+const pendingNav = ref<RouteLocationRaw | null>(null)
 
 const confirmLeave = () => {
   unsavedOpen.value = true
@@ -148,9 +149,11 @@ const confirmLeave = () => {
 const handleConfirmDiscard = () => {
   attorneyProfile.cancelEditing()
   unsavedOpen.value = false
-  const go = pendingNav.value
+  const target = pendingNav.value
   pendingNav.value = null
-  go?.()
+  if (target) {
+    router.push(target)
+  }
 }
 
 const handleStay = () => {
@@ -158,15 +161,14 @@ const handleStay = () => {
   pendingNav.value = null
 }
 
-onBeforeRouteLeave((to, from, next) => {
+onBeforeRouteLeave((to) => {
   if (attorneyProfile.isEditing.value && attorneyProfile.isDirty.value) {
-    pendingNav.value = () => next()
+    pendingNav.value = to
     confirmLeave()
-    next(false)
-    return
+    return false
   }
 
-  next()
+  return true
 })
 </script>
 
