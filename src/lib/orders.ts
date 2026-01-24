@@ -57,3 +57,15 @@ export async function createOrder(input: {
   if (error) throw new Error(error.message)
   return data as OrderRow
 }
+
+export async function listOpenOrdersForLawyer(lawyerId: string) {
+  const { data, error } = await supabase
+    .from('orders')
+    .select('id,lawyer_id,target_states,case_type,case_subtype,quota_total,quota_filled,status,expires_at,created_at')
+    .eq('lawyer_id', lawyerId)
+    .eq('status', 'OPEN')
+    .order('created_at', { ascending: false })
+
+  if (error) throw new Error(error.message)
+  return (data ?? []) as OrderRow[]
+}

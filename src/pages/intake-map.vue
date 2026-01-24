@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import usSvgFallbackRaw from '../assets/us.svg?raw'
 
 import { useAuth } from '../composables/useAuth'
-import { createOrder, listOpenOrderCountsByState } from '../lib/orders'
+import { createOrder, listOpenOrderCountsByState, listOpenOrdersForLawyer, type OrderRow } from '../lib/orders'
 import { US_STATES } from '../lib/us-states'
 
 const US_SVG_ASSET_URL = new URL('../assets/us.svg', import.meta.url).toString()
@@ -19,11 +19,47 @@ type StateCompetition = {
 
 const auth = useAuth()
 const loading = ref(false)
-const tooltip = ref({ open: false, x: 0, y: 0, state: null as StateCompetition | null })
+const tooltip = ref({ open: false, x: 0, y: 0, state: null as StateCompetition | null, myOrder: null as OrderRow | null })
 const mapRoot = ref<HTMLDivElement | null>(null)
 const tooltipEl = ref<HTMLDivElement | null>(null)
 
 const states = ref<StateCompetition[]>([])
+
+const myOpenOrders = ref<OrderRow[]>([])
+
+const orderDetailsOpen = ref(false)
+const selectedOrder = ref<OrderRow | null>(null)
+
+const openOrderDetails = (order: OrderRow) => {
+  selectedOrder.value = order
+  orderDetailsOpen.value = true
+}
+
+const closeOrderDetails = () => {
+  orderDetailsOpen.value = false
+  selectedOrder.value = null
+}
+
+const selectedOrderCriteriaJson = computed(() => {
+  const criteria = selectedOrder.value?.criteria ?? null
+  try {
+    return JSON.stringify(criteria, null, 2)
+  } catch {
+    return String(criteria)
+  }
+})
+
+const myOrderByStateCode = computed(() => {
+  const map = new Map<string, OrderRow>()
+  myOpenOrders.value.forEach((o) => {
+    ;(o.target_states ?? []).forEach((s) => {
+      const code = String(s || '').trim().toUpperCase()
+      if (!code) return
+      if (!map.has(code)) map.set(code, o)
+    })
+  })
+  return map
+})
 
 const stateByCode = computed(() => {
   const map = new Map<string, StateCompetition>()
@@ -69,6 +105,22 @@ const refreshCounts = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const refreshMyOrders = async () => {
+  const userId = auth.state.value.user?.id ?? null
+  if (!userId) {
+    myOpenOrders.value = []
+    return
+  }
+
+  myOpenOrders.value = await listOpenOrdersForLawyer(userId)
+}
+
+const refreshAll = async () => {
+  await refreshMyOrders()
+  await refreshCounts()
+  applyMapColors()
 }
 
 const createOrderOpen = ref(false)
@@ -249,6 +301,7 @@ const submitCreateOrder = async () => {
 
   createOrderOpen.value = false
   resetOrderForm()
+  await refreshMyOrders()
   await refreshCounts()
   applyMapColors()
 }
@@ -268,12 +321,15 @@ const applyMapColors = () => {
     if (!code) return
     const state = stateByCode.value.get(code)
 
+    const myOrder = myOrderByStateCode.value.get(code) ?? null
+
     const fill = state ? getStatusColor(state.status) : '#e5e7eb'
-    const stroke = '#0b0b0b'
+    const stroke = myOrder ? '#2563eb' : '#0b0b0b'
+    const strokeWidth = myOrder ? '2.4' : '0.8'
 
     path.style.setProperty('fill', fill, 'important')
     path.style.setProperty('stroke', stroke, 'important')
-    path.style.setProperty('stroke-width', '0.8', 'important')
+    path.style.setProperty('stroke-width', strokeWidth, 'important')
     path.style.cursor = state ? 'pointer' : 'default'
     path.style.opacity = '1'
   })
@@ -312,8 +368,8 @@ const applyStateLabels = () => {
     const state = stateByCode.value.get(code)
     if (!state) return
 
-    const fontSize = Math.max(6, Math.min(bbox.width, bbox.height) / 3)
-    const fill = '#ffffff'
+    const fontSize = Math.max(7, Math.min(14, Math.min(bbox.width, bbox.height) / 4))
+    const fill = '#111827'
 
     const text = document.createElementNS('http://www.w3.org/2000/svg', 'text')
     text.textContent = code
@@ -323,10 +379,12 @@ const applyStateLabels = () => {
     text.setAttribute('dominant-baseline', 'middle')
     text.style.setProperty('font-size', `${fontSize}px`, 'important')
     text.style.setProperty('font-weight', '700', 'important')
+    text.style.setProperty('font-family', 'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial', 'important')
     text.style.setProperty('fill', fill, 'important')
     text.style.setProperty('paint-order', 'stroke', 'important')
-    text.style.setProperty('stroke', 'rgba(0,0,0,0.5)', 'important')
-    text.style.setProperty('stroke-width', '1', 'important')
+    text.style.setProperty('stroke', 'rgba(255,255,255,0.9)', 'important')
+    text.style.setProperty('stroke-width', '2', 'important')
+    text.style.setProperty('stroke-linejoin', 'round', 'important')
 
     g.appendChild(text)
   })
@@ -343,12 +401,14 @@ const handleStateEnter = (evt: Event) => {
   if (!state) return
 
   tooltip.value.state = state
+  tooltip.value.myOrder = myOrderByStateCode.value.get(code) ?? null
   tooltip.value.open = true
 }
 
 const handleStateLeave = () => {
   tooltip.value.open = false
   tooltip.value.state = null
+  tooltip.value.myOrder = null
 }
 
 const handleMouseMove = (evt: MouseEvent) => {
@@ -446,6 +506,7 @@ onMounted(() => {
     if (!mapRoot.value) return
 
     await auth.init()
+    await refreshMyOrders()
     await refreshCounts()
 
     await mountSvg()
@@ -461,6 +522,10 @@ onUnmounted(() => {
 })
 
 watch(states, () => {
+  applyMapColors()
+})
+
+watch(myOpenOrders, () => {
   applyMapColors()
 })
 </script>
@@ -488,7 +553,7 @@ watch(states, () => {
             variant="outline"
             icon="i-lucide-refresh-cw"
             :loading="loading"
-            @click="refreshCounts"
+            @click="refreshAll"
           >
             Refresh
           </UButton>
@@ -533,113 +598,196 @@ watch(states, () => {
         </UModal>
 
         <UModal
+          v-if="orderDetailsOpen && selectedOrder"
+          :open="true"
+          title="Order Details"
+          @update:open="(v) => { if (!v) closeOrderDetails() }"
+        >
+          <template #body>
+            <div class="space-y-4">
+              <div class="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <div class="text-xs text-muted">
+                    Case type
+                  </div>
+                  <div class="font-semibold">
+                    {{ selectedOrder.case_type }}
+                  </div>
+                </div>
+
+                <div>
+                  <div class="text-xs text-muted">
+                    Sub-type
+                  </div>
+                  <div class="font-semibold">
+                    {{ selectedOrder.case_subtype || '—' }}
+                  </div>
+                </div>
+
+                <div>
+                  <div class="text-xs text-muted">
+                    Target states
+                  </div>
+                  <div class="font-semibold">
+                    {{ (selectedOrder.target_states || []).map(s => String(s || '').toUpperCase()).join(', ') || '—' }}
+                  </div>
+                </div>
+
+                <div>
+                  <div class="text-xs text-muted">
+                    Quota
+                  </div>
+                  <div class="font-semibold">
+                    {{ selectedOrder.quota_filled }}/{{ selectedOrder.quota_total }}
+                  </div>
+                </div>
+
+                <div>
+                  <div class="text-xs text-muted">
+                    Created
+                  </div>
+                  <div class="font-semibold">
+                    {{ String(selectedOrder.created_at || '').slice(0, 10) }}
+                  </div>
+                </div>
+
+                <div>
+                  <div class="text-xs text-muted">
+                    Expires
+                  </div>
+                  <div class="font-semibold">
+                    {{ String(selectedOrder.expires_at || '').slice(0, 10) }}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div class="text-xs text-muted">
+                  Criteria
+                </div>
+                <pre class="mt-2 whitespace-pre-wrap rounded-lg border border-default bg-elevated p-3 text-xs">
+{{ selectedOrderCriteriaJson }}
+                </pre>
+              </div>
+            </div>
+          </template>
+        </UModal>
+
+        <UModal
           v-if="createOrderOpen"
           :open="true"
           title="Create Intake Order"
           :dismissible="false"
+          :ui="{ content: 'sm:max-w-4xl', body: 'p-0' }"
           @update:open="handleCreateOrderOpenUpdate"
         >
           <template #body="{ close }">
-            <div class="space-y-4">
-              <div class="text-sm text-muted">Define your demand packet for the selected geography.</div>
+            <div class="flex max-h-[78vh] flex-col">
+              <div class="px-6 pt-6">
+                <div class="text-sm text-muted">Define your demand packet for the selected geography.</div>
+              </div>
 
-              <UFormField label="State" required>
-                <USelect
-                  v-model="orderForm.stateCode"
-                  :items="orderStateOptions"
-                  value-key="value"
-                  label-key="label"
-                  placeholder="Select a state"
-                />
-              </UFormField>
+              <div class="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <UFormField label="State" required>
+                    <USelect
+                      v-model="orderForm.stateCode"
+                      :items="orderStateOptions"
+                      value-key="value"
+                      label-key="label"
+                      placeholder="Select a state"
+                    />
+                  </UFormField>
 
-              <UFormField label="Case category" required>
-                <USelect
-                  v-model="orderForm.caseType"
-                  :items="caseCategoryOptions"
-                  value-key="value"
-                  label-key="label"
-                  placeholder="Select case category"
-                />
-              </UFormField>
+                  <UFormField label="Case category" required>
+                    <USelect
+                      v-model="orderForm.caseType"
+                      :items="caseCategoryOptions"
+                      value-key="value"
+                      label-key="label"
+                      placeholder="Select case category"
+                    />
+                  </UFormField>
 
-              <UFormField label="Sub-category">
-                <USelect
-                  v-model="orderForm.caseSubType"
-                  :items="caseSubCategoryOptions"
-                  value-key="value"
-                  label-key="label"
-                  :disabled="caseSubCategoryOptions.length === 0"
-                  placeholder="Select sub-category"
-                />
-              </UFormField>
+                  <UFormField label="Sub-category">
+                    <USelect
+                      v-model="orderForm.caseSubType"
+                      :items="caseSubCategoryOptions"
+                      value-key="value"
+                      label-key="label"
+                      :disabled="caseSubCategoryOptions.length === 0"
+                      placeholder="Select sub-category"
+                    />
+                  </UFormField>
 
-              <UFormField label="Injury severity" required>
-                <USelect
-                  v-model="orderForm.injurySeverity"
-                  :items="injurySeverityOptions"
-                  value-key="value"
-                  label-key="label"
-                  multiple
-                  placeholder="Select injury severities"
-                />
-              </UFormField>
+                  <UFormField label="Injury severity" required>
+                    <USelect
+                      v-model="orderForm.injurySeverity"
+                      :items="injurySeverityOptions"
+                      value-key="value"
+                      label-key="label"
+                      multiple
+                      placeholder="Select injury severities"
+                    />
+                  </UFormField>
 
-              <UFormField label="Liability status" required>
-                <USelect
-                  v-model="orderForm.liabilityStatus"
-                  :items="liabilityOptions"
-                  value-key="value"
-                  label-key="label"
-                  placeholder="Select liability"
-                />
-              </UFormField>
+                  <UFormField label="Liability status" required>
+                    <USelect
+                      v-model="orderForm.liabilityStatus"
+                      :items="liabilityOptions"
+                      value-key="value"
+                      label-key="label"
+                      placeholder="Select liability"
+                    />
+                  </UFormField>
 
-              <UFormField label="Insurance status" required>
-                <USelect
-                  v-model="orderForm.insuranceStatus"
-                  :items="insuranceOptions"
-                  value-key="value"
-                  label-key="label"
-                  placeholder="Select insurance"
-                />
-              </UFormField>
+                  <UFormField label="Insurance status" required>
+                    <USelect
+                      v-model="orderForm.insuranceStatus"
+                      :items="insuranceOptions"
+                      value-key="value"
+                      label-key="label"
+                      placeholder="Select insurance"
+                    />
+                  </UFormField>
 
-              <UFormField label="Minimum estimated case value" required>
-                <UInput v-model.number="orderForm.minimumCaseValue" type="number" min="0" />
-              </UFormField>
+                  <UFormField label="Minimum estimated case value" required>
+                    <UInput v-model.number="orderForm.minimumCaseValue" type="number" min="0" />
+                  </UFormField>
 
-              <UFormField label="Medical treatment" required>
-                <USelect
-                  v-model="orderForm.medicalTreatment"
-                  :items="medicalTreatmentOptions"
-                  value-key="value"
-                  label-key="label"
-                />
-              </UFormField>
+                  <UFormField label="Medical treatment" required>
+                    <USelect
+                      v-model="orderForm.medicalTreatment"
+                      :items="medicalTreatmentOptions"
+                      value-key="value"
+                      label-key="label"
+                    />
+                  </UFormField>
 
-              <UFormField label="Languages" required>
-                <UInputMenu
-                  v-model="orderForm.languages"
-                  :items="languageOptions"
-                  multiple
-                  placeholder="Select languages"
-                />
-              </UFormField>
+                  <UFormField label="Languages" required>
+                    <UInputMenu
+                      v-model="orderForm.languages"
+                      :items="languageOptions"
+                      multiple
+                      placeholder="Select languages"
+                    />
+                  </UFormField>
 
-              <UFormField label="Client requirements">
-                <UCheckbox v-model="orderForm.noPriorAttorney" label="No prior attorney" />
-              </UFormField>
+                  <UFormField label="Client requirements">
+                    <UCheckbox v-model="orderForm.noPriorAttorney" label="No prior attorney" />
+                  </UFormField>
 
-              <UFormField label="Quota" description="Total number of cases needed" required>
-                <UInput v-model.number="orderForm.quotaTotal" type="number" min="1" />
-              </UFormField>
+                  <UFormField label="Quota" description="Total number of cases needed" required>
+                    <UInput v-model.number="orderForm.quotaTotal" type="number" min="1" />
+                  </UFormField>
 
-              <UFormField label="Expiration" description="Date when this order stops accepting retainers" required>
-                <UInput v-model="orderForm.expiresAt" type="date" />
-              </UFormField>
+                  <UFormField label="Expiration" description="Date when this order stops accepting retainers" required>
+                    <UInput v-model="orderForm.expiresAt" type="date" />
+                  </UFormField>
+                </div>
+              </div>
 
-              <div class="flex items-center justify-end gap-2">
+              <div class="flex items-center justify-end gap-2 border-t border-default px-6 py-4">
                 <UButton
                   color="neutral"
                   variant="outline"
@@ -708,7 +856,9 @@ watch(states, () => {
               class="pointer-events-none absolute z-10 rounded-lg border border-default bg-elevated px-3 py-2 shadow-lg"
               :style="{ left: `${tooltip.x}px`, top: `${tooltip.y}px` }"
             >
-              <div class="font-semibold">{{ tooltip.state.name }} ({{ tooltip.state.code }})</div>
+              <div class="font-semibold">
+                {{ tooltip.state.name }} ({{ tooltip.state.code }})
+              </div>
               <div class="mt-1 flex items-center gap-2">
                 <UBadge
                   :color="tooltip.state.status === 'light' ? 'success' : tooltip.state.status === 'moderate' ? 'warning' : 'error'"
@@ -716,9 +866,69 @@ watch(states, () => {
                   :label="getStatusLabel(tooltip.state.status)"
                   size="xs"
                 />
+
+                <UBadge
+                  v-if="tooltip.myOrder"
+                  color="primary"
+                  variant="subtle"
+                  label="Your order active"
+                  size="xs"
+                />
               </div>
               <div class="mt-2 space-y-1 text-xs text-muted">
                 <div>Open orders: {{ tooltip.state.openOrders }}</div>
+                <div v-if="tooltip.myOrder">
+                  Your quota: {{ tooltip.myOrder.quota_filled }}/{{ tooltip.myOrder.quota_total }}
+                </div>
+                <div v-if="tooltip.myOrder">Expires: {{ String(tooltip.myOrder.expires_at || '').slice(0, 10) }}</div>
+              </div>
+            </div>
+          </div>
+        </UCard>
+
+        <UCard>
+          <div class="space-y-3">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <h3 class="font-semibold">
+                  My Open Orders
+                </h3>
+                <p class="text-sm text-muted">
+                  Your currently active intake orders.
+                </p>
+              </div>
+              <UBadge variant="subtle" :label="`${myOpenOrders.length} orders`" />
+            </div>
+
+            <div v-if="myOpenOrders.length === 0" class="text-sm text-muted">
+              No open orders.
+            </div>
+
+            <div v-else class="space-y-2">
+              <div
+                v-for="order in myOpenOrders"
+                :key="order.id"
+                class="cursor-pointer rounded-lg border border-default bg-elevated p-4 hover:bg-muted/30"
+                @click="openOrderDetails(order)"
+              >
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="font-semibold">
+                      {{ order.case_type }}
+                      <span v-if="order.case_subtype" class="text-muted">— {{ order.case_subtype }}</span>
+                    </div>
+
+                    <div class="mt-1 text-sm text-muted">
+                      States:
+                      {{ (order.target_states || []).map(s => String(s || '').toUpperCase()).join(', ') || '—' }}
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <UBadge color="primary" variant="subtle" :label="`Quota ${order.quota_filled}/${order.quota_total}`" />
+                    <UBadge color="neutral" variant="subtle" :label="`Expires ${String(order.expires_at || '').slice(0, 10)}`" />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
