@@ -3,8 +3,9 @@ import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { z } from 'zod'
 
-import { BRANDING } from '../lib/branding'
 import { supabase } from '../lib/supabase'
+
+const LOGO_SRC = '/logo.svg'
 
 const injuryOptions = [
   { value: 'motor_vehicle_accident', label: 'Motor Vehicle Accident (MVA)' },
@@ -137,7 +138,7 @@ const reset = () => {
 
       <header class="flex w-full items-center justify-between px-6 py-6 lg:px-10">
         <RouterLink to="/" class="flex items-center gap-3">
-          <img :src="BRANDING.logo" alt="Accident Payments" class="h-10 w-auto" />
+          <img :src="LOGO_SRC" alt="Accident Payments" class="h-10 w-auto" />
         </RouterLink>
 
         <div class="flex items-center gap-3 text-sm font-medium text-white/70">
