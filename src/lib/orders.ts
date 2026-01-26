@@ -69,3 +69,23 @@ export async function listOpenOrdersForLawyer(lawyerId: string) {
   if (error) throw new Error(error.message)
   return (data ?? []) as OrderRow[]
 }
+
+export async function listOrdersForLawyer(input: {
+  lawyerId: string
+  statuses?: OrderStatus[]
+}) {
+  let qb = supabase
+    .from('orders')
+    .select('id,lawyer_id,target_states,case_type,case_subtype,quota_total,quota_filled,status,expires_at,created_at')
+    .eq('lawyer_id', input.lawyerId)
+    .order('created_at', { ascending: false })
+
+  if (input.statuses?.length) {
+    qb = qb.in('status', input.statuses)
+  }
+
+  const { data, error } = await qb
+
+  if (error) throw new Error(error.message)
+  return (data ?? []) as OrderRow[]
+}
