@@ -18,6 +18,7 @@ export interface AttorneyProfileState {
   preferredContact?: 'email' | 'phone' | 'text'
   assistantName?: string
   assistantEmail?: string
+  blockedStates?: string[]
   
   // Tab 2: Expertise & Jurisdiction
   licensedStates?: string[]
@@ -71,6 +72,7 @@ const _useAttorneyProfile = () => {
     if ('preferredContact' in data) out.preferred_contact_method = data.preferredContact ?? null
     if ('assistantName' in data) out.assistant_name = data.assistantName ? data.assistantName : null
     if ('assistantEmail' in data) out.assistant_email = data.assistantEmail ? data.assistantEmail : null
+    if ('blockedStates' in data) out.blocked_states = data.blockedStates ?? []
 
     if ('licensedStates' in data) out.licensed_states = data.licensedStates ?? []
     if ('primaryCity' in data) out.primary_city = data.primaryCity ?? ''
@@ -109,6 +111,7 @@ const _useAttorneyProfile = () => {
       preferredContact: dbProfile.preferred_contact_method || 'email',
       assistantName: dbProfile.assistant_name || '',
       assistantEmail: dbProfile.assistant_email || '',
+      blockedStates: dbProfile.blocked_states || [],
       licensedStates: dbProfile.licensed_states || [],
       primaryCity: dbProfile.primary_city || '',
       countiesCovered: dbProfile.counties_covered || [],

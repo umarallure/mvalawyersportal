@@ -16,6 +16,7 @@ export interface AttorneyProfileData {
   preferred_contact_method?: 'email' | 'phone' | 'text' | null
   assistant_name?: string | null
   assistant_email?: string | null
+  blocked_states?: string[] | null
   
   // Tab 2: Expertise & Jurisdiction
   licensed_states: string[]

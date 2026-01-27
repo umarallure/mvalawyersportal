@@ -3,27 +3,25 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import usSvgFallbackRaw from '../assets/us.svg?raw'
 
 import { useAuth } from '../composables/useAuth'
-import { createOrder, listOpenOrderCountsByState, listOpenOrdersForLawyer, type OrderRow } from '../lib/orders'
+import { getAttorneyProfile, patchAttorneyProfile } from '../lib/attorney-profile'
+import { createOrder, listOpenOrdersForLawyer, type OrderRow } from '../lib/orders'
 import { US_STATES } from '../lib/us-states'
 
 const US_SVG_ASSET_URL = new URL('../assets/us.svg', import.meta.url).toString()
 
-type CompetitionStatus = 'light' | 'moderate' | 'heavy'
-
-type StateCompetition = {
+type StateOrders = {
   code: string
   name: string
   openOrders: number
-  status: CompetitionStatus
 }
 
 const auth = useAuth()
 const loading = ref(false)
-const tooltip = ref({ open: false, x: 0, y: 0, state: null as StateCompetition | null, myOrder: null as OrderRow | null })
+const tooltip = ref({ open: false, x: 0, y: 0, state: null as StateOrders | null, myOrder: null as OrderRow | null, blocked: false })
 const mapRoot = ref<HTMLDivElement | null>(null)
 const tooltipEl = ref<HTMLDivElement | null>(null)
 
-const states = ref<StateCompetition[]>([])
+const states = ref<StateOrders[]>([])
 
 const myOpenOrders = ref<OrderRow[]>([])
 
@@ -62,49 +60,32 @@ const myOrderByStateCode = computed(() => {
 })
 
 const stateByCode = computed(() => {
-  const map = new Map<string, StateCompetition>()
+  const map = new Map<string, StateOrders>()
   states.value.forEach(s => map.set(s.code, s))
   return map
 })
 
 const totalOpenOrders = computed(() => states.value.reduce((sum, s) => sum + s.openOrders, 0))
 
-const toCompetitionStatus = (openOrders: number): CompetitionStatus => {
-  if (openOrders < 10) return 'light'
-  if (openOrders <= 20) return 'moderate'
-  return 'heavy'
-}
-
-const getStatusColor = (status: CompetitionStatus) => {
-  if (status === 'light') return '#22c55e'
-  if (status === 'moderate') return '#eab308'
+const getMyOrderColor = (openOrders: number) => {
+  if (openOrders <= 0) return '#d1d5db'
+  if (openOrders <= 5) return '#22c55e'
+  if (openOrders <= 10) return '#eab308'
   return '#ef4444'
 }
 
-const getStatusLabel = (status: CompetitionStatus) => {
-  if (status === 'light') return 'Light Competition'
-  if (status === 'moderate') return 'Moderate Competition'
-  return 'Heavy Competition'
+const getMyOrderBadgeColor = (openOrders: number) => {
+  if (openOrders <= 0) return 'neutral'
+  if (openOrders <= 5) return 'success'
+  if (openOrders <= 10) return 'warning'
+  return 'error'
 }
 
-const refreshCounts = async () => {
-  loading.value = true
-  try {
-    const rows = await listOpenOrderCountsByState()
-    const counts = new Map(rows.map(r => [String(r.state_code).toUpperCase(), Number(r.open_orders) || 0]))
-
-    states.value = US_STATES.map((s) => {
-      const openOrders = counts.get(s.code) ?? 0
-      return {
-        code: s.code,
-        name: s.name,
-        openOrders,
-        status: toCompetitionStatus(openOrders)
-      }
-    })
-  } finally {
-    loading.value = false
-  }
+const getMyOrderBadgeLabel = (openOrders: number) => {
+  if (openOrders <= 0) return 'No open orders'
+  if (openOrders <= 5) return '1–5 open orders'
+  if (openOrders <= 10) return '6–10 open orders'
+  return '11+ open orders'
 }
 
 const refreshMyOrders = async () => {
@@ -118,9 +99,136 @@ const refreshMyOrders = async () => {
 }
 
 const refreshAll = async () => {
-  await refreshMyOrders()
-  await refreshCounts()
+  loading.value = true
+  try {
+    await refreshMyOrders()
+    rebuildStatesFromMyOrders()
+    applyMapColors()
+  } finally {
+    loading.value = false
+  }
+}
+
+const orderProgressPercent = (order: Pick<OrderRow, 'quota_filled' | 'quota_total'>) => {
+  const total = Number((order as any)?.quota_total)
+  const filled = Number((order as any)?.quota_filled)
+  if (!Number.isFinite(total) || total <= 0) return 0
+  if (!Number.isFinite(filled) || filled <= 0) return 0
+  const pct = (filled / total) * 100
+  if (!Number.isFinite(pct)) return 0
+  return Math.max(0, Math.min(100, Math.round(pct)))
+}
+
+type MapFilter = 'all' | 'no_orders' | 'has_orders' | 'blocked'
+
+const mapFilter = ref<MapFilter>('all')
+
+const mapFilterOptions = [
+  { label: 'All states', value: 'all' },
+  { label: 'No orders', value: 'no_orders' },
+  { label: 'Has open orders', value: 'has_orders' },
+  { label: 'Blocked states', value: 'blocked' }
+]
+
+watch(mapFilter, () => {
   applyMapColors()
+})
+
+const blockMode = ref(false)
+const blockedStateCodes = ref<string[]>([])
+
+const blockedStateSet = computed(() => {
+  return new Set(blockedStateCodes.value.map((c) => String(c || '').trim().toUpperCase()).filter(Boolean))
+})
+
+const blockedStorageKey = computed(() => {
+  const userId = auth.state.value.user?.id ?? ''
+  return userId ? `intakeMapBlockedStates:${userId}` : 'intakeMapBlockedStates:anonymous'
+})
+
+const loadBlockedStatesFromLocalStorage = () => {
+  try {
+    const raw = localStorage.getItem(blockedStorageKey.value)
+    if (!raw) return [] as string[]
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : ([] as string[])
+  } catch {
+    return [] as string[]
+  }
+}
+
+const saveBlockedStatesToLocalStorage = (codes: string[]) => {
+  try {
+    localStorage.setItem(blockedStorageKey.value, JSON.stringify(codes))
+  } catch {
+    // ignore
+  }
+}
+
+const loadBlockedStates = async () => {
+  const userId = auth.state.value.user?.id ?? null
+  if (!userId) {
+    blockedStateCodes.value = []
+    return
+  }
+
+  try {
+    const profile = await getAttorneyProfile(userId)
+    const codes = Array.isArray((profile as any)?.blocked_states) ? (profile as any).blocked_states : null
+    if (codes) {
+      blockedStateCodes.value = codes
+      saveBlockedStatesToLocalStorage(codes)
+      return
+    }
+  } catch {
+    // ignore
+  }
+
+  blockedStateCodes.value = loadBlockedStatesFromLocalStorage()
+}
+
+let persistBlockedStatesTimer: number | null = null
+watch(blockedStateCodes, () => {
+  applyMapColors()
+
+  const userId = auth.state.value.user?.id ?? null
+  if (!userId) return
+
+  const snapshot = blockedStateCodes.value.slice()
+  saveBlockedStatesToLocalStorage(snapshot)
+
+  if (persistBlockedStatesTimer) window.clearTimeout(persistBlockedStatesTimer)
+  persistBlockedStatesTimer = window.setTimeout(async () => {
+    try {
+      await patchAttorneyProfile(userId, { blocked_states: snapshot })
+    } catch {
+      // keep localStorage fallback
+    }
+  }, 500)
+}, { deep: true })
+
+const myOpenOrderCountByState = computed(() => {
+  const map = new Map<string, number>()
+  myOpenOrders.value.forEach((o) => {
+    ;(o.target_states ?? []).forEach((s) => {
+      const code = String(s || '').trim().toUpperCase()
+      if (!code) return
+      map.set(code, (map.get(code) ?? 0) + 1)
+    })
+  })
+  return map
+})
+
+const rebuildStatesFromMyOrders = () => {
+  const counts = myOpenOrderCountByState.value
+  states.value = US_STATES.map((s) => {
+    const openOrders = counts.get(s.code) ?? 0
+    return {
+      code: s.code,
+      name: s.name,
+      openOrders
+    }
+  })
 }
 
 const createOrderOpen = ref(false)
@@ -131,32 +239,28 @@ const pendingStateCode = ref<string | null>(null)
 const orderForm = ref({
   stateCode: '' as string,
   caseType: 'Motor Vehicle Accident' as string,
-  caseSubType: '' as string,
   injurySeverity: [] as string[],
   liabilityStatus: 'clear_only' as 'clear_only' | 'disputed_ok',
   insuranceStatus: 'insured_only' as 'insured_only' | 'uninsured_ok',
-  minimumCaseValue: 25000 as number,
   medicalTreatment: 'ongoing' as string,
   languages: ['English'] as string[],
   noPriorAttorney: true as boolean,
   quotaTotal: 10 as number,
-  expiresAt: '' as string
+  expiresInDays: 7 as 7 | 14 | 30 | 60
 })
 
 const resetOrderForm = () => {
   orderForm.value = {
     stateCode: '',
     caseType: 'Motor Vehicle Accident',
-    caseSubType: '',
     injurySeverity: [],
     liabilityStatus: 'clear_only',
     insuranceStatus: 'insured_only',
-    minimumCaseValue: 25000,
     medicalTreatment: 'ongoing',
     languages: ['English'],
     noPriorAttorney: true,
     quotaTotal: 10,
-    expiresAt: ''
+    expiresInDays: 7
   }
 }
 
@@ -197,48 +301,17 @@ const injurySeverityOptions = [
 
 const caseCategoryOptions = [
   { label: 'Motor Vehicle Accident', value: 'Motor Vehicle Accident' },
-  { label: 'Slip & Fall', value: 'Slip & Fall' },
-  { label: 'Workplace Injury', value: 'Workplace Injury' },
-  { label: 'Medical Malpractice', value: 'Medical Malpractice' },
-  { label: 'Other', value: 'Other' }
+  { label: 'Commercial injury', value: 'Commercial injury' },
+  { label: 'Personal injury', value: 'Personal injury' },
+  { label: 'Workplace injury', value: 'Workplace injury' }
 ]
 
-const subCategoriesByCategory: Record<string, Array<{ label: string, value: string }>> = {
-  'Motor Vehicle Accident': [
-    { label: 'Rear-end', value: 'Rear-end' },
-    { label: 'T-Bone', value: 'T-Bone' },
-    { label: 'Head-on', value: 'Head-on' },
-    { label: 'Pedestrian', value: 'Pedestrian' },
-    { label: 'Rideshare (Uber/Lyft)', value: 'Rideshare (Uber/Lyft)' },
-    { label: 'Hit & Run', value: 'Hit & Run' },
-    { label: 'Uninsured/Underinsured', value: 'Uninsured/Underinsured' }
-  ],
-  'Slip & Fall': [
-    { label: 'Premises liability', value: 'Premises liability' },
-    { label: 'Trip & fall', value: 'Trip & fall' },
-    { label: 'Wet floor', value: 'Wet floor' }
-  ],
-  'Workplace Injury': [
-    { label: 'Workers\' comp', value: "Workers' comp" },
-    { label: 'Third-party liability', value: 'Third-party liability' }
-  ],
-  'Medical Malpractice': [
-    { label: 'Misdiagnosis', value: 'Misdiagnosis' },
-    { label: 'Surgical error', value: 'Surgical error' }
-  ],
-  'Other': []
-}
-
-const caseSubCategoryOptions = computed(() => {
-  return subCategoriesByCategory[String(orderForm.value.caseType || '')] ?? []
-})
-
-watch(
-  () => orderForm.value.caseType,
-  () => {
-    orderForm.value.caseSubType = ''
-  }
-)
+const expirationOptions = [
+  { label: 'In 7 days', value: 7 },
+  { label: 'In 14 days', value: 14 },
+  { label: 'In 30 days', value: 30 },
+  { label: 'In 60 days', value: 60 }
+]
 
 const liabilityOptions = [
   { label: 'Clear liability only', value: 'clear_only' },
@@ -261,10 +334,17 @@ const languageOptions = [
   'Spanish'
 ]
 
+const multiSelectUi = {
+  value: 'truncate whitespace-nowrap overflow-hidden',
+  item: 'group',
+  itemTrailingIcon: 'hidden'
+}
+
 const orderStateOptions = computed(() => {
   return US_STATES
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name))
+    .filter((s) => !blockedStateSet.value.has(s.code))
     .map((s) => ({ label: `${s.name} (${s.code})`, value: s.code }))
 })
 
@@ -278,21 +358,22 @@ const submitCreateOrder = async () => {
   const quotaTotal = Number(orderForm.value.quotaTotal)
   if (!Number.isFinite(quotaTotal) || quotaTotal <= 0) return
 
-  const expiresAt = String(orderForm.value.expiresAt || '').trim()
-  if (!expiresAt) return
+  const expiresInDays = Number(orderForm.value.expiresInDays)
+  if (![7, 14, 30, 60].includes(expiresInDays)) return
+
+  const expiresAt = new Date()
+  expiresAt.setDate(expiresAt.getDate() + expiresInDays)
 
   await createOrder({
     lawyer_id: userId,
     target_states: [stateCode],
     case_type: String(orderForm.value.caseType || '').trim(),
-    case_subtype: String(orderForm.value.caseSubType || '').trim() || null,
     quota_total: Math.round(quotaTotal),
-    expires_at: new Date(expiresAt).toISOString(),
+    expires_at: expiresAt.toISOString(),
     criteria: {
       injury_severity: orderForm.value.injurySeverity,
       liability_status: orderForm.value.liabilityStatus,
       insurance_status: orderForm.value.insuranceStatus,
-      minimum_case_value: Number(orderForm.value.minimumCaseValue) || null,
       medical_treatment: orderForm.value.medicalTreatment,
       languages: orderForm.value.languages,
       no_prior_attorney: orderForm.value.noPriorAttorney
@@ -302,17 +383,53 @@ const submitCreateOrder = async () => {
   createOrderOpen.value = false
   resetOrderForm()
   await refreshMyOrders()
-  await refreshCounts()
+  rebuildStatesFromMyOrders()
   applyMapColors()
 }
 
 const MAP_PATH_SELECTOR = 'path[data-id], path[id]'
+
+const BLOCKED_PATTERN_ID = 'blocked-hatch'
+
+const ensureBlockedPattern = (svg: SVGSVGElement) => {
+  const existing = svg.querySelector(`#${BLOCKED_PATTERN_ID}`)
+  if (existing) return
+
+  let defs = svg.querySelector('defs')
+  if (!defs) {
+    defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs')
+    svg.insertBefore(defs, svg.firstChild)
+  }
+
+  const pattern = document.createElementNS('http://www.w3.org/2000/svg', 'pattern')
+  pattern.setAttribute('id', BLOCKED_PATTERN_ID)
+  pattern.setAttribute('patternUnits', 'userSpaceOnUse')
+  pattern.setAttribute('width', '10')
+  pattern.setAttribute('height', '10')
+  pattern.setAttribute('patternTransform', 'rotate(45)')
+
+  const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+  bg.setAttribute('width', '10')
+  bg.setAttribute('height', '10')
+  bg.setAttribute('fill', '#f3f4f6')
+
+  const stripe = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+  stripe.setAttribute('width', '2')
+  stripe.setAttribute('height', '10')
+  stripe.setAttribute('fill', '#9ca3af')
+
+  pattern.appendChild(bg)
+  pattern.appendChild(stripe)
+  defs.appendChild(pattern)
+}
 
 const applyMapColors = () => {
   const root = mapRoot.value
   if (!root) return
   const svg = root.querySelector('svg')
   if (!svg) return
+
+  ensureBlockedPattern(svg as SVGSVGElement)
 
   const paths = svg.querySelectorAll(MAP_PATH_SELECTOR)
   paths.forEach((p) => {
@@ -321,17 +438,33 @@ const applyMapColors = () => {
     if (!code) return
     const state = stateByCode.value.get(code)
 
-    const myOrder = myOrderByStateCode.value.get(code) ?? null
+    const normalizedCode = String(code || '').trim().toUpperCase()
+    const isBlocked = blockedStateSet.value.has(normalizedCode)
 
-    const fill = state ? getStatusColor(state.status) : '#e5e7eb'
-    const stroke = myOrder ? '#2563eb' : '#0b0b0b'
-    const strokeWidth = myOrder ? '2.4' : '0.8'
+    const openOrders = Number(state?.openOrders) || 0
+    const matchesFilter = mapFilter.value === 'all'
+      ? true
+      : mapFilter.value === 'no_orders'
+        ? !isBlocked && openOrders === 0
+        : mapFilter.value === 'has_orders'
+          ? !isBlocked && openOrders > 0
+          : isBlocked
+
+    const fill = isBlocked
+      ? `url(#${BLOCKED_PATTERN_ID})`
+      : state
+        ? getMyOrderColor(Number(state.openOrders) || 0)
+        : '#d1d5db'
+
+    const stroke = '#0b0b0b'
+    const strokeWidth = '0.8'
 
     path.style.setProperty('fill', fill, 'important')
     path.style.setProperty('stroke', stroke, 'important')
     path.style.setProperty('stroke-width', strokeWidth, 'important')
-    path.style.cursor = state ? 'pointer' : 'default'
-    path.style.opacity = '1'
+    path.style.cursor = matchesFilter && state && !isBlocked ? 'pointer' : 'default'
+    path.style.opacity = matchesFilter ? '1' : '0.25'
+    path.style.pointerEvents = matchesFilter ? 'auto' : 'none'
   })
 
   applyStateLabels()
@@ -400,6 +533,8 @@ const handleStateEnter = (evt: Event) => {
   const state = stateByCode.value.get(code) ?? null
   if (!state) return
 
+  tooltip.value.blocked = blockedStateSet.value.has(String(code || '').trim().toUpperCase())
+
   tooltip.value.state = state
   tooltip.value.myOrder = myOrderByStateCode.value.get(code) ?? null
   tooltip.value.open = true
@@ -409,6 +544,7 @@ const handleStateLeave = () => {
   tooltip.value.open = false
   tooltip.value.state = null
   tooltip.value.myOrder = null
+  tooltip.value.blocked = false
 }
 
 const handleMouseMove = (evt: MouseEvent) => {
@@ -439,6 +575,17 @@ const handleStateClick = (evt: Event) => {
   if (!code) return
   const state = stateByCode.value.get(code) ?? null
   if (!state) return
+
+  const normalizedCode = String(code || '').trim().toUpperCase()
+  if (blockMode.value) {
+    const next = new Set(blockedStateSet.value)
+    if (next.has(normalizedCode)) next.delete(normalizedCode)
+    else next.add(normalizedCode)
+    blockedStateCodes.value = Array.from(next)
+    return
+  }
+
+  if (blockedStateSet.value.has(normalizedCode)) return
   openCreateOrderForState(state.code)
 }
 
@@ -506,8 +653,14 @@ onMounted(() => {
     if (!mapRoot.value) return
 
     await auth.init()
-    await refreshMyOrders()
-    await refreshCounts()
+    loading.value = true
+    try {
+      await refreshMyOrders()
+      await loadBlockedStates()
+      rebuildStatesFromMyOrders()
+    } finally {
+      loading.value = false
+    }
 
     await mountSvg()
     bindSvgEvents()
@@ -526,6 +679,7 @@ watch(states, () => {
 })
 
 watch(myOpenOrders, () => {
+  rebuildStatesFromMyOrders()
   applyMapColors()
 })
 </script>
@@ -539,6 +693,15 @@ watch(myOpenOrders, () => {
         </template>
 
         <template #right>
+          <UButton
+            color="neutral"
+            :variant="blockMode ? 'solid' : 'outline'"
+            :icon="blockMode ? 'i-lucide-check' : 'i-lucide-ban'"
+            @click="() => { blockMode = !blockMode }"
+          >
+            {{ blockMode ? 'Done blocking' : 'Block states' }}
+          </UButton>
+
           <UButton
             color="primary"
             variant="solid"
@@ -563,6 +726,14 @@ watch(myOpenOrders, () => {
 
     <template #body>
       <div class="space-y-4">
+        <UAlert
+          v-if="blockMode"
+          color="neutral"
+          variant="subtle"
+          title="Blocking mode"
+          description="Click states on the map to block/unblock them. Blocked states are disabled and removed from the order state dropdown."
+        />
+
         <UModal
           v-if="createOrderConfirmOpen"
           :open="true"
@@ -709,17 +880,6 @@ watch(myOpenOrders, () => {
                     />
                   </UFormField>
 
-                  <UFormField label="Sub-category">
-                    <USelect
-                      v-model="orderForm.caseSubType"
-                      :items="caseSubCategoryOptions"
-                      value-key="value"
-                      label-key="label"
-                      :disabled="caseSubCategoryOptions.length === 0"
-                      placeholder="Select sub-category"
-                    />
-                  </UFormField>
-
                   <UFormField label="Injury severity" required>
                     <USelect
                       v-model="orderForm.injurySeverity"
@@ -728,7 +888,21 @@ watch(myOpenOrders, () => {
                       label-key="label"
                       multiple
                       placeholder="Select injury severities"
-                    />
+                      :ui="multiSelectUi"
+                    >
+                      <template #item-leading>
+                        <span class="relative flex size-4 items-center justify-center">
+                          <UIcon
+                            name="i-lucide-square"
+                            class="absolute size-4 text-muted group-data-[state=checked]:hidden"
+                          />
+                          <UIcon
+                            name="i-lucide-check-square"
+                            class="absolute hidden size-4 text-primary group-data-[state=checked]:block"
+                          />
+                        </span>
+                      </template>
+                    </USelect>
                   </UFormField>
 
                   <UFormField label="Liability status" required>
@@ -751,10 +925,6 @@ watch(myOpenOrders, () => {
                     />
                   </UFormField>
 
-                  <UFormField label="Minimum estimated case value" required>
-                    <UInput v-model.number="orderForm.minimumCaseValue" type="number" min="0" />
-                  </UFormField>
-
                   <UFormField label="Medical treatment" required>
                     <USelect
                       v-model="orderForm.medicalTreatment"
@@ -765,12 +935,26 @@ watch(myOpenOrders, () => {
                   </UFormField>
 
                   <UFormField label="Languages" required>
-                    <UInputMenu
+                    <USelect
                       v-model="orderForm.languages"
                       :items="languageOptions"
                       multiple
                       placeholder="Select languages"
-                    />
+                      :ui="multiSelectUi"
+                    >
+                      <template #item-leading>
+                        <span class="relative flex size-4 items-center justify-center">
+                          <UIcon
+                            name="i-lucide-square"
+                            class="absolute size-4 text-muted group-data-[state=checked]:hidden"
+                          />
+                          <UIcon
+                            name="i-lucide-check-square"
+                            class="absolute hidden size-4 text-primary group-data-[state=checked]:block"
+                          />
+                        </span>
+                      </template>
+                    </USelect>
                   </UFormField>
 
                   <UFormField label="Client requirements">
@@ -781,8 +965,13 @@ watch(myOpenOrders, () => {
                     <UInput v-model.number="orderForm.quotaTotal" type="number" min="1" />
                   </UFormField>
 
-                  <UFormField label="Expiration" description="Date when this order stops accepting retainers" required>
-                    <UInput v-model="orderForm.expiresAt" type="date" />
+                  <UFormField label="Expiration" description="Stop accepting retainers" required>
+                    <USelect
+                      v-model="orderForm.expiresInDays"
+                      :items="expirationOptions"
+                      value-key="value"
+                      label-key="label"
+                    />
                   </UFormField>
                 </div>
               </div>
@@ -798,7 +987,7 @@ watch(myOpenOrders, () => {
                 <UButton
                   color="primary"
                   variant="solid"
-                  :disabled="!String(orderForm.stateCode || '').trim() || Number(orderForm.quotaTotal) <= 0 || !String(orderForm.expiresAt || '').trim()"
+                  :disabled="!String(orderForm.stateCode || '').trim() || Number(orderForm.quotaTotal) <= 0"
                   @click="async () => { await submitCreateOrder(); close() }"
                 >
                   Create
@@ -812,7 +1001,7 @@ watch(myOpenOrders, () => {
           <UCard>
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-muted">Open Orders (All States)</p>
+                <p class="text-sm text-muted">My Open Orders (All States)</p>
                 <p class="text-2xl font-semibold">{{ totalOpenOrders }}</p>
               </div>
               <UIcon name="i-lucide-activity" class="size-8 text-primary" />
@@ -823,19 +1012,33 @@ watch(myOpenOrders, () => {
         <div>
           <UCard>
             <div class="space-y-3">
-              <h3 class="font-semibold">Competition Legend</h3>
-              <div class="grid gap-3 sm:grid-cols-3">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <h3 class="font-semibold">My order volume by state</h3>
+                <USelect v-model="mapFilter" :items="mapFilterOptions" size="sm" />
+              </div>
+              <div class="grid gap-3 sm:grid-cols-5">
+                <div class="flex items-center gap-2">
+                  <div class="size-4 rounded-full bg-gray-300" />
+                  <span class="text-sm">0 orders</span>
+                </div>
                 <div class="flex items-center gap-2">
                   <div class="size-4 rounded-full bg-green-500" />
-                  <span class="text-sm">Light (&lt; 10 open orders)</span>
+                  <span class="text-sm">1–5</span>
                 </div>
                 <div class="flex items-center gap-2">
                   <div class="size-4 rounded-full bg-yellow-500" />
-                  <span class="text-sm">Moderate (10–20 open orders)</span>
+                  <span class="text-sm">6–10</span>
                 </div>
                 <div class="flex items-center gap-2">
                   <div class="size-4 rounded-full bg-red-500" />
-                  <span class="text-sm">Heavy (&gt; 20 open orders)</span>
+                  <span class="text-sm">11+</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <div
+                    class="size-4 rounded-full"
+                    style="background: repeating-linear-gradient(45deg, #9ca3af 0 2px, #f3f4f6 2px 6px);"
+                  />
+                  <span class="text-sm">Blocked</span>
                 </div>
               </div>
             </div>
@@ -861,9 +1064,17 @@ watch(myOpenOrders, () => {
               </div>
               <div class="mt-1 flex items-center gap-2">
                 <UBadge
-                  :color="tooltip.state.status === 'light' ? 'success' : tooltip.state.status === 'moderate' ? 'warning' : 'error'"
+                  :color="getMyOrderBadgeColor(tooltip.state.openOrders)"
                   variant="subtle"
-                  :label="getStatusLabel(tooltip.state.status)"
+                  :label="getMyOrderBadgeLabel(tooltip.state.openOrders)"
+                  size="xs"
+                />
+
+                <UBadge
+                  v-if="tooltip.blocked"
+                  color="neutral"
+                  variant="subtle"
+                  label="Blocked"
                   size="xs"
                 />
 
@@ -876,7 +1087,7 @@ watch(myOpenOrders, () => {
                 />
               </div>
               <div class="mt-2 space-y-1 text-xs text-muted">
-                <div>Open orders: {{ tooltip.state.openOrders }}</div>
+                <div>My open orders in state: {{ tooltip.state.openOrders }}</div>
                 <div v-if="tooltip.myOrder">
                   Your quota: {{ tooltip.myOrder.quota_filled }}/{{ tooltip.myOrder.quota_total }}
                 </div>
@@ -924,9 +1135,28 @@ watch(myOpenOrders, () => {
                     </div>
                   </div>
 
-                  <div class="flex items-center gap-2">
-                    <UBadge color="primary" variant="subtle" :label="`Quota ${order.quota_filled}/${order.quota_total}`" />
-                    <UBadge color="neutral" variant="subtle" :label="`Expires ${String(order.expires_at || '').slice(0, 10)}`" />
+                  <div class="min-w-[170px]">
+                    <div class="flex items-center justify-end gap-2">
+                      <UBadge color="primary" variant="subtle" :label="`Quota ${order.quota_filled}/${order.quota_total}`" />
+                      <UBadge color="neutral" variant="subtle" :label="`Expires ${String(order.expires_at || '').slice(0, 10)}`" />
+                    </div>
+
+                    <div class="mt-2 flex items-center justify-end gap-2">
+                      <div class="w-10 text-right text-xs text-muted tabular-nums">
+                        {{ orderProgressPercent(order) }}%
+                      </div>
+
+                      <div class="h-2 w-28 overflow-hidden rounded bg-muted/70 ring-1 ring-inset ring-default">
+                        <div
+                          class="h-full rounded bg-primary"
+                          :style="{ width: `${orderProgressPercent(order)}%` }"
+                        />
+                      </div>
+
+                      <div class="w-12 text-right text-xs text-muted tabular-nums">
+                        {{ order.quota_filled }}/{{ order.quota_total }}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
