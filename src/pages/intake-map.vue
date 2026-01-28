@@ -4,7 +4,7 @@ import usSvgFallbackRaw from '../assets/us.svg?raw'
 
 import { useAuth } from '../composables/useAuth'
 import { getAttorneyProfile, patchAttorneyProfile } from '../lib/attorney-profile'
-import { createOrder, listOpenOrdersForLawyer, type OrderRow } from '../lib/orders'
+import { createOrder, listOpenOrdersForLawyer, listOrdersForLawyer, type OrderRow } from '../lib/orders'
 import { US_STATES } from '../lib/us-states'
 
 const US_SVG_ASSET_URL = new URL('../assets/us.svg', import.meta.url).toString()
@@ -24,6 +24,7 @@ const tooltipEl = ref<HTMLDivElement | null>(null)
 const states = ref<StateOrders[]>([])
 
 const myOpenOrders = ref<OrderRow[]>([])
+const myClosedOrders = ref<OrderRow[]>([])
 
 const orderDetailsOpen = ref(false)
 const selectedOrder = ref<OrderRow | null>(null)
@@ -67,25 +68,54 @@ const stateByCode = computed(() => {
 
 const totalOpenOrders = computed(() => states.value.reduce((sum, s) => sum + s.openOrders, 0))
 
-const getMyOrderColor = (openOrders: number) => {
-  if (openOrders <= 0) return '#d1d5db'
-  if (openOrders <= 5) return '#22c55e'
-  if (openOrders <= 10) return '#eab308'
-  return '#ef4444'
+const COLOR_NEUTRAL = '#d1d5db'
+const COLOR_GREEN = '#22c55e'
+const COLOR_YELLOW = '#eab308'
+const COLOR_RED = '#ef4444'
+
+const isOrderInProgress = (order: Pick<OrderRow, 'quota_filled' | 'quota_total'>) => {
+  return orderProgressPercent(order) > 0
 }
 
-const getMyOrderBadgeColor = (openOrders: number) => {
-  if (openOrders <= 0) return 'neutral'
-  if (openOrders <= 5) return 'success'
-  if (openOrders <= 10) return 'warning'
-  return 'error'
+const openOrdersForStateCode = (stateCode: string) => {
+  const code = String(stateCode || '').trim().toUpperCase()
+  if (!code) return [] as OrderRow[]
+  return myOpenOrders.value.filter((o) => (o.target_states ?? []).some((s) => String(s || '').trim().toUpperCase() === code))
 }
 
-const getMyOrderBadgeLabel = (openOrders: number) => {
-  if (openOrders <= 0) return 'No open orders'
-  if (openOrders <= 5) return '1–5 open orders'
-  if (openOrders <= 10) return '6–10 open orders'
-  return '11+ open orders'
+const hasOpenOrderForStateCode = (stateCode: string) => {
+  return openOrdersForStateCode(stateCode).length > 0
+}
+
+const hasProgressInOpenOrdersForStateCode = (stateCode: string) => {
+  return openOrdersForStateCode(stateCode).some((o) => isOrderInProgress(o))
+}
+
+const hasClosedOrderForStateCode = (stateCode: string) => {
+  const code = String(stateCode || '').trim().toUpperCase()
+  if (!code) return false
+  return myClosedOrders.value.some((o) => (o.target_states ?? []).some((s) => String(s || '').trim().toUpperCase() === code))
+}
+
+const getStateFillColor = (stateCode: string) => {
+  if (hasOpenOrderForStateCode(stateCode)) {
+    return hasProgressInOpenOrdersForStateCode(stateCode) ? COLOR_YELLOW : COLOR_GREEN
+  }
+
+  if (hasClosedOrderForStateCode(stateCode)) return COLOR_RED
+  return COLOR_NEUTRAL
+}
+
+const getMyOrderBadgeColor = (stateCode: string) => {
+  if (hasOpenOrderForStateCode(stateCode)) return hasProgressInOpenOrdersForStateCode(stateCode) ? 'warning' : 'success'
+  if (hasClosedOrderForStateCode(stateCode)) return 'error'
+  return 'neutral'
+}
+
+const getMyOrderBadgeLabel = (stateCode: string) => {
+  if (hasOpenOrderForStateCode(stateCode)) return hasProgressInOpenOrdersForStateCode(stateCode) ? 'In progress' : 'Open (0% progress)'
+  if (hasClosedOrderForStateCode(stateCode)) return 'Fulfilled / Expired'
+  return 'No orders'
 }
 
 const refreshMyOrders = async () => {
@@ -98,10 +128,24 @@ const refreshMyOrders = async () => {
   myOpenOrders.value = await listOpenOrdersForLawyer(userId)
 }
 
+const refreshMyClosedOrders = async () => {
+  const userId = auth.state.value.user?.id ?? null
+  if (!userId) {
+    myClosedOrders.value = []
+    return
+  }
+
+  myClosedOrders.value = await listOrdersForLawyer({
+    lawyerId: userId,
+    statuses: ['FULFILLED', 'EXPIRED']
+  })
+}
+
 const refreshAll = async () => {
   loading.value = true
   try {
     await refreshMyOrders()
+    await refreshMyClosedOrders()
     rebuildStatesFromMyOrders()
     applyMapColors()
   } finally {
@@ -245,7 +289,7 @@ const orderForm = ref({
   medicalTreatment: 'ongoing' as string,
   languages: ['English'] as string[],
   noPriorAttorney: true as boolean,
-  quotaTotal: 10 as number,
+  quotaTotal: 5 as number,
   expiresInDays: 7 as 7 | 14 | 30 | 60
 })
 
@@ -259,7 +303,7 @@ const resetOrderForm = () => {
     medicalTreatment: 'ongoing',
     languages: ['English'],
     noPriorAttorney: true,
-    quotaTotal: 10,
+    quotaTotal: 5,
     expiresInDays: 7
   }
 }
@@ -345,21 +389,25 @@ const orderStateOptions = computed(() => {
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name))
     .filter((s) => !blockedStateSet.value.has(s.code))
+    .filter((s) => !hasOpenOrderForStateCode(s.code))
     .map((s) => ({ label: `${s.name} (${s.code})`, value: s.code }))
 })
 
 const submitCreateOrder = async () => {
   const userId = auth.state.value.user?.id ?? null
-  if (!userId) return
+  if (!userId) return false
 
   const stateCode = String(orderForm.value.stateCode || '').trim().toUpperCase()
-  if (!stateCode) return
+  if (!stateCode) return false
+
+  if (hasOpenOrderForStateCode(stateCode)) return false
 
   const quotaTotal = Number(orderForm.value.quotaTotal)
-  if (!Number.isFinite(quotaTotal) || quotaTotal <= 0) return
+  if (!Number.isFinite(quotaTotal) || quotaTotal <= 0) return false
+  if (quotaTotal > 5) return false
 
   const expiresInDays = Number(orderForm.value.expiresInDays)
-  if (![7, 14, 30, 60].includes(expiresInDays)) return
+  if (![7, 14, 30, 60].includes(expiresInDays)) return false
 
   const expiresAt = new Date()
   expiresAt.setDate(expiresAt.getDate() + expiresInDays)
@@ -383,8 +431,11 @@ const submitCreateOrder = async () => {
   createOrderOpen.value = false
   resetOrderForm()
   await refreshMyOrders()
+  await refreshMyClosedOrders()
   rebuildStatesFromMyOrders()
   applyMapColors()
+
+  return true
 }
 
 const MAP_PATH_SELECTOR = 'path[data-id], path[id]'
@@ -453,8 +504,8 @@ const applyMapColors = () => {
     const fill = isBlocked
       ? `url(#${BLOCKED_PATTERN_ID})`
       : state
-        ? getMyOrderColor(Number(state.openOrders) || 0)
-        : '#d1d5db'
+        ? getStateFillColor(state.code)
+        : COLOR_NEUTRAL
 
     const stroke = '#0b0b0b'
     const strokeWidth = '0.8'
@@ -586,6 +637,13 @@ const handleStateClick = (evt: Event) => {
   }
 
   if (blockedStateSet.value.has(normalizedCode)) return
+
+  const existing = myOrderByStateCode.value.get(normalizedCode) ?? null
+  if (existing) {
+    openOrderDetails(existing)
+    return
+  }
+
   openCreateOrderForState(state.code)
 }
 
@@ -656,6 +714,7 @@ onMounted(() => {
     loading.value = true
     try {
       await refreshMyOrders()
+      await refreshMyClosedOrders()
       await loadBlockedStates()
       rebuildStatesFromMyOrders()
     } finally {
@@ -680,6 +739,10 @@ watch(states, () => {
 
 watch(myOpenOrders, () => {
   rebuildStatesFromMyOrders()
+  applyMapColors()
+})
+
+watch(myClosedOrders, () => {
   applyMapColors()
 })
 </script>
@@ -855,7 +918,9 @@ watch(myOpenOrders, () => {
           <template #body="{ close }">
             <div class="flex max-h-[78vh] flex-col">
               <div class="px-6 pt-6">
-                <div class="text-sm text-muted">Define your demand packet for the selected geography.</div>
+                <div class="text-sm text-muted">
+                  Define your demand packet for the selected geography.
+                </div>
               </div>
 
               <div class="min-h-0 flex-1 overflow-y-auto px-6 py-4">
@@ -962,7 +1027,13 @@ watch(myOpenOrders, () => {
                   </UFormField>
 
                   <UFormField label="Quota" description="Total number of cases needed" required>
-                    <UInput v-model.number="orderForm.quotaTotal" type="number" min="1" />
+                    <UInput
+                      v-model.number="orderForm.quotaTotal"
+                      type="number"
+                      min="1"
+                      max="5"
+                    />
+                    <div class="mt-1 text-xs text-muted">Maximum 5 cases per order.</div>
                   </UFormField>
 
                   <UFormField label="Expiration" description="Stop accepting retainers" required>
@@ -988,7 +1059,7 @@ watch(myOpenOrders, () => {
                   color="primary"
                   variant="solid"
                   :disabled="!String(orderForm.stateCode || '').trim() || Number(orderForm.quotaTotal) <= 0"
-                  @click="async () => { await submitCreateOrder(); close() }"
+                  @click="async () => { const created = await submitCreateOrder(); if (created) close() }"
                 >
                   Create
                 </UButton>
@@ -1019,19 +1090,19 @@ watch(myOpenOrders, () => {
               <div class="grid gap-3 sm:grid-cols-5">
                 <div class="flex items-center gap-2">
                   <div class="size-4 rounded-full bg-gray-300" />
-                  <span class="text-sm">0 orders</span>
+                  <span class="text-sm">No orders</span>
                 </div>
                 <div class="flex items-center gap-2">
                   <div class="size-4 rounded-full bg-green-500" />
-                  <span class="text-sm">1–5</span>
+                  <span class="text-sm">Open (0% progress)</span>
                 </div>
                 <div class="flex items-center gap-2">
                   <div class="size-4 rounded-full bg-yellow-500" />
-                  <span class="text-sm">6–10</span>
+                  <span class="text-sm">In progress</span>
                 </div>
                 <div class="flex items-center gap-2">
                   <div class="size-4 rounded-full bg-red-500" />
-                  <span class="text-sm">11+</span>
+                  <span class="text-sm">Fulfilled / Expired</span>
                 </div>
                 <div class="flex items-center gap-2">
                   <div
@@ -1064,9 +1135,9 @@ watch(myOpenOrders, () => {
               </div>
               <div class="mt-1 flex items-center gap-2">
                 <UBadge
-                  :color="getMyOrderBadgeColor(tooltip.state.openOrders)"
+                  :color="getMyOrderBadgeColor(tooltip.state.code)"
                   variant="subtle"
-                  :label="getMyOrderBadgeLabel(tooltip.state.openOrders)"
+                  :label="getMyOrderBadgeLabel(tooltip.state.code)"
                   size="xs"
                 />
 
