@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { useAuth } from '../composables/useAuth'
-import { listOrdersForLawyer } from '../lib/orders'
+import { listOrdersForLawyer, type OrderRow } from '../lib/orders'
+import { supabase } from '../lib/supabase'
 
 type StageKey = 'returned_back' | 'dropped_retainers' | 'signed_retainers'
 
@@ -18,7 +20,7 @@ type FulfillmentOrder = {
   clientName: string
   phone: string
   state: string
-  caseValue: number
+  status: string
   stage: StageKey
   reason?: string
   signedDate?: string
@@ -28,9 +30,33 @@ const loading = ref(false)
 const query = ref('')
 const selectedStage = ref<'all' | StageKey>('all')
 
+const selectedOrderId = ref<string | undefined>(undefined)
+const orders = ref<OrderRow[]>([])
+const leads = ref<FulfillmentOrder[]>([])
+
 const auth = useAuth()
+const router = useRouter()
 
 const totalOrdersCount = ref(0)
+
+const ORDER_LINK_KEYS = ['order_id', 'intake_order_id', 'assigned_order_id', 'orders_id', 'order_uuid'] as const
+
+const normalize = (v: unknown) => String(v ?? '').trim().toLowerCase()
+
+const toStage = (status: string) => {
+  const s = normalize(status)
+  if (s.includes('drop')) return 'dropped_retainers' as const
+  if (s.includes('signed')) return 'signed_retainers' as const
+  if (s.includes('return')) return 'returned_back' as const
+  return 'returned_back' as const
+}
+
+const detectOrderLinkKey = (rows: Array<Record<string, unknown>>) => {
+  for (const key of ORDER_LINK_KEYS) {
+    if (rows.some(r => r[key] !== undefined && r[key] !== null)) return key
+  }
+  return null
+}
 
 const load = async () => {
   loading.value = true
@@ -39,11 +65,52 @@ const load = async () => {
     const userId = auth.state.value.user?.id ?? null
     if (!userId) {
       totalOrdersCount.value = 0
+      orders.value = []
+      selectedOrderId.value = undefined
+      leads.value = []
       return
     }
 
     const data = await listOrdersForLawyer({ lawyerId: userId })
+    orders.value = data
     totalOrdersCount.value = data.length
+
+    if (!selectedOrderId.value && data.length) {
+      selectedOrderId.value = data[0]?.id ?? undefined
+    }
+
+    const { data: leadRows, error: leadErr } = await supabase
+      .from('daily_deal_flow')
+      .select('*')
+      .eq('assigned_attorney_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1000)
+
+    if (leadErr) throw leadErr
+
+    const rawRows = (leadRows ?? []) as Array<Record<string, unknown>>
+    const linkKey = detectOrderLinkKey(rawRows)
+
+    const selected = selectedOrderId.value
+    const filteredByOrder = selected && linkKey
+      ? rawRows.filter(r => String(r[linkKey] ?? '') === selected)
+      : rawRows
+
+    leads.value = filteredByOrder.map((r) => {
+      const status = String(r.status ?? '—')
+      const stage = toStage(status)
+      return {
+        id: String(r.id ?? ''),
+        date: String(r.date ?? (r.created_at ?? '')).slice(0, 10),
+        clientName: String(r.insured_name ?? '—'),
+        phone: String(r.client_phone_number ?? '—'),
+        state: String(r.state ?? r.state_code ?? '—'),
+        status,
+        stage,
+        reason: r.reason ? String(r.reason) : undefined,
+        signedDate: r.signed_date ? String(r.signed_date).slice(0, 10) : undefined
+      }
+    }).filter(l => Boolean(l.id))
   } finally {
     loading.value = false
   }
@@ -54,27 +121,51 @@ onMounted(() => {
   })
 })
 
+watch(selectedOrderId, (next, prev) => {
+  if (next === prev) return
+  load().catch(() => {
+  })
+})
+
 const filteredOrders = computed(() => {
-  return [] as FulfillmentOrder[]
+  const q = query.value.trim().toLowerCase()
+  const stageFilter = selectedStage.value
+
+  return leads.value.filter((l) => {
+    if (stageFilter !== 'all' && l.stage !== stageFilter) return false
+    if (!q) return true
+    return [l.clientName, l.phone, l.id, l.status, l.state].some(v => String(v ?? '').toLowerCase().includes(q))
+  })
 })
 
 const ordersByStage = computed(() => {
   const grouped = new Map<StageKey, FulfillmentOrder[]>()
   STAGES.forEach((s) => grouped.set(s.key, []))
+  filteredOrders.value.forEach((o) => {
+    const arr = grouped.get(o.stage) ?? []
+    arr.push(o)
+    grouped.set(o.stage, arr)
+  })
   return grouped
 })
 
 const totalOrders = computed(() => totalOrdersCount.value)
-const signedCount = computed(() => 0)
-const droppedCount = computed(() => 0)
-const returnedCount = computed(() => 0)
+const signedCount = computed(() => (ordersByStage.value.get('signed_retainers') ?? []).length)
+const droppedCount = computed(() => (ordersByStage.value.get('dropped_retainers') ?? []).length)
+const returnedCount = computed(() => (ordersByStage.value.get('returned_back') ?? []).length)
 
-const formatMoney = (n: number) => {
-  try {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
-  } catch {
-    return `$${n}`
-  }
+const orderOptions = computed(() => {
+  return orders.value.map((o) => {
+    const states = (o.target_states || []).map(s => String(s || '').toUpperCase()).join(', ') || '—'
+    return {
+      label: `${o.case_type} (${states})`,
+      value: o.id
+    }
+  })
+})
+
+const openLead = (lead: FulfillmentOrder) => {
+  router.push(`/retainers/${lead.id}`)
 }
 </script>
 
@@ -146,11 +237,20 @@ const formatMoney = (n: number) => {
 
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex flex-wrap items-center gap-3">
+            <USelect
+              v-model="selectedOrderId"
+              :items="orderOptions"
+              class="w-[28rem]"
+              value-key="value"
+              label-key="label"
+              placeholder="Select an order"
+            />
+
             <UInput
               v-model="query"
               class="max-w-md"
               icon="i-lucide-search"
-              placeholder="Search orders..."
+              placeholder="Search leads..."
             />
 
             <USelect
@@ -162,7 +262,7 @@ const formatMoney = (n: number) => {
             />
           </div>
 
-          <UBadge variant="subtle" :label="`${filteredOrders.length} orders`" />
+          <UBadge variant="subtle" :label="`${filteredOrders.length} leads`" />
         </div>
 
         <div class="mt-4 min-h-0 flex-1 overflow-auto">
@@ -186,13 +286,14 @@ const formatMoney = (n: number) => {
                   :key="order.id"
                   class="w-full"
                   :ui="{ body: '!p-2 sm:!p-2' }"
+                  @click="openLead(order)"
                 >
                   <div class="flex items-start justify-between gap-2">
                     <div class="min-w-0">
                       <div class="truncate text-sm font-semibold">{{ order.clientName }}</div>
                       <div class="mt-0.5 text-xs text-muted">{{ order.id }} · {{ order.phone }}</div>
                     </div>
-                    <div class="shrink-0 text-sm font-semibold">{{ formatMoney(order.caseValue) }}</div>
+                    <UBadge variant="subtle" size="xs" :label="order.status" />
                   </div>
 
                   <div class="mt-2 flex items-center justify-between gap-2">

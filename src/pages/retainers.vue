@@ -19,7 +19,10 @@ type DailyDealFlow = {
   agent: string | null
   carrier: string | null
   created_at: string | null
+  source?: 'daily_deal_flow' | 'leads'
 }
+
+type LeadRow = Record<string, unknown>
 
 const router = useRouter()
 const auth = useAuth()
@@ -200,7 +203,7 @@ const load = async () => {
     statusFilter.value = PENDING_APPROVAL
 
     if (q) {
-      const pattern = `%${q.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`
+      const pattern = `%${q.replace(/%/g, '\\%').replace(/_/g, '\\_')}%`
       queryBuilder = queryBuilder.or([
         `submission_id.ilike.${pattern}`,
         `insured_name.ilike.${pattern}`,
@@ -218,7 +221,58 @@ const load = async () => {
 
     if (supaError) throw supaError
 
-    const dealFlows = (data ?? []) as DailyDealFlow[]
+    let dealFlows = (data ?? []) as DailyDealFlow[]
+    dealFlows.forEach((r) => {
+      r.source = 'daily_deal_flow'
+    })
+
+    const effectiveCount = count ?? 0
+
+    if (userRole === 'lawyer' && userId && effectiveCount === 0) {
+      let leadsQb = supabase
+        .from('leads')
+        .select('*', { count: 'exact' })
+        .eq('assigned_attorney_id', userId)
+
+      if (q) {
+        const pattern = `%${q.replace(/%/g, '\\%').replace(/_/g, '\\_')}%`
+        leadsQb = leadsQb.or([
+          `submission_id.ilike.${pattern}`,
+          `customer_full_name.ilike.${pattern}`,
+          `phone_number.ilike.${pattern}`
+        ].join(','))
+      }
+
+      const { data: leadsData, count: leadsCount, error: leadsErr } = await leadsQb
+        .order('created_at', { ascending: false })
+        .range(from, to)
+
+      if (leadsErr) throw leadsErr
+
+      const mapped = (leadsData ?? []).map((r: unknown): DailyDealFlow => {
+        const row = (r ?? {}) as LeadRow
+        const createdAt = (row.created_at ? String(row.created_at) : null)
+        const date = (row.submission_date ? String(row.submission_date) : createdAt)
+        return {
+          id: String(row.id ?? ''),
+          submission_id: String(row.submission_id ?? ''),
+          insured_name: (row.customer_full_name ? String(row.customer_full_name) : null),
+          client_phone_number: (row.phone_number ? String(row.phone_number) : null),
+          lead_vendor: (row.lead_vendor ? String(row.lead_vendor) : null),
+          date,
+          status: (row.status ? String(row.status) : PENDING_APPROVAL),
+          assigned_attorney_id: (row.assigned_attorney_id ? String(row.assigned_attorney_id) : null),
+          agent: null,
+          carrier: null,
+          created_at: createdAt,
+          source: 'leads'
+        }
+      }).filter((r) => Boolean(r.id) && Boolean(r.submission_id))
+
+      rows.value = mapped
+      totalCount.value = leadsCount ?? 0
+      return
+    }
 
     if (canSeeAssignments.value) {
       const attorneyIds = [...new Set(dealFlows
@@ -235,7 +289,10 @@ const load = async () => {
         if (attorneysError) throw attorneysError
 
         const attorneyNameByUserId = new Map(
-          (attorneys ?? []).map((a: any) => [String(a.user_id), String(a.full_name ?? '').trim()])
+          (attorneys ?? []).map((a: unknown) => {
+            const row = (a ?? {}) as Record<string, unknown>
+            return [String(row.user_id ?? ''), String(row.full_name ?? '').trim()]
+          })
         )
 
         dealFlows.forEach((flow) => {
@@ -248,7 +305,7 @@ const load = async () => {
     }
 
     rows.value = dealFlows
-    totalCount.value = count ?? 0
+    totalCount.value = effectiveCount
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Failed to load retainers'
     error.value = msg
@@ -329,6 +386,7 @@ const loadFilterOptions = async () => {
     }
     availableStatuses.value = [PENDING_APPROVAL]
   } catch {
+    return
   }
 }
 
@@ -364,6 +422,7 @@ const dropTarget = ref<DailyDealFlow | null>(null)
 const dropBusy = ref(false)
 
 const openDrop = (row: DailyDealFlow) => {
+  if (row.source === 'leads') return
   dropTarget.value = row
   dropOpen.value = true
 }
@@ -379,6 +438,7 @@ const handleDropOpenUpdate = (v: boolean) => {
 const confirmDrop = async () => {
   const target = dropTarget.value
   if (!target?.id) return
+  if (target.source === 'leads') return
 
   dropBusy.value = true
   try {
@@ -562,6 +622,7 @@ const confirmDrop = async () => {
                 variant="outline"
                 icon="i-lucide-ban"
                 label="Drop"
+                :disabled="row.original.source === 'leads'"
                 @click="openDrop(row.original)"
               />
             </div>

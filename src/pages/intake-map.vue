@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import usSvgFallbackRaw from '../assets/us.svg?raw'
 
 import { useAuth } from '../composables/useAuth'
@@ -16,6 +17,7 @@ type StateOrders = {
 }
 
 const auth = useAuth()
+const router = useRouter()
 const loading = ref(false)
 const tooltip = ref({ open: false, x: 0, y: 0, state: null as StateOrders | null, myOrder: null as OrderRow | null, blocked: false })
 const mapRoot = ref<HTMLDivElement | null>(null)
@@ -25,28 +27,6 @@ const states = ref<StateOrders[]>([])
 
 const myOpenOrders = ref<OrderRow[]>([])
 const myClosedOrders = ref<OrderRow[]>([])
-
-const orderDetailsOpen = ref(false)
-const selectedOrder = ref<OrderRow | null>(null)
-
-const openOrderDetails = (order: OrderRow) => {
-  selectedOrder.value = order
-  orderDetailsOpen.value = true
-}
-
-const closeOrderDetails = () => {
-  orderDetailsOpen.value = false
-  selectedOrder.value = null
-}
-
-const selectedOrderCriteriaJson = computed(() => {
-  const criteria = selectedOrder.value?.criteria ?? null
-  try {
-    return JSON.stringify(criteria, null, 2)
-  } catch {
-    return String(criteria)
-  }
-})
 
 const myOrderByStateCode = computed(() => {
   const map = new Map<string, OrderRow>()
@@ -154,8 +134,8 @@ const refreshAll = async () => {
 }
 
 const orderProgressPercent = (order: Pick<OrderRow, 'quota_filled' | 'quota_total'>) => {
-  const total = Number((order as any)?.quota_total)
-  const filled = Number((order as any)?.quota_filled)
+  const total = Number(order.quota_total)
+  const filled = Number(order.quota_filled)
   if (!Number.isFinite(total) || total <= 0) return 0
   if (!Number.isFinite(filled) || filled <= 0) return 0
   const pct = (filled / total) * 100
@@ -218,7 +198,8 @@ const loadBlockedStates = async () => {
 
   try {
     const profile = await getAttorneyProfile(userId)
-    const codes = Array.isArray((profile as any)?.blocked_states) ? (profile as any).blocked_states : null
+    const raw = (profile as unknown as Record<string, unknown>)?.blocked_states
+    const codes = Array.isArray(raw) ? (raw as string[]) : null
     if (codes) {
       blockedStateCodes.value = codes
       saveBlockedStatesToLocalStorage(codes)
@@ -277,12 +258,11 @@ const rebuildStatesFromMyOrders = () => {
 
 const createOrderOpen = ref(false)
 const createOrderConfirmOpen = ref(false)
-
 const pendingStateCode = ref<string | null>(null)
 
 const orderForm = ref({
   stateCode: '' as string,
-  caseType: 'Motor Vehicle Accident' as string,
+  caseCategory: 'Motor Vehicle Accident' as string,
   injurySeverity: [] as string[],
   liabilityStatus: 'clear_only' as 'clear_only' | 'disputed_ok',
   insuranceStatus: 'insured_only' as 'insured_only' | 'uninsured_ok',
@@ -293,10 +273,19 @@ const orderForm = ref({
   expiresInDays: 7 as 7 | 14 | 30 | 60
 })
 
+const createOrderSubmitting = ref(false)
+
+const quotaError = computed(() => {
+  const raw = Number(orderForm.value.quotaTotal)
+  if (!Number.isFinite(raw) || raw <= 0) return null
+  if (raw > 5) return 'Only 5 cases are allowed per order. Please reduce your quota to 5 or less.'
+  return null
+})
+
 const resetOrderForm = () => {
   orderForm.value = {
     stateCode: '',
-    caseType: 'Motor Vehicle Accident',
+    caseCategory: 'Motor Vehicle Accident',
     injurySeverity: [],
     liabilityStatus: 'clear_only',
     insuranceStatus: 'insured_only',
@@ -415,7 +404,7 @@ const submitCreateOrder = async () => {
   await createOrder({
     lawyer_id: userId,
     target_states: [stateCode],
-    case_type: String(orderForm.value.caseType || '').trim(),
+    case_type: String(orderForm.value.caseCategory || '').trim(),
     quota_total: Math.round(quotaTotal),
     expires_at: expiresAt.toISOString(),
     criteria: {
@@ -436,6 +425,19 @@ const submitCreateOrder = async () => {
   applyMapColors()
 
   return true
+}
+
+const handleCreateOrderSubmit = async (close: () => void) => {
+  if (createOrderSubmitting.value) return
+  if (quotaError.value) return
+
+  createOrderSubmitting.value = true
+  try {
+    const created = await submitCreateOrder()
+    if (created) close()
+  } finally {
+    createOrderSubmitting.value = false
+  }
 }
 
 const MAP_PATH_SELECTOR = 'path[data-id], path[id]'
@@ -640,7 +642,7 @@ const handleStateClick = (evt: Event) => {
 
   const existing = myOrderByStateCode.value.get(normalizedCode) ?? null
   if (existing) {
-    openOrderDetails(existing)
+    router.push(`/orders/${existing.id}`)
     return
   }
 
@@ -832,82 +834,6 @@ watch(myClosedOrders, () => {
         </UModal>
 
         <UModal
-          v-if="orderDetailsOpen && selectedOrder"
-          :open="true"
-          title="Order Details"
-          @update:open="(v) => { if (!v) closeOrderDetails() }"
-        >
-          <template #body>
-            <div class="space-y-4">
-              <div class="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <div class="text-xs text-muted">
-                    Case type
-                  </div>
-                  <div class="font-semibold">
-                    {{ selectedOrder.case_type }}
-                  </div>
-                </div>
-
-                <div>
-                  <div class="text-xs text-muted">
-                    Sub-type
-                  </div>
-                  <div class="font-semibold">
-                    {{ selectedOrder.case_subtype || '—' }}
-                  </div>
-                </div>
-
-                <div>
-                  <div class="text-xs text-muted">
-                    Target states
-                  </div>
-                  <div class="font-semibold">
-                    {{ (selectedOrder.target_states || []).map(s => String(s || '').toUpperCase()).join(', ') || '—' }}
-                  </div>
-                </div>
-
-                <div>
-                  <div class="text-xs text-muted">
-                    Quota
-                  </div>
-                  <div class="font-semibold">
-                    {{ selectedOrder.quota_filled }}/{{ selectedOrder.quota_total }}
-                  </div>
-                </div>
-
-                <div>
-                  <div class="text-xs text-muted">
-                    Created
-                  </div>
-                  <div class="font-semibold">
-                    {{ String(selectedOrder.created_at || '').slice(0, 10) }}
-                  </div>
-                </div>
-
-                <div>
-                  <div class="text-xs text-muted">
-                    Expires
-                  </div>
-                  <div class="font-semibold">
-                    {{ String(selectedOrder.expires_at || '').slice(0, 10) }}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <div class="text-xs text-muted">
-                  Criteria
-                </div>
-                <pre class="mt-2 whitespace-pre-wrap rounded-lg border border-default bg-elevated p-3 text-xs">
-{{ selectedOrderCriteriaJson }}
-                </pre>
-              </div>
-            </div>
-          </template>
-        </UModal>
-
-        <UModal
           v-if="createOrderOpen"
           :open="true"
           title="Create Intake Order"
@@ -924,6 +850,14 @@ watch(myClosedOrders, () => {
               </div>
 
               <div class="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+                <UAlert
+                  v-if="quotaError"
+                  color="error"
+                  variant="subtle"
+                  title="Quota limit"
+                  :description="quotaError"
+                />
+
                 <div class="grid gap-4 sm:grid-cols-2">
                   <UFormField label="State" required>
                     <USelect
@@ -937,7 +871,7 @@ watch(myClosedOrders, () => {
 
                   <UFormField label="Case category" required>
                     <USelect
-                      v-model="orderForm.caseType"
+                      v-model="orderForm.caseCategory"
                       :items="caseCategoryOptions"
                       value-key="value"
                       label-key="label"
@@ -1033,16 +967,30 @@ watch(myClosedOrders, () => {
                       min="1"
                       max="5"
                     />
-                    <div class="mt-1 text-xs text-muted">Maximum 5 cases per order.</div>
+                    <div class="mt-1 text-xs text-muted">
+                      Maximum 5 cases per order.
+                    </div>
                   </UFormField>
 
                   <UFormField label="Expiration" description="Stop accepting retainers" required>
-                    <USelect
-                      v-model="orderForm.expiresInDays"
-                      :items="expirationOptions"
-                      value-key="value"
-                      label-key="label"
-                    />
+                    <div class="grid grid-cols-2 gap-x-1 gap-y-2">
+                      <label
+                        v-for="opt in expirationOptions"
+                        :key="opt.value"
+                        class="flex items-center gap-3"
+                      >
+                        <input
+                          :checked="orderForm.expiresInDays === opt.value"
+                          type="radio"
+                          name="expiresInDays"
+                          class="h-4 w-4"
+                          @change="() => { orderForm.expiresInDays = opt.value as 7 | 14 | 30 | 60 }"
+                        >
+                        <span class="text-sm">
+                          {{ opt.label }}
+                        </span>
+                      </label>
+                    </div>
                   </UFormField>
                 </div>
               </div>
@@ -1058,8 +1006,9 @@ watch(myClosedOrders, () => {
                 <UButton
                   color="primary"
                   variant="solid"
-                  :disabled="!String(orderForm.stateCode || '').trim() || Number(orderForm.quotaTotal) <= 0"
-                  @click="async () => { const created = await submitCreateOrder(); if (created) close() }"
+                  :loading="createOrderSubmitting"
+                  :disabled="createOrderSubmitting || !!quotaError || !String(orderForm.stateCode || '').trim() || Number(orderForm.quotaTotal) <= 0"
+                  @click="async () => { await handleCreateOrderSubmit(close) }"
                 >
                   Create
                 </UButton>
@@ -1072,8 +1021,12 @@ watch(myClosedOrders, () => {
           <UCard>
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-muted">My Open Orders (All States)</p>
-                <p class="text-2xl font-semibold">{{ totalOpenOrders }}</p>
+                <p class="text-sm text-muted">
+                  My Open Orders (All States)
+                </p>
+                <p class="text-2xl font-semibold">
+                  {{ totalOpenOrders }}
+                </p>
               </div>
               <UIcon name="i-lucide-activity" class="size-8 text-primary" />
             </div>
@@ -1084,7 +1037,9 @@ watch(myClosedOrders, () => {
           <UCard>
             <div class="space-y-3">
               <div class="flex flex-wrap items-center justify-between gap-3">
-                <h3 class="font-semibold">My order volume by state</h3>
+                <h3 class="font-semibold">
+                  My order volume by state
+                </h3>
                 <USelect v-model="mapFilter" :items="mapFilterOptions" size="sm" />
               </div>
               <div class="grid gap-3 sm:grid-cols-5">
@@ -1122,7 +1077,7 @@ watch(myClosedOrders, () => {
               ref="mapRoot"
               class="w-full rounded-lg bg-white overflow-hidden"
               style="height: 520px;"
-            ></div>
+            />
 
             <div
               v-if="tooltip.open && tooltip.state"
@@ -1191,7 +1146,7 @@ watch(myClosedOrders, () => {
                 v-for="order in myOpenOrders"
                 :key="order.id"
                 class="cursor-pointer rounded-lg border border-default bg-elevated p-4 hover:bg-muted/30"
-                @click="openOrderDetails(order)"
+                @click="router.push(`/orders/${order.id}`)"
               >
                 <div class="flex flex-wrap items-start justify-between gap-3">
                   <div class="min-w-0">

@@ -17,6 +17,7 @@ const router = createRouter({
     { path: '/dashboard', component: () => import('./pages/dashboard.vue') },
     { path: '/inbox', component: () => import('./pages/inbox.vue') },
     { path: '/intake-map', component: () => import('./pages/intake-map.vue') },
+    { path: '/orders/:id', component: () => import('./pages/orders-details.vue') },
     { path: '/retainers', component: () => import('./pages/retainers.vue') },
     { path: '/retainers/:id', component: () => import('./pages/retainers-details.vue') },
     { path: '/fulfillment', component: () => import('./pages/fulfillment.vue') },

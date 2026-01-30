@@ -15,6 +15,8 @@ type DailyDealFlow = Record<string, unknown> & {
   updated_at?: string | null
 }
 
+type AnyRow = Record<string, unknown>
+
 const route = useRoute()
 const router = useRouter()
 const auth = useAuth()
@@ -97,15 +99,42 @@ const load = async () => {
     const { data, error: supaError } = await queryBuilder.maybeSingle()
 
     if (supaError) throw supaError
+
     if (!data) {
-      error.value = 'Lead not found'
-      row.value = null
-      return
+      let leadsQb = supabase
+        .from('leads')
+        .select('*')
+        .eq('id', id.value)
+
+      if (userRole === 'lawyer' && userId) {
+        leadsQb = leadsQb.eq('assigned_attorney_id', userId)
+      }
+
+      const { data: leadRow, error: leadErr } = await leadsQb.maybeSingle()
+      if (leadErr) throw leadErr
+
+      if (!leadRow) {
+        error.value = 'Lead not found'
+        row.value = null
+        return
+      }
+
+      const lead = (leadRow ?? {}) as AnyRow
+      const name = lead.customer_full_name ?? lead.insured_name ?? null
+      const phone = lead.phone_number ?? lead.client_phone_number ?? null
+
+      row.value = {
+        ...lead,
+        insured_name: name ? String(name) : null,
+        client_phone_number: phone ? String(phone) : null,
+        submission_id: String(lead.submission_id ?? '')
+      } as DailyDealFlow
+    } else {
+      row.value = data as DailyDealFlow
     }
 
-    row.value = data as DailyDealFlow
-
-    const assignedId = (data as any)?.assigned_attorney_id as string | null | undefined
+    const current = (row.value ?? {}) as AnyRow
+    const assignedId = (current.assigned_attorney_id ? String(current.assigned_attorney_id) : null)
     if (assignedId) {
       const map = await getAttorneyNameMapByUserIds([assignedId])
       assignedAttorneyName.value = map[assignedId] ?? '—'
