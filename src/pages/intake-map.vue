@@ -257,8 +257,22 @@ const rebuildStatesFromMyOrders = () => {
 }
 
 const createOrderOpen = ref(false)
-const createOrderConfirmOpen = ref(false)
 const pendingStateCode = ref<string | null>(null)
+
+const createOrderStep = ref<1 | 2>(1)
+const orderVerifyPhrase = 'CONFIRM'
+const orderVerifyInput = ref('')
+const orderVerifyTouched = ref(false)
+
+const orderVerifyIsValid = computed(() => {
+  return String(orderVerifyInput.value || '').trim().toUpperCase() === orderVerifyPhrase
+})
+
+const orderVerifyError = computed(() => {
+  if (!orderVerifyTouched.value) return undefined
+  if (orderVerifyIsValid.value) return undefined
+  return `Type ${orderVerifyPhrase} to continue.`
+})
 
 const orderForm = ref({
   stateCode: '' as string,
@@ -299,30 +313,37 @@ const resetOrderForm = () => {
 
 const openCreateOrder = () => {
   pendingStateCode.value = null
-  createOrderConfirmOpen.value = false
   createOrderOpen.value = true
+  createOrderStep.value = 1
+  orderVerifyInput.value = ''
+  orderVerifyTouched.value = false
 }
 
 const openCreateOrderForState = (stateCode: string) => {
   const code = String(stateCode || '').trim().toUpperCase()
   if (!code) return
   pendingStateCode.value = code
-  createOrderConfirmOpen.value = true
-}
-
-const confirmCreateOrderForState = () => {
-  const code = pendingStateCode.value
-  createOrderConfirmOpen.value = false
-  if (!code) return
   orderForm.value.stateCode = code
   createOrderOpen.value = true
+  createOrderStep.value = 1
+  orderVerifyInput.value = ''
+  orderVerifyTouched.value = false
 }
 
 const handleCreateOrderOpenUpdate = (v: boolean) => {
   createOrderOpen.value = v
   if (!v) {
     pendingStateCode.value = null
+    createOrderStep.value = 1
+    orderVerifyInput.value = ''
+    orderVerifyTouched.value = false
   }
+}
+
+const goToCreateOrderStep2 = () => {
+  orderVerifyTouched.value = true
+  if (!orderVerifyIsValid.value) return
+  createOrderStep.value = 2
 }
 
 const injurySeverityOptions = [
@@ -800,40 +821,6 @@ watch(myClosedOrders, () => {
         />
 
         <UModal
-          v-if="createOrderConfirmOpen"
-          :open="true"
-          title="Create order"
-          :dismissible="false"
-          @update:open="(v) => { createOrderConfirmOpen = v }"
-        >
-          <template #body>
-            <div class="space-y-4">
-              <div class="text-sm text-muted">
-                Are you sure you want to create an order for
-                <span class="font-semibold">{{ pendingStateCode }}</span>?
-              </div>
-
-              <div class="flex items-center justify-end gap-2">
-                <UButton
-                  color="neutral"
-                  variant="outline"
-                  @click="() => { createOrderConfirmOpen = false; pendingStateCode = null }"
-                >
-                  Cancel
-                </UButton>
-                <UButton
-                  color="primary"
-                  variant="solid"
-                  @click="confirmCreateOrderForState"
-                >
-                  Continue
-                </UButton>
-              </div>
-            </div>
-          </template>
-        </UModal>
-
-        <UModal
           v-if="createOrderOpen"
           :open="true"
           title="Create Intake Order"
@@ -843,13 +830,68 @@ watch(myClosedOrders, () => {
         >
           <template #body="{ close }">
             <div class="flex max-h-[78vh] flex-col">
-              <div class="px-6 pt-6">
-                <div class="text-sm text-muted">
-                  Define your demand packet for the selected geography.
+              <div>
+                <div class="mt-2 flex items-center justify-center">
+                  <div class="w-full max-w-sm">
+                    <div class="relative">
+                      <div class="absolute left-30 right-30 top-4 h-px border-t border-dashed border-primary/50" />
+                      <div
+                        v-if="createOrderStep >= 2"
+                        class="absolute left-30 right-30 top-4 h-px bg-primary"
+                      />
+                      <div class="relative flex items-start justify-center gap-24">
+                        <div class="flex flex-col items-center gap-2">
+                          <div
+                            class="flex size-8 items-center justify-center rounded-full text-xs font-semibold ring-1 ring-inset"
+                            :class="createOrderStep >= 1 ? 'bg-primary text-white ring-primary' : 'bg-elevated text-muted ring-default'"
+                          >
+                            1
+                          </div>
+                          <div class="text-xs" :class="createOrderStep === 1 ? 'font-semibold text-foreground' : 'text-muted'">
+                            Verification
+                          </div>
+                        </div>
+
+                        <div class="flex flex-col items-center gap-2">
+                          <div
+                            class="flex size-8 items-center justify-center rounded-full text-xs font-semibold ring-1 ring-inset"
+                            :class="createOrderStep >= 2 ? 'bg-primary text-white ring-primary' : 'bg-elevated text-muted ring-default'"
+                          >
+                            2
+                          </div>
+                          <div class="text-xs" :class="createOrderStep === 2 ? 'font-semibold text-foreground' : 'text-muted'">
+                            Order Details
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <!-- <div class="text-sm text-muted">
+                  {{ createOrderStep === 1 ? 'Verify to continue.' : 'Define your demand packet for the selected geography.' }}
+                </div> -->
+              </div>
+
+              <div v-if="createOrderStep === 1" class="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+                <div class="space-y-4">
+                  <UAlert
+                    color="neutral"
+                    variant="subtle"
+                    title="Verification"
+                    :description="`To continue, type ${orderVerifyPhrase} below.`"
+                  />
+
+                  <UFormField label="Verification word" required :error="orderVerifyError">
+                    <UInput
+                      v-model="orderVerifyInput"
+                      placeholder="Type the verification word"
+                      @blur="() => { orderVerifyTouched = true }"
+                    />
+                  </UFormField>
                 </div>
               </div>
 
-              <div class="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+              <div v-else class="min-h-0 flex-1 overflow-y-auto px-6 py-4">
                 <UAlert
                   v-if="quotaError"
                   color="error"
@@ -997,6 +1039,7 @@ watch(myClosedOrders, () => {
 
               <div class="flex items-center justify-end gap-2 border-t border-default px-6 py-4">
                 <UButton
+                  v-if="createOrderStep === 1"
                   color="neutral"
                   variant="outline"
                   @click="() => { resetOrderForm(); close() }"
@@ -1004,6 +1047,33 @@ watch(myClosedOrders, () => {
                   Cancel
                 </UButton>
                 <UButton
+                  v-if="createOrderStep === 1"
+                  color="primary"
+                  variant="solid"
+                  :disabled="!orderVerifyIsValid"
+                  @click="goToCreateOrderStep2"
+                >
+                  Next
+                </UButton>
+
+                <UButton
+                  v-else
+                  color="neutral"
+                  variant="outline"
+                  @click="() => { createOrderStep = 1 }"
+                >
+                  Back
+                </UButton>
+                <UButton
+                  v-if="createOrderStep === 2"
+                  color="neutral"
+                  variant="outline"
+                  @click="() => { resetOrderForm(); close() }"
+                >
+                  Cancel
+                </UButton>
+                <UButton
+                  v-if="createOrderStep === 2"
                   color="primary"
                   variant="solid"
                   :loading="createOrderSubmitting"
@@ -1117,7 +1187,9 @@ watch(myClosedOrders, () => {
                 <div v-if="tooltip.myOrder">
                   Your quota: {{ tooltip.myOrder.quota_filled }}/{{ tooltip.myOrder.quota_total }}
                 </div>
-                <div v-if="tooltip.myOrder">Expires: {{ String(tooltip.myOrder.expires_at || '').slice(0, 10) }}</div>
+                <div v-if="tooltip.myOrder">
+                  Expires: {{ String(tooltip.myOrder.expires_at || '').slice(0, 10) }}
+                </div>
               </div>
             </div>
           </div>

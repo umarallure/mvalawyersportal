@@ -24,7 +24,7 @@ const links = computed(() => [[{
   onSelect: () => {
     open.value = false
   }
-}, {
+}, /* {
   label: 'Inbox',
   icon: 'i-lucide-inbox',
   to: '/inbox',
@@ -32,7 +32,7 @@ const links = computed(() => [[{
   onSelect: () => {
     open.value = false
   }
-}, {
+}, */ {
   label: 'Intake Map',
   icon: 'i-lucide-map',
   to: '/intake-map',
@@ -53,14 +53,14 @@ const links = computed(() => [[{
   onSelect: () => {
     open.value = false
   }
-}, {
+}, /* {
   label: 'Invoicing',
   icon: 'i-lucide-receipt',
   to: '/invoicing',
   onSelect: () => {
     open.value = false
   }
-}, ...(auth.state.value.profile?.role === 'super_admin' ? [{
+}, */ ...(auth.state.value.profile?.role === 'super_admin' ? [{
   label: 'Users',
   icon: 'i-lucide-users',
   to: '/users',

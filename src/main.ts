@@ -15,13 +15,13 @@ const router = createRouter({
     { path: '/get-started', component: () => import('./pages/get-started.vue') },
     { path: '/login', component: () => import('./pages/login.vue'), meta: { public: true } },
     { path: '/dashboard', component: () => import('./pages/dashboard.vue') },
-    { path: '/inbox', component: () => import('./pages/inbox.vue') },
+    { path: '/inbox', component: () => import('./pages/not-found.vue') },
     { path: '/intake-map', component: () => import('./pages/intake-map.vue') },
     { path: '/orders/:id', component: () => import('./pages/orders-details.vue') },
     { path: '/retainers', component: () => import('./pages/retainers.vue') },
     { path: '/retainers/:id', component: () => import('./pages/retainers-details.vue') },
     { path: '/fulfillment', component: () => import('./pages/fulfillment.vue') },
-    { path: '/invoicing', component: () => import('./pages/invoicing.vue') },
+    { path: '/invoicing', component: () => import('./pages/not-found.vue') },
     { path: '/users', component: () => import('./pages/users.vue'), meta: { requiresSuperAdmin: true } },
     { path: '/centers', component: () => import('./pages/centers.vue'), meta: { requiresSuperAdmin: true } },
     {
@@ -33,7 +33,8 @@ const router = createRouter({
         { path: 'expertise', component: () => import('./pages/settings/expertise.vue') },
         { path: 'capacity', component: () => import('./pages/settings/capacity.vue') }
       ]
-    }
+    },
+    { path: '/:pathMatch(.*)*', component: () => import('./pages/not-found.vue') }
   ],
   history: createWebHistory()
 })
