@@ -93,7 +93,7 @@ const columns = computed(() => {
     },
     {
       accessorKey: 'insured_name',
-      header: 'Customer Name'
+      header: 'Retainer Name'
     },
     {
       accessorKey: 'client_phone_number',
@@ -115,16 +115,10 @@ const columns = computed(() => {
     })
   }
 
-  cols.push(
-    {
-      accessorKey: 'status',
-      header: 'Status'
-    },
-    {
-      accessorKey: 'actions',
-      header: 'Actions'
-    }
-  )
+  cols.push({
+    accessorKey: 'actions',
+    header: 'Actions'
+  })
 
   return cols
 })
@@ -133,14 +127,6 @@ const formatDate = (value: string | null) => {
   if (!value) return '—'
   // Prefer YYYY-MM-DD display like the UI screenshot
   return value.length >= 10 ? value.slice(0, 10) : value
-}
-
-const statusColor = (value: string | null) => {
-  const normalized = (value ?? '').toLowerCase()
-  if (normalized.includes('pending')) return 'warning' as const
-  if (normalized.includes('approved') || normalized.includes('paid') || normalized.includes('complete')) return 'success' as const
-  if (normalized.includes('rejected') || normalized.includes('failed') || normalized.includes('cancel')) return 'error' as const
-  return 'neutral' as const
 }
 
 const load = async () => {
@@ -572,11 +558,11 @@ const confirmDrop = async () => {
           :data="pagedRows"
           :columns="columns"
           :ui="{
-            base: 'table-fixed border-separate border-spacing-0',
+            base: 'table-auto border-separate border-spacing-0',
             thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
             tbody: '[&>tr]:last:[&>td]:border-b-0',
-            th: 'first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r',
-            td: 'border-b border-default'
+            th: 'first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r last:w-40 last:text-left',
+            td: 'border-b border-default !py-1 align-top last:w-40'
           }"
         >
           <template #date-cell="{ row }">
@@ -591,22 +577,16 @@ const confirmDrop = async () => {
             <span class="text-sm text-black dark:text-white/80">{{ row.original.client_phone_number ?? '—' }}</span>
           </template>
 
+          <template #agent-cell="{ row }">
+            <span class="text-sm text-black dark:text-white/80">{{ row.original.agent ?? '—' }}</span>
+          </template>
+
           <template #lead_vendor-cell="{ row }">
             <span class="text-sm text-black dark:text-white/80">{{ row.original.lead_vendor ?? '—' }}</span>
           </template>
 
-          <template #status-cell="{ row }">
-            <UBadge
-              variant="subtle"
-              :color="statusColor(row.original.status)"
-              class="text-xs"
-            >
-              {{ row.original.status ?? '—' }}
-            </UBadge>
-          </template>
-
           <template #actions-cell="{ row }">
-            <div class="flex justify-end gap-2">
+            <div class="flex justify-start gap-2">
               <UButton
                 size="xs"
                 color="neutral"

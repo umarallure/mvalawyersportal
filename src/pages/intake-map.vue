@@ -867,9 +867,6 @@ watch(myClosedOrders, () => {
                     </div>
                   </div>
                 </div>
-                <!-- <div class="text-sm text-muted">
-                  {{ createOrderStep === 1 ? 'Verify to continue.' : 'Define your demand packet for the selected geography.' }}
-                </div> -->
               </div>
 
               <div v-if="createOrderStep === 1" class="min-h-0 flex-1 overflow-y-auto px-6 py-4">

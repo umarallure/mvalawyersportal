@@ -39,8 +39,6 @@ const router = useRouter()
 
 const totalOrdersCount = ref(0)
 
-const ORDER_LINK_KEYS = ['order_id', 'intake_order_id', 'assigned_order_id', 'orders_id', 'order_uuid'] as const
-
 const normalize = (v: unknown) => String(v ?? '').trim().toLowerCase()
 
 const toStage = (status: string) => {
@@ -51,11 +49,24 @@ const toStage = (status: string) => {
   return 'returned_back' as const
 }
 
-const detectOrderLinkKey = (rows: Array<Record<string, unknown>>) => {
-  for (const key of ORDER_LINK_KEYS) {
-    if (rows.some(r => r[key] !== undefined && r[key] !== null)) return key
+const coerceFulfillmentOrder = (r: Record<string, unknown>): FulfillmentOrder | null => {
+  const id = String(r.id ?? '').trim()
+  if (!id) return null
+
+  const status = String(r.status ?? '—')
+  const stage = toStage(status)
+
+  return {
+    id,
+    date: String(r.date ?? (r.created_at ?? '')).slice(0, 10),
+    clientName: String(r.insured_name ?? r.customer_full_name ?? '—'),
+    phone: String(r.client_phone_number ?? r.phone_number ?? '—'),
+    state: String(r.state ?? r.state_code ?? '—'),
+    status,
+    stage,
+    reason: r.reason ? String(r.reason) : undefined,
+    signedDate: r.signed_date ? String(r.signed_date).slice(0, 10) : undefined
   }
-  return null
 }
 
 const load = async () => {
@@ -79,38 +90,67 @@ const load = async () => {
       selectedOrderId.value = data[0]?.id ?? undefined
     }
 
-    const { data: leadRows, error: leadErr } = await supabase
-      .from('daily_deal_flow')
-      .select('*')
-      .eq('assigned_attorney_id', userId)
-      .order('created_at', { ascending: false })
+    const selected = selectedOrderId.value
+    if (!selected) {
+      leads.value = []
+      return
+    }
+
+    const { data: fulfillmentRows, error: fulfillmentErr } = await supabase
+      .from('order_fulfillments')
+      .select('lead_id')
+      .eq('order_id', selected)
       .limit(1000)
 
-    if (leadErr) throw leadErr
+    if (fulfillmentErr) throw fulfillmentErr
 
-    const rawRows = (leadRows ?? []) as Array<Record<string, unknown>>
-    const linkKey = detectOrderLinkKey(rawRows)
+    const leadIds = (fulfillmentRows ?? [])
+      .map(r => String((r as { lead_id?: string | null }).lead_id ?? '').trim())
+      .filter(Boolean)
 
-    const selected = selectedOrderId.value
-    const filteredByOrder = selected && linkKey
-      ? rawRows.filter(r => String(r[linkKey] ?? '') === selected)
-      : rawRows
+    if (!leadIds.length) {
+      leads.value = []
+      return
+    }
 
-    leads.value = filteredByOrder.map((r) => {
-      const status = String(r.status ?? '—')
-      const stage = toStage(status)
-      return {
-        id: String(r.id ?? ''),
-        date: String(r.date ?? (r.created_at ?? '')).slice(0, 10),
-        clientName: String(r.insured_name ?? '—'),
-        phone: String(r.client_phone_number ?? '—'),
-        state: String(r.state ?? r.state_code ?? '—'),
-        status,
-        stage,
-        reason: r.reason ? String(r.reason) : undefined,
-        signedDate: r.signed_date ? String(r.signed_date).slice(0, 10) : undefined
-      }
-    }).filter(l => Boolean(l.id))
+    const { data: ddfRows, error: ddfErr } = await supabase
+      .from('daily_deal_flow')
+      .select('*')
+      .or(`id.in.(${leadIds.join(',')}),submission_id.in.(${leadIds.join(',')})`)
+
+    if (ddfErr) throw ddfErr
+
+    const ddf = (ddfRows ?? []) as Array<Record<string, unknown>>
+    const foundKeys = new Set(
+      ddf
+        .flatMap(r => [String(r.id ?? '').trim(), String(r.submission_id ?? '').trim()])
+        .filter(Boolean)
+    )
+    const missingIds = leadIds.filter(id => !foundKeys.has(id))
+
+    let leadTableRows: Array<Record<string, unknown>> = []
+    if (missingIds.length) {
+      const { data: leadsRows, error: leadsErr } = await supabase
+        .from('leads')
+        .select('*')
+        .or(`id.in.(${missingIds.join(',')}),submission_id.in.(${missingIds.join(',')})`)
+
+      if (leadsErr) throw leadsErr
+      leadTableRows = (leadsRows ?? []) as Array<Record<string, unknown>>
+    }
+
+    const combined = [...ddf, ...leadTableRows]
+    const mappedByKey = new Map<string, FulfillmentOrder>()
+    combined.forEach((row) => {
+      const m = coerceFulfillmentOrder(row)
+      if (!m) return
+      const keys = [String(row.id ?? '').trim(), String(row.submission_id ?? '').trim()].filter(Boolean)
+      keys.forEach((k) => {
+        if (!mappedByKey.has(k)) mappedByKey.set(k, m)
+      })
+    })
+
+    leads.value = leadIds.map(id => mappedByKey.get(id)).filter((x): x is FulfillmentOrder => Boolean(x))
   } finally {
     loading.value = false
   }
@@ -291,7 +331,7 @@ const openLead = (lead: FulfillmentOrder) => {
                   <div class="flex items-start justify-between gap-2">
                     <div class="min-w-0">
                       <div class="truncate text-sm font-semibold">{{ order.clientName }}</div>
-                      <div class="mt-0.5 text-xs text-muted">{{ order.id }} · {{ order.phone }}</div>
+                      <div class="mt-0.5 text-xs text-muted">{{ order.phone }}</div>
                     </div>
                     <UBadge variant="subtle" size="xs" :label="order.status" />
                   </div>

@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { randomInt } from '../../utils'
+import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../composables/useAuth'
 import type { Period, Range, Stat } from '../../types'
 
 const props = defineProps<{
   period: Period
   range: Range
 }>()
+
+const auth = useAuth()
 
 function formatCurrency(value: number): string {
   return value.toLocaleString('en-US', {
@@ -49,9 +52,61 @@ const baseStats = [{
 
 const stats = ref<Stat[]>([])
 
-watch([() => props.period, () => props.range], () => {
+const PENDING_APPROVAL = 'Pending Approval'
+
+const fetchRetainerCountForLawyer = async (lawyerId: string) => {
+  const { count: ddfCount, error: ddfError } = await supabase
+    .from('daily_deal_flow')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', PENDING_APPROVAL)
+    .eq('assigned_attorney_id', lawyerId)
+
+  if (ddfError) throw new Error(ddfError.message)
+
+  const { count: leadsCount, error: leadsError } = await supabase
+    .from('leads')
+    .select('id', { count: 'exact', head: true })
+    .eq('assigned_attorney_id', lawyerId)
+
+  if (leadsError) throw new Error(leadsError.message)
+
+  return (ddfCount ?? 0) + (leadsCount ?? 0)
+}
+
+const fetchOrderCountForLawyer = async (lawyerId: string) => {
+  const { count, error } = await supabase
+    .from('orders')
+    .select('id', { count: 'exact', head: true })
+    .eq('lawyer_id', lawyerId)
+
+  if (error) throw new Error(error.message)
+  return count ?? 0
+}
+
+watch([() => props.period, () => props.range], async () => {
+  await auth.init()
+
+  const userId = auth.state.value.user?.id ?? null
+  const role = auth.state.value.profile?.role ?? null
+
+  let retainerCount = 0
+  let orderCount = 0
+
+  if (role === 'lawyer' && userId) {
+    try {
+      retainerCount = await fetchRetainerCountForLawyer(userId)
+      orderCount = await fetchOrderCountForLawyer(userId)
+    } catch {
+      retainerCount = 0
+      orderCount = 0
+    }
+  }
+
   stats.value = baseStats.map((stat) => {
-    const value = 0
+    let value = 0
+    if (stat.title === 'Retainers') value = retainerCount
+    if (stat.title === 'Orders') value = orderCount
+
     const variation = 0
 
     return {
