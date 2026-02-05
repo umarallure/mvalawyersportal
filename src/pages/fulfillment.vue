@@ -31,6 +31,7 @@ const query = ref('')
 const selectedStage = ref<'all' | StageKey>('all')
 
 const selectedOrderId = ref<string | undefined>(undefined)
+const ALL_ORDERS_VALUE = '__ALL__'
 const orders = ref<OrderRow[]>([])
 const leads = ref<FulfillmentOrder[]>([])
 
@@ -41,11 +42,26 @@ const totalOrdersCount = ref(0)
 
 const normalize = (v: unknown) => String(v ?? '').trim().toLowerCase()
 
-const toStage = (status: string) => {
+const getStatusText = (row: Record<string, unknown>) => {
+  const raw = row.status ?? row.retainer_status ?? row.deal_status ?? row.lead_status ?? '—'
+  return String(raw ?? '—')
+}
+
+const getSignedDate = (row: Record<string, unknown>) => {
+  return row.signed_date ?? row.retainer_signed_date ?? row.retainer_signed_at ?? row.signed_at ?? null
+}
+
+const toStage = (row: Record<string, unknown>) => {
+  const status = getStatusText(row)
   const s = normalize(status)
-  if (s.includes('drop')) return 'dropped_retainers' as const
-  if (s.includes('signed')) return 'signed_retainers' as const
-  if (s.includes('return')) return 'returned_back' as const
+  const signedDate = getSignedDate(row)
+
+  if (signedDate) return 'signed_retainers' as const
+  if (s.includes('sign')) return 'signed_retainers' as const
+
+  if (s.includes('drop') || s.includes('dropped') || s.includes('cancel')) return 'dropped_retainers' as const
+
+  if (s.includes('return') || s.includes('back')) return 'returned_back' as const
   return 'returned_back' as const
 }
 
@@ -53,8 +69,8 @@ const coerceFulfillmentOrder = (r: Record<string, unknown>): FulfillmentOrder | 
   const id = String(r.id ?? '').trim()
   if (!id) return null
 
-  const status = String(r.status ?? '—')
-  const stage = toStage(status)
+  const status = getStatusText(r)
+  const stage = toStage(r)
 
   return {
     id,
@@ -65,7 +81,7 @@ const coerceFulfillmentOrder = (r: Record<string, unknown>): FulfillmentOrder | 
     status,
     stage,
     reason: r.reason ? String(r.reason) : undefined,
-    signedDate: r.signed_date ? String(r.signed_date).slice(0, 10) : undefined
+    signedDate: getSignedDate(r) ? String(getSignedDate(r)).slice(0, 10) : undefined
   }
 }
 
@@ -87,7 +103,7 @@ const load = async () => {
     totalOrdersCount.value = data.length
 
     if (!selectedOrderId.value && data.length) {
-      selectedOrderId.value = data[0]?.id ?? undefined
+      selectedOrderId.value = ALL_ORDERS_VALUE
     }
 
     const selected = selectedOrderId.value
@@ -96,10 +112,19 @@ const load = async () => {
       return
     }
 
+    const orderIdsForScope = selected === ALL_ORDERS_VALUE
+      ? data.map(o => o.id)
+      : [selected]
+
+    if (!orderIdsForScope.length) {
+      leads.value = []
+      return
+    }
+
     const { data: fulfillmentRows, error: fulfillmentErr } = await supabase
       .from('order_fulfillments')
       .select('lead_id')
-      .eq('order_id', selected)
+      .in('order_id', orderIdsForScope)
       .limit(1000)
 
     if (fulfillmentErr) throw fulfillmentErr
@@ -113,35 +138,39 @@ const load = async () => {
       return
     }
 
+    const { data: leadsRows, error: leadsErr } = await supabase
+      .from('leads')
+      .select('id,submission_id')
+      .in('id', leadIds)
+
+    if (leadsErr) throw leadsErr
+
+    const leadIdToSubmissionId = new Map<string, string>()
+    const leadRows = (leadsRows ?? []) as Array<{ id?: string | null, submission_id?: string | null }>
+    leadRows.forEach((r) => {
+      const leadId = String(r.id ?? '').trim()
+      const submissionId = String(r.submission_id ?? '').trim()
+      if (!leadId || !submissionId) return
+      leadIdToSubmissionId.set(leadId, submissionId)
+    })
+
+    const submissionIds = [...new Set([...leadIdToSubmissionId.values()].filter(Boolean))]
+    if (!submissionIds.length) {
+      leads.value = []
+      return
+    }
+
     const { data: ddfRows, error: ddfErr } = await supabase
       .from('daily_deal_flow')
       .select('*')
-      .or(`id.in.(${leadIds.join(',')}),submission_id.in.(${leadIds.join(',')})`)
+      .in('submission_id', submissionIds)
 
     if (ddfErr) throw ddfErr
 
     const ddf = (ddfRows ?? []) as Array<Record<string, unknown>>
-    const foundKeys = new Set(
-      ddf
-        .flatMap(r => [String(r.id ?? '').trim(), String(r.submission_id ?? '').trim()])
-        .filter(Boolean)
-    )
-    const missingIds = leadIds.filter(id => !foundKeys.has(id))
 
-    let leadTableRows: Array<Record<string, unknown>> = []
-    if (missingIds.length) {
-      const { data: leadsRows, error: leadsErr } = await supabase
-        .from('leads')
-        .select('*')
-        .or(`id.in.(${missingIds.join(',')}),submission_id.in.(${missingIds.join(',')})`)
-
-      if (leadsErr) throw leadsErr
-      leadTableRows = (leadsRows ?? []) as Array<Record<string, unknown>>
-    }
-
-    const combined = [...ddf, ...leadTableRows]
     const mappedByKey = new Map<string, FulfillmentOrder>()
-    combined.forEach((row) => {
+    ddf.forEach((row) => {
       const m = coerceFulfillmentOrder(row)
       if (!m) return
       const keys = [String(row.id ?? '').trim(), String(row.submission_id ?? '').trim()].filter(Boolean)
@@ -150,7 +179,9 @@ const load = async () => {
       })
     })
 
-    leads.value = leadIds.map(id => mappedByKey.get(id)).filter((x): x is FulfillmentOrder => Boolean(x))
+    leads.value = leadIds
+      .map((leadId) => mappedByKey.get(leadIdToSubmissionId.get(leadId) ?? ''))
+      .filter((x): x is FulfillmentOrder => Boolean(x))
   } finally {
     loading.value = false
   }
@@ -195,13 +226,16 @@ const droppedCount = computed(() => (ordersByStage.value.get('dropped_retainers'
 const returnedCount = computed(() => (ordersByStage.value.get('returned_back') ?? []).length)
 
 const orderOptions = computed(() => {
-  return orders.value.map((o) => {
+  return [
+    { label: 'All Orders', value: ALL_ORDERS_VALUE },
+    ...orders.value.map((o) => {
     const states = (o.target_states || []).map(s => String(s || '').toUpperCase()).join(', ') || '—'
     return {
       label: `${o.case_type} (${states})`,
       value: o.id
     }
-  })
+    })
+  ]
 })
 
 const openLead = (lead: FulfillmentOrder) => {

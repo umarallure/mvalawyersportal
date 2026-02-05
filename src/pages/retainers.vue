@@ -29,6 +29,7 @@ const auth = useAuth()
 const isSuperAdmin = computed(() => auth.state.value.profile?.role === 'super_admin')
 const isAdmin = computed(() => auth.state.value.profile?.role === 'admin')
 const canSeeAssignments = computed(() => isSuperAdmin.value || isAdmin.value)
+const canSeeStatusFilter = computed(() => isSuperAdmin.value || isAdmin.value)
 
 const PENDING_APPROVAL = 'Pending Approval'
 
@@ -64,6 +65,15 @@ const pagedRows = computed(() => rows.value)
 
 const canPrev = computed(() => currentPage.value > 1)
 const canNext = computed(() => currentPage.value < pageCount.value)
+
+const visibleColumnCount = computed(() => {
+  let count = 4
+  if (isSuperAdmin.value) count += 1
+  if (canSeeAssignments.value) count += 1
+  return count
+})
+
+const colWidth = computed(() => `${100 / visibleColumnCount.value}%`)
 
 const goPrev = () => {
   if (!canPrev.value) return
@@ -545,6 +555,7 @@ const confirmDrop = async () => {
             />
 
             <USelect
+              v-if="canSeeStatusFilter"
               v-model="statusFilter"
               :items="statusOptions"
               class="w-44 [&_button]:rounded-xl [&_button]:border-white/[0.06] [&_button]:bg-white/[0.03]"
@@ -591,25 +602,25 @@ const confirmDrop = async () => {
 
           <!-- Table Content -->
           <div v-else class="flex-1 min-h-0 overflow-y-auto retainers-scroll">
-            <table class="w-full">
+            <table class="w-full table-fixed">
               <thead class="sticky top-0 z-10">
                 <tr class="border-b border-white/[0.06] bg-white/[0.03] backdrop-blur-xl">
-                  <th class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
+                  <th :style="{ width: colWidth }" class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
                     Client
                   </th>
-                  <th class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
+                  <th :style="{ width: colWidth }" class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
                     Phone
                   </th>
-                  <th class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
+                  <th :style="{ width: colWidth }" class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
                     Date
                   </th>
-                  <th v-if="isSuperAdmin" class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
+                  <th v-if="isSuperAdmin" :style="{ width: colWidth }" class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
                     Vendor
                   </th>
-                  <th v-if="canSeeAssignments" class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
+                  <th v-if="canSeeAssignments" :style="{ width: colWidth }" class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
                     Attorney
                   </th>
-                  <th class="px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-widest text-muted">
+                  <th :style="{ width: colWidth }" class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
                     Actions
                   </th>
                 </tr>
@@ -622,7 +633,7 @@ const confirmDrop = async () => {
                   @click="openRow(row)"
                 >
                   <!-- Client -->
-                  <td class="px-5 py-3.5">
+                  <td :style="{ width: colWidth }" class="px-5 py-3.5">
                     <div class="flex items-center gap-3">
                       <div class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--ap-accent)]/20 to-[var(--ap-accent)]/5 text-xs font-bold text-[var(--ap-accent)] ring-1 ring-[var(--ap-accent)]/10 transition-all duration-200 group-hover:ring-[var(--ap-accent)]/30 group-hover:shadow-[0_0_12px_var(--ap-accent-shadow)]">
                         {{ getInitials(row.insured_name) }}
@@ -631,15 +642,12 @@ const confirmDrop = async () => {
                         <p class="truncate text-sm font-medium text-highlighted transition-colors duration-200 group-hover:text-[var(--ap-accent)]">
                           {{ row.insured_name ?? 'Unknown Client' }}
                         </p>
-                        <p class="mt-0.5 truncate text-[11px] text-muted">
-                          ID: {{ row.submission_id?.slice(0, 8) ?? '—' }}
-                        </p>
                       </div>
                     </div>
                   </td>
 
                   <!-- Phone -->
-                  <td class="px-5 py-3.5">
+                  <td :style="{ width: colWidth }" class="px-5 py-3.5">
                     <div class="flex items-center gap-2">
                       <UIcon name="i-lucide-phone" class="shrink-0 text-xs text-muted" />
                       <span class="text-sm text-default tabular-nums">{{ formatPhone(row.client_phone_number) }}</span>
@@ -647,7 +655,7 @@ const confirmDrop = async () => {
                   </td>
 
                   <!-- Date -->
-                  <td class="px-5 py-3.5">
+                  <td :style="{ width: colWidth }" class="px-5 py-3.5">
                     <div class="flex items-center gap-2">
                       <UIcon name="i-lucide-calendar" class="shrink-0 text-xs text-muted" />
                       <span class="text-sm text-default">{{ formatDate(row.date) }}</span>
@@ -655,7 +663,7 @@ const confirmDrop = async () => {
                   </td>
 
                   <!-- Lead Vendor (super admin only) -->
-                  <td v-if="isSuperAdmin" class="px-5 py-3.5">
+                  <td v-if="isSuperAdmin" :style="{ width: colWidth }" class="px-5 py-3.5">
                     <span
                       v-if="row.lead_vendor"
                       class="inline-flex items-center rounded-lg border border-white/[0.06] bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-default"
@@ -666,13 +674,13 @@ const confirmDrop = async () => {
                   </td>
 
                   <!-- Assigned Attorney (admin+) -->
-                  <td v-if="canSeeAssignments" class="px-5 py-3.5">
+                  <td v-if="canSeeAssignments" :style="{ width: colWidth }" class="px-5 py-3.5">
                     <span class="text-sm text-default">{{ row.assigned_attorney_name ?? '—' }}</span>
                   </td>
 
                   <!-- Actions -->
-                  <td class="px-5 py-3.5">
-                    <div class="flex items-center justify-end gap-1.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                  <td :style="{ width: colWidth }" class="px-5 py-3.5">
+                    <div class="flex items-center justify-start gap-1.5">
                       <button
                         class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--ap-accent)]/20 bg-[var(--ap-accent)]/10 px-3 py-1.5 text-xs font-medium text-[var(--ap-accent)] transition-all hover:bg-[var(--ap-accent)]/20 hover:border-[var(--ap-accent)]/40"
                         @click.stop="openRow(row)"
