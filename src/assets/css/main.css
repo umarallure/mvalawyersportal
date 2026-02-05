@@ -40,6 +40,8 @@
   --ui-color-primary-500: var(--ap-accent);
   --ui-color-primary-600: var(--ap-accent-dark);
   --ui-color-primary-700: var(--ap-accent-dark);
+
+  --ui-text-inverted: #ffffff;
 }
 
 html,
@@ -64,4 +66,6 @@ textarea {
   --ui-bg-elevated: var(--ap-surface);
   --ui-bg-muted: var(--ap-surface-soft);
   --ui-border: var(--ap-border);
+
+  --ui-text-inverted: #ffffff;
 }

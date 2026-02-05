@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../composables/useAuth'
-import { getAttorneyNameMapByUserIds } from '../lib/attorney-profile'
 
 type DailyDealFlow = Record<string, unknown> & {
   id: string
@@ -26,14 +25,12 @@ const id = computed(() => route.params.id as string)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const row = ref<DailyDealFlow | null>(null)
-const assignedAttorneyName = ref<string>('—')
 
 const activeTab = ref('basic')
 
 const tabs = [
   { label: 'Basic Information', icon: 'i-lucide-user', value: 'basic' },
   { label: 'Accident Details', icon: 'i-lucide-car', value: 'accident' },
-  { label: 'Insurance & Policy', icon: 'i-lucide-shield', value: 'insurance' },
   { label: 'Additional Info', icon: 'i-lucide-info', value: 'additional' }
 ]
 
@@ -133,14 +130,6 @@ const load = async () => {
       row.value = data as DailyDealFlow
     }
 
-    const current = (row.value ?? {}) as AnyRow
-    const assignedId = (current.assigned_attorney_id ? String(current.assigned_attorney_id) : null)
-    if (assignedId) {
-      const map = await getAttorneyNameMapByUserIds([assignedId])
-      assignedAttorneyName.value = map[assignedId] ?? '—'
-    } else {
-      assignedAttorneyName.value = '—'
-    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Failed to load lead'
     error.value = msg
@@ -204,15 +193,9 @@ const basicInfoFields = computed(() => {
     ['contact_number', 'Contact Number'],
     ['contact_address', 'Contact Address'],
     ['status', 'Status'],
-    ['lead_vendor', 'Lead Vendor'],
-    ['assigned_attorney', 'Assigned Attorney'],
     ['date', 'Date']
   ].map(([key, label]) => {
-    if (key === 'assigned_attorney') {
-      return { key, label, value: assignedAttorneyName.value }
-    }
-
-    return { key, label, value: (row.value as any)[key] }
+    return { key, label, value: (row.value as Record<string, unknown>)[key] }
   })
 })
 
@@ -229,26 +212,7 @@ const accidentDetailsFields = computed(() => {
     ['injuries', 'Injuries'],
     ['other_party_admit_fault', 'Other Party Admit Fault'],
     ['passengers_count', 'Passengers Count']
-  ].map(([key, label]) => ({ key, label, value: (row.value as any)[key] }))
-})
-
-const insurancePolicyFields = computed(() => {
-  if (!row.value) return []
-  return [
-    ['insured', 'Insured'],
-    ['insurance_company', 'Insurance Company'],
-    ['vehicle_registration', 'Vehicle Registration'],
-    ['third_party_vehicle_registration', 'Third Party Vehicle Registration'],
-    ['carrier', 'Carrier'],
-    ['carrier_attempted_1', 'Carrier Attempted 1'],
-    ['carrier_attempted_2', 'Carrier Attempted 2'],
-    ['carrier_attempted_3', 'Carrier Attempted 3'],
-    ['product_type', 'Product Type'],
-    ['policy_number', 'Policy Number'],
-    ['monthly_premium', 'Monthly Premium'],
-    ['face_amount', 'Face Amount'],
-    ['placement_status', 'Placement Status']
-  ].map(([key, label]) => ({ key, label, value: (row.value as any)[key] }))
+  ].map(([key, label]) => ({ key, label, value: (row.value as Record<string, unknown>)[key] }))
 })
 
 const additionalInfoFields = computed(() => {
@@ -271,7 +235,7 @@ const additionalInfoFields = computed(() => {
     ['sync_status', 'Sync Status'],
     ['created_at', 'Created At'],
     ['updated_at', 'Updated At']
-  ].map(([key, label]) => ({ key, label, value: (row.value as any)[key] }))
+  ].map(([key, label]) => ({ key, label, value: (row.value as Record<string, unknown>)[key] }))
 })
 </script>
 
@@ -341,23 +305,6 @@ const additionalInfoFields = computed(() => {
               <div class="grid gap-4 md:grid-cols-2">
                 <div
                   v-for="field in accidentDetailsFields"
-                  :key="field.key"
-                  class="rounded-lg border border-default bg-elevated/20 p-3"
-                >
-                  <div class="text-xs uppercase tracking-wide text-muted">
-                    {{ field.label }}
-                  </div>
-                  <div class="mt-1 text-sm text-highlighted wrap-break-word">
-                    {{ formatFieldValue(field.key, field.value) }}
-                  </div>
-                </div>
-              </div>
-            </UCard>
-
-            <UCard v-else-if="item.value === 'insurance'">
-              <div class="grid gap-4 md:grid-cols-2">
-                <div
-                  v-for="field in insurancePolicyFields"
                   :key="field.key"
                   class="rounded-lg border border-default bg-elevated/20 p-3"
                 >
