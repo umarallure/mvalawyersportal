@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import type { TableColumn } from '@nuxt/ui'
 
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../composables/useAuth'
@@ -85,48 +84,33 @@ const normalizeFilterValue = (value: string | null | undefined) => {
   return v.length ? v : '—'
 }
 
-const columns = computed(() => {
-  const cols: TableColumn<DailyDealFlow>[] = [
-    {
-      accessorKey: 'date',
-      header: 'Date'
-    },
-    {
-      accessorKey: 'insured_name',
-      header: 'Retainer Name'
-    },
-    {
-      accessorKey: 'client_phone_number',
-      header: 'Phone Number'
-    }
-  ]
-
-  if (isSuperAdmin.value) {
-    cols.push({
-      accessorKey: 'lead_vendor',
-      header: 'Lead vendor'
-    })
-  }
-
-  if (canSeeAssignments.value) {
-    cols.push({
-      accessorKey: 'assigned_attorney_name',
-      header: 'Assigned Attorney'
-    })
-  }
-
-  cols.push({
-    accessorKey: 'actions',
-    header: 'Actions'
-  })
-
-  return cols
-})
+// Table columns are rendered manually in the template for full design control
 
 const formatDate = (value: string | null) => {
   if (!value) return '—'
-  // Prefer YYYY-MM-DD display like the UI screenshot
-  return value.length >= 10 ? value.slice(0, 10) : value
+  try {
+    const d = new Date(value)
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  } catch {
+    return value.length >= 10 ? value.slice(0, 10) : value
+  }
+}
+
+const getInitials = (name: string | null) => {
+  if (!name) return '?'
+  return name.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
+}
+
+const formatPhone = (phone: string | null) => {
+  if (!phone) return '—'
+  const digits = phone.replace(/\D/g, '')
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
+  }
+  if (digits.length === 11 && digits[0] === '1') {
+    return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`
+  }
+  return phone
 }
 
 const load = async () => {
@@ -456,187 +440,313 @@ const confirmDrop = async () => {
         </template>
 
         <template #right>
-          <UButton
-            color="neutral"
-            variant="outline"
-            icon="i-lucide-refresh-cw"
-            :loading="loading"
-            @click="load"
-          >
-            Refresh
-          </UButton>
+          <div class="flex items-center gap-2">
+            <div class="hidden items-center gap-1.5 rounded-full border border-[var(--ap-accent)]/20 bg-[var(--ap-accent)]/8 px-3 py-1 sm:flex">
+              <span class="h-1.5 w-1.5 rounded-full bg-[var(--ap-accent)] animate-pulse" />
+              <span class="text-xs font-medium text-[var(--ap-accent)]">{{ totalCount }} total</span>
+            </div>
+            <UButton
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-refresh-cw"
+              size="sm"
+              :loading="loading"
+              class="rounded-lg"
+              @click="load"
+            />
+          </div>
         </template>
       </UDashboardNavbar>
     </template>
 
     <template #body>
-      <div class="flex h-full min-h-0 flex-col">
-      <UModal
-        :open="dropOpen"
-        title="Drop retainer"
-        :dismissible="false"
-        @update:open="handleDropOpenUpdate"
-      >
-        <template #body="{ close }">
-          <div class="space-y-4">
-            <div class="text-sm text-muted">
-              Are you sure you want to drop this retainer/client? This action will mark the retainer as dropped.
-            </div>
+      <div class="flex h-full min-h-0 flex-col gap-5 p-5">
+        <!-- Drop Retainer Modal -->
+        <UModal
+          :open="dropOpen"
+          title="Drop retainer"
+          :dismissible="false"
+          @update:open="handleDropOpenUpdate"
+        >
+          <template #body="{ close }">
+            <div class="space-y-5">
+              <div class="flex items-start gap-3">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-500/10">
+                  <UIcon name="i-lucide-alert-triangle" class="text-lg text-red-400" />
+                </div>
+                <div>
+                  <p class="text-sm font-medium text-highlighted">
+                    Are you sure?
+                  </p>
+                  <p class="mt-0.5 text-sm text-muted">
+                    This will permanently mark the retainer as dropped.
+                  </p>
+                </div>
+              </div>
 
-            <div class="rounded-md border border-default bg-elevated/30 p-3 text-sm">
-              <div class="font-semibold">{{ dropTarget?.insured_name ?? '—' }}</div>
-              <div class="mt-1 text-xs text-muted">
-                {{ dropTarget?.client_phone_number ?? '—' }} · {{ dropTarget?.submission_id ?? '—' }}
+              <div class="rounded-xl border border-default bg-elevated/40 p-4">
+                <div class="flex items-center gap-3">
+                  <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--ap-accent)]/15 text-xs font-bold text-[var(--ap-accent)]">
+                    {{ getInitials(dropTarget?.insured_name ?? null) }}
+                  </div>
+                  <div>
+                    <div class="text-sm font-semibold text-highlighted">
+                      {{ dropTarget?.insured_name ?? '—' }}
+                    </div>
+                    <div class="text-xs text-muted">
+                      {{ formatPhone(dropTarget?.client_phone_number ?? null) }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex items-center justify-end gap-2 pt-1">
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  :disabled="dropBusy"
+                  class="rounded-lg"
+                  @click="() => { close() }"
+                >
+                  Cancel
+                </UButton>
+                <UButton
+                  color="error"
+                  variant="solid"
+                  :loading="dropBusy"
+                  icon="i-lucide-trash-2"
+                  class="rounded-lg"
+                  @click="confirmDrop"
+                >
+                  Drop retainer
+                </UButton>
               </div>
             </div>
+          </template>
+        </UModal>
 
-            <div class="flex items-center justify-end gap-2">
-              <UButton
-                color="neutral"
-                variant="outline"
-                :disabled="dropBusy"
-                @click="() => { close() }"
-              >
-                Cancel
-              </UButton>
-              <UButton
-                color="error"
-                variant="solid"
-                :loading="dropBusy"
-                @click="confirmDrop"
-              >
-                Drop retainer
-              </UButton>
+        <!-- Toolbar -->
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="flex flex-1 flex-wrap items-center gap-2.5">
+            <div class="relative max-w-xs flex-1">
+              <UInput
+                v-model="query"
+                class="w-full [&_input]:rounded-xl [&_input]:border-white/[0.06] [&_input]:bg-white/[0.03] [&_input]:pl-10 [&_input]:backdrop-blur-sm"
+                icon="i-lucide-search"
+                placeholder="Search retainers..."
+              />
             </div>
+
+            <USelect
+              v-if="isSuperAdmin"
+              v-model="leadVendorFilter"
+              :items="leadVendorOptions"
+              class="w-44 [&_button]:rounded-xl [&_button]:border-white/[0.06] [&_button]:bg-white/[0.03]"
+            />
+
+            <USelect
+              v-model="statusFilter"
+              :items="statusOptions"
+              class="w-44 [&_button]:rounded-xl [&_button]:border-white/[0.06] [&_button]:bg-white/[0.03]"
+            />
           </div>
-        </template>
-      </UModal>
-
-      <div class="flex w-full flex-wrap items-center justify-between gap-3">
-        <div class="flex flex-1 flex-wrap items-center gap-3">
-          <UInput
-            v-model="query"
-            class="max-w-md"
-            icon="i-lucide-search"
-            placeholder="Search by name, phone..."
-          />
-
-          <USelect
-            v-if="isSuperAdmin"
-            v-model="leadVendorFilter"
-            :items="leadVendorOptions"
-            class="w-56"
-          />
-
-          <USelect
-            v-model="statusFilter"
-            :items="statusOptions"
-            class="w-56"
-          />
         </div>
 
-        <UBadge
+        <!-- Error Alert -->
+        <UAlert
+          v-if="error"
+          color="error"
           variant="subtle"
-          :label="`${totalCount} leads`"
+          title="Unable to load retainers"
+          :description="error"
+          class="rounded-xl"
         />
-      </div>
 
-      <UAlert
-        v-if="error"
-        class="mt-4"
-        color="error"
-        variant="subtle"
-        title="Unable to load retainers"
-        :description="error"
-      />
-
-      <UPageCard variant="subtle" class="relative mt-4 flex flex-1 min-h-0 flex-col p-0!">
-        <div class="flex-1 min-h-0 overflow-y-auto p-4 pb-16">
-        <UTable
-          class="mt-0"
-          :loading="loading"
-          :data="pagedRows"
-          :columns="columns"
-          :ui="{
-            base: 'table-auto border-separate border-spacing-0',
-            thead: '[&>tr]:bg-elevated/50 [&>tr]:after:content-none',
-            tbody: '[&>tr]:last:[&>td]:border-b-0',
-            th: 'first:rounded-l-lg last:rounded-r-lg border-y border-default first:border-l last:border-r last:w-40 last:text-left',
-            td: 'border-b border-default !py-1 align-top last:w-40'
-          }"
-        >
-          <template #date-cell="{ row }">
-            <span class="text-sm text-black dark:text-white/80">{{ formatDate(row.original.date) }}</span>
-          </template>
-
-          <template #insured_name-cell="{ row }">
-            <span class="text-sm text-black dark:text-white/90">{{ row.original.insured_name ?? '—' }}</span>
-          </template>
-
-          <template #client_phone_number-cell="{ row }">
-            <span class="text-sm text-black dark:text-white/80">{{ row.original.client_phone_number ?? '—' }}</span>
-          </template>
-
-          <template #agent-cell="{ row }">
-            <span class="text-sm text-black dark:text-white/80">{{ row.original.agent ?? '—' }}</span>
-          </template>
-
-          <template #lead_vendor-cell="{ row }">
-            <span class="text-sm text-black dark:text-white/80">{{ row.original.lead_vendor ?? '—' }}</span>
-          </template>
-
-          <template #actions-cell="{ row }">
-            <div class="flex justify-start gap-2">
-              <UButton
-                size="xs"
-                color="neutral"
-                variant="outline"
-                icon="i-lucide-eye"
-                label="View"
-                @click="openRow(row.original)"
-              />
-
-              <UButton
-                size="xs"
-                color="neutral"
-                variant="outline"
-                icon="i-lucide-ban"
-                label="Drop"
-                :disabled="row.original.source === 'leads'"
-                @click="openDrop(row.original)"
-              />
+        <!-- Table Card -->
+        <div class="relative flex flex-1 min-h-0 flex-col overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+          <!-- Loading Skeleton -->
+          <div v-if="loading && !rows.length" class="flex flex-1 items-center justify-center p-12">
+            <div class="flex flex-col items-center gap-3">
+              <UIcon name="i-lucide-loader-2" class="animate-spin text-2xl text-[var(--ap-accent)]" />
+              <span class="text-sm text-muted">Loading retainers...</span>
             </div>
-          </template>
-        </UTable>
-        </div>
+          </div>
 
-        <div class="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 border-t border-default bg-elevated/50 px-4 py-2">
-          <span class="text-xs text-dimmed">Page {{ displayPage }} of {{ pageCount }}</span>
+          <!-- Empty State -->
+          <div v-else-if="!loading && !rows.length" class="flex flex-1 items-center justify-center p-12">
+            <div class="flex flex-col items-center gap-3 text-center">
+              <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--ap-accent)]/10">
+                <UIcon name="i-lucide-inbox" class="text-2xl text-[var(--ap-accent)]/60" />
+              </div>
+              <div>
+                <p class="text-sm font-medium text-highlighted">
+                  No retainers found
+                </p>
+                <p class="mt-0.5 text-xs text-muted">
+                  Try adjusting your search or filters
+                </p>
+              </div>
+            </div>
+          </div>
 
-          <div class="flex items-center justify-end gap-2">
-          <UButton
-            size="sm"
-            color="neutral"
-            variant="outline"
-            :disabled="!canPrev"
-            @click="goPrev"
-          >
-            Previous
-          </UButton>
+          <!-- Table Content -->
+          <div v-else class="flex-1 min-h-0 overflow-y-auto retainers-scroll">
+            <table class="w-full">
+              <thead class="sticky top-0 z-10">
+                <tr class="border-b border-white/[0.06] bg-white/[0.03] backdrop-blur-xl">
+                  <th class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
+                    Client
+                  </th>
+                  <th class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
+                    Phone
+                  </th>
+                  <th class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
+                    Date
+                  </th>
+                  <th v-if="isSuperAdmin" class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
+                    Vendor
+                  </th>
+                  <th v-if="canSeeAssignments" class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
+                    Attorney
+                  </th>
+                  <th class="px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-widest text-muted">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="row in pagedRows"
+                  :key="row.id"
+                  class="group cursor-pointer border-b border-white/[0.03] transition-all duration-200 hover:bg-[var(--ap-accent)]/[0.04]"
+                  @click="openRow(row)"
+                >
+                  <!-- Client -->
+                  <td class="px-5 py-3.5">
+                    <div class="flex items-center gap-3">
+                      <div class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--ap-accent)]/20 to-[var(--ap-accent)]/5 text-xs font-bold text-[var(--ap-accent)] ring-1 ring-[var(--ap-accent)]/10 transition-all duration-200 group-hover:ring-[var(--ap-accent)]/30 group-hover:shadow-[0_0_12px_var(--ap-accent-shadow)]">
+                        {{ getInitials(row.insured_name) }}
+                      </div>
+                      <div class="min-w-0">
+                        <p class="truncate text-sm font-medium text-highlighted transition-colors duration-200 group-hover:text-[var(--ap-accent)]">
+                          {{ row.insured_name ?? 'Unknown Client' }}
+                        </p>
+                        <p class="mt-0.5 truncate text-[11px] text-muted">
+                          ID: {{ row.submission_id?.slice(0, 8) ?? '—' }}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
 
-          <UButton
-            size="sm"
-            color="neutral"
-            variant="outline"
-            :disabled="!canNext"
-            @click="goNext"
-          >
-            Next
-          </UButton>
+                  <!-- Phone -->
+                  <td class="px-5 py-3.5">
+                    <div class="flex items-center gap-2">
+                      <UIcon name="i-lucide-phone" class="shrink-0 text-xs text-muted" />
+                      <span class="text-sm text-default tabular-nums">{{ formatPhone(row.client_phone_number) }}</span>
+                    </div>
+                  </td>
+
+                  <!-- Date -->
+                  <td class="px-5 py-3.5">
+                    <div class="flex items-center gap-2">
+                      <UIcon name="i-lucide-calendar" class="shrink-0 text-xs text-muted" />
+                      <span class="text-sm text-default">{{ formatDate(row.date) }}</span>
+                    </div>
+                  </td>
+
+                  <!-- Lead Vendor (super admin only) -->
+                  <td v-if="isSuperAdmin" class="px-5 py-3.5">
+                    <span
+                      v-if="row.lead_vendor"
+                      class="inline-flex items-center rounded-lg border border-white/[0.06] bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-default"
+                    >
+                      {{ row.lead_vendor }}
+                    </span>
+                    <span v-else class="text-xs text-muted">—</span>
+                  </td>
+
+                  <!-- Assigned Attorney (admin+) -->
+                  <td v-if="canSeeAssignments" class="px-5 py-3.5">
+                    <span class="text-sm text-default">{{ row.assigned_attorney_name ?? '—' }}</span>
+                  </td>
+
+                  <!-- Actions -->
+                  <td class="px-5 py-3.5">
+                    <div class="flex items-center justify-end gap-1.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                      <button
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--ap-accent)]/20 bg-[var(--ap-accent)]/10 px-3 py-1.5 text-xs font-medium text-[var(--ap-accent)] transition-all hover:bg-[var(--ap-accent)]/20 hover:border-[var(--ap-accent)]/40"
+                        @click.stop="openRow(row)"
+                      >
+                        <UIcon name="i-lucide-eye" class="text-sm" />
+                        View
+                      </button>
+                      <button
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-muted transition-all hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400 disabled:pointer-events-none disabled:opacity-30"
+                        :disabled="row.source === 'leads'"
+                        @click.stop="openDrop(row)"
+                      >
+                        <UIcon name="i-lucide-ban" class="text-sm" />
+                        Drop
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination Footer -->
+          <div class="flex items-center justify-between border-t border-white/[0.06] bg-white/[0.02] px-5 py-3 backdrop-blur-xl">
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-muted">
+                Showing <span class="font-medium text-highlighted">{{ pagedRows.length }}</span> of <span class="font-medium text-highlighted">{{ totalCount }}</span>
+              </span>
+            </div>
+
+            <div class="flex items-center gap-1.5">
+              <button
+                class="inline-flex h-8 items-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 text-xs font-medium text-default transition-all hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-30"
+                :disabled="!canPrev"
+                @click="goPrev"
+              >
+                <UIcon name="i-lucide-chevron-left" class="text-sm" />
+                Prev
+              </button>
+
+              <div class="flex h-8 items-center rounded-lg border border-[var(--ap-accent)]/20 bg-[var(--ap-accent)]/8 px-3">
+                <span class="text-xs font-semibold text-[var(--ap-accent)]">{{ displayPage }}</span>
+                <span class="mx-1 text-xs text-muted">/</span>
+                <span class="text-xs text-muted">{{ pageCount }}</span>
+              </div>
+
+              <button
+                class="inline-flex h-8 items-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 text-xs font-medium text-default transition-all hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-30"
+                :disabled="!canNext"
+                @click="goNext"
+              >
+                Next
+                <UIcon name="i-lucide-chevron-right" class="text-sm" />
+              </button>
+            </div>
           </div>
         </div>
-      </UPageCard>
       </div>
     </template>
   </UDashboardPanel>
 </template>
+
+<style scoped>
+.retainers-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.retainers-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.retainers-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+}
+.retainers-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+</style>

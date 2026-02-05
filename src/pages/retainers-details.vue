@@ -31,7 +31,6 @@ const activeTab = ref('basic')
 const tabs = [
   { label: 'Basic Information', icon: 'i-lucide-user', value: 'basic' },
   { label: 'Accident Details', icon: 'i-lucide-car', value: 'accident' },
-  { label: 'Additional Info', icon: 'i-lucide-info', value: 'additional' }
 ]
 
 const headerTitle = computed(() => {
@@ -214,29 +213,6 @@ const accidentDetailsFields = computed(() => {
     ['passengers_count', 'Passengers Count']
   ].map(([key, label]) => ({ key, label, value: (row.value as Record<string, unknown>)[key] }))
 })
-
-const additionalInfoFields = computed(() => {
-  if (!row.value) return []
-  return [
-    ['buffer_agent', 'Buffer Agent'],
-    ['licensed_agent_account', 'Licensed Agent Account'],
-    ['call_result', 'Call Result'],
-    ['draft_date', 'Draft Date'],
-    ['from_callback', 'From Callback'],
-    ['is_callback', 'Is Callback'],
-    ['is_retention_call', 'Is Retention Call'],
-    ['carrier_audit', 'Carrier Audit'],
-    ['product_type_carrier', 'Product Type Carrier'],
-    ['level_or_gi', 'Level or GI'],
-    ['notes', 'Notes'],
-    ['ghl_location_id', 'GHL Location ID'],
-    ['ghl_opportunity_id', 'GHL Opportunity ID'],
-    ['ghlcontactid', 'GHL Contact ID'],
-    ['sync_status', 'Sync Status'],
-    ['created_at', 'Created At'],
-    ['updated_at', 'Updated At']
-  ].map(([key, label]) => ({ key, label, value: (row.value as Record<string, unknown>)[key] }))
-})
 </script>
 
 <template>
@@ -305,23 +281,6 @@ const additionalInfoFields = computed(() => {
               <div class="grid gap-4 md:grid-cols-2">
                 <div
                   v-for="field in accidentDetailsFields"
-                  :key="field.key"
-                  class="rounded-lg border border-default bg-elevated/20 p-3"
-                >
-                  <div class="text-xs uppercase tracking-wide text-muted">
-                    {{ field.label }}
-                  </div>
-                  <div class="mt-1 text-sm text-highlighted wrap-break-word">
-                    {{ formatFieldValue(field.key, field.value) }}
-                  </div>
-                </div>
-              </div>
-            </UCard>
-
-            <UCard v-else-if="item.value === 'additional'">
-              <div class="grid gap-4 md:grid-cols-2">
-                <div
-                  v-for="field in additionalInfoFields"
                   :key="field.key"
                   class="rounded-lg border border-default bg-elevated/20 p-3"
                 >
