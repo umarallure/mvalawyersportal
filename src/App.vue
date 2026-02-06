@@ -53,14 +53,15 @@ const links = computed(() => [[{
   onSelect: () => {
     open.value = false
   }
-}, /* {
+}, {
   label: 'Invoicing',
   icon: 'i-lucide-receipt',
   to: '/invoicing',
   onSelect: () => {
     open.value = false
   }
-}, */ ...(auth.state.value.profile?.role === 'super_admin' ? [{
+},
+...(auth.state.value.profile?.role === 'super_admin' ? [ {
   label: 'Users',
   icon: 'i-lucide-users',
   to: '/users',

@@ -186,13 +186,13 @@ function formatFieldValue(key: string, value: unknown) {
 const basicInfoFields = computed(() => {
   if (!row.value) return []
   return [
-    ['insured_name', 'Customer Name'],
+    ['insured_name', 'Retainer Name'],
     ['client_phone_number', 'Phone Number'],
-    ['contact_name', 'Contact Name'],
-    ['contact_number', 'Contact Number'],
-    ['contact_address', 'Contact Address'],
-    ['status', 'Status'],
-    ['date', 'Date']
+    ['email', 'Email'],
+    ['street_address', 'Address'],
+    ['city', 'City'],
+    ['state', 'State'],
+    ['zip_code', 'Zip Code']
   ].map(([key, label]) => {
     return { key, label, value: (row.value as Record<string, unknown>)[key] }
   })

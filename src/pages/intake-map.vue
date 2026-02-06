@@ -283,17 +283,26 @@ const orderForm = ref({
   medicalTreatment: 'ongoing' as string,
   languages: ['English'] as string[],
   noPriorAttorney: true as boolean,
-  quotaTotal: 5 as number,
+  quotaTotal: 0 as number,
   expiresInDays: 7 as 7 | 14 | 30 | 60
 })
 
 const createOrderSubmitting = ref(false)
 
+const selectedStateName = computed(() => {
+  const code = String(orderForm.value.stateCode || '').trim().toUpperCase()
+  if (!code) return ''
+  return US_STATES.find(s => s.code === code)?.name ?? code
+})
+
 const quotaError = computed(() => {
   const raw = Number(orderForm.value.quotaTotal)
-  if (!Number.isFinite(raw) || raw <= 0) return null
-  if (raw > 5) return 'Only 5 cases are allowed per order. Please reduce your quota to 5 or less.'
-  return null
+  if (!Number.isFinite(raw) || raw <= 5) return null
+
+  const stateCode = String(orderForm.value.stateCode || '').trim().toUpperCase()
+  if (!stateCode) return 'Select a state for placing this order.'
+
+  return `Maximum 5 cases are allowed per order in ${selectedStateName.value}. Please reduce your quota to 5 or less.`
 })
 
 const resetOrderForm = () => {
@@ -306,7 +315,7 @@ const resetOrderForm = () => {
     medicalTreatment: 'ongoing',
     languages: ['English'],
     noPriorAttorney: true,
-    quotaTotal: 5,
+    quotaTotal: 0,
     expiresInDays: 7
   }
 }
@@ -354,10 +363,8 @@ const injurySeverityOptions = [
 ]
 
 const caseCategoryOptions = [
-  { label: 'Motor Vehicle Accident', value: 'Motor Vehicle Accident' },
+  { label: 'MVA', value: 'Motor Vehicle Accident' },
   { label: 'Commercial injury', value: 'Commercial injury' },
-  { label: 'Personal injury', value: 'Personal injury' },
-  { label: 'Workplace injury', value: 'Workplace injury' }
 ]
 
 const expirationOptions = [
@@ -378,9 +385,9 @@ const insuranceOptions = [
 ]
 
 const medicalTreatmentOptions = [
-  { label: 'ER Visit', value: 'er' },
-  { label: 'Ongoing Treatment', value: 'ongoing' },
-  { label: 'Surgery', value: 'surgery' }
+  { label: 'No medical', value: 'no_medical' },
+  { label: 'Ongoing', value: 'ongoing' },
+  { label: 'Proof of medical treatment', value: 'proof_of_medical_treatment' }
 ]
 
 const languageOptions = [
@@ -855,7 +862,7 @@ watch(myClosedOrders, () => {
                         <div class="flex flex-col items-center gap-2">
                           <div
                             class="flex size-8 items-center justify-center rounded-full text-xs font-semibold ring-1 ring-inset"
-                            :class="createOrderStep >= 2 ? 'bg-primary text-white ring-primary' : 'bg-elevated text-muted ring-default'"
+                            :class="createOrderStep >= 2 ? 'bg-primary text-white ring-primary' : 'bg-elevated text-[var(--ap-accent)] ring-[var(--ap-accent)]'"
                           >
                             2
                           </div>
@@ -895,6 +902,7 @@ watch(myClosedOrders, () => {
                   variant="subtle"
                   title="Quota limit"
                   :description="quotaError"
+                  class="mb-4"
                 />
 
                 <div class="grid gap-4 sm:grid-cols-2">
@@ -902,9 +910,11 @@ watch(myClosedOrders, () => {
                     <USelect
                       v-model="orderForm.stateCode"
                       :items="orderStateOptions"
+                      class="w-full sm:w-1/2"
                       value-key="value"
                       label-key="label"
                       placeholder="Select a state"
+                      :ui="{ content: 'w-(--reka-select-trigger-width)' }"
                     />
                   </UFormField>
 
@@ -912,9 +922,11 @@ watch(myClosedOrders, () => {
                     <USelect
                       v-model="orderForm.caseCategory"
                       :items="caseCategoryOptions"
+                      class="w-full sm:w-1/2"
                       value-key="value"
                       label-key="label"
                       placeholder="Select case category"
+                      :ui="{ content: 'w-(--reka-select-trigger-width)' }"
                     />
                   </UFormField>
 
@@ -922,6 +934,7 @@ watch(myClosedOrders, () => {
                     <USelect
                       v-model="orderForm.injurySeverity"
                       :items="injurySeverityOptions"
+                      class="w-full sm:w-1/2"
                       value-key="value"
                       label-key="label"
                       multiple
@@ -947,9 +960,11 @@ watch(myClosedOrders, () => {
                     <USelect
                       v-model="orderForm.liabilityStatus"
                       :items="liabilityOptions"
+                      class="w-full sm:w-1/2"
                       value-key="value"
                       label-key="label"
                       placeholder="Select liability"
+                      :ui="{ content: 'w-(--reka-select-trigger-width)' }"
                     />
                   </UFormField>
 
@@ -957,9 +972,11 @@ watch(myClosedOrders, () => {
                     <USelect
                       v-model="orderForm.insuranceStatus"
                       :items="insuranceOptions"
+                      class="w-full sm:w-1/2"
                       value-key="value"
                       label-key="label"
                       placeholder="Select insurance"
+                      :ui="{ content: 'w-(--reka-select-trigger-width)' }"
                     />
                   </UFormField>
 
@@ -967,8 +984,10 @@ watch(myClosedOrders, () => {
                     <USelect
                       v-model="orderForm.medicalTreatment"
                       :items="medicalTreatmentOptions"
+                      class="w-full sm:w-1/2"
                       value-key="value"
                       label-key="label"
+                      :ui="{ content: 'w-(--reka-select-trigger-width)' }"
                     />
                   </UFormField>
 
@@ -976,6 +995,7 @@ watch(myClosedOrders, () => {
                     <USelect
                       v-model="orderForm.languages"
                       :items="languageOptions"
+                      class="w-full sm:w-1/2"
                       multiple
                       placeholder="Select languages"
                       :ui="multiSelectUi"

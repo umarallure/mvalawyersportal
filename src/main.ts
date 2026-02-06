@@ -21,7 +21,7 @@ const router = createRouter({
     { path: '/retainers', component: () => import('./pages/retainers.vue') },
     { path: '/retainers/:id', component: () => import('./pages/retainers-details.vue') },
     { path: '/fulfillment', component: () => import('./pages/fulfillment.vue') },
-    { path: '/invoicing', component: () => import('./pages/not-found.vue') },
+    { path: '/invoicing', component: () => import('./pages/invoicing.vue') },
     { path: '/users', component: () => import('./pages/users.vue'), meta: { requiresSuperAdmin: true } },
     { path: '/centers', component: () => import('./pages/centers.vue'), meta: { requiresSuperAdmin: true } },
     {

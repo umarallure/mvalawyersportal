@@ -6,12 +6,13 @@ import { useAuth } from '../composables/useAuth'
 import { listOrdersForLawyer, type OrderRow } from '../lib/orders'
 import { supabase } from '../lib/supabase'
 
-type StageKey = 'returned_back' | 'dropped_retainers' | 'signed_retainers'
+type StageKey = 'returned_back' | 'signed_retainers' | 'dropped_retainers' | 'successful_cases'
 
 const STAGES: { key: StageKey, label: string }[] = [
   { key: 'returned_back', label: 'Returned Back' },
+  { key: 'signed_retainers', label: 'Signed Retainers' },
   { key: 'dropped_retainers', label: 'Dropped Retainers' },
-  { key: 'signed_retainers', label: 'Signed Retainers' }
+  { key: 'successful_cases', label: 'Successfull Cases' }
 ]
 
 type FulfillmentOrder = {
@@ -58,6 +59,8 @@ const toStage = (row: Record<string, unknown>) => {
 
   if (signedDate) return 'signed_retainers' as const
   if (s.includes('sign')) return 'signed_retainers' as const
+
+  if (s.includes('successful') || s.includes('success') || s.includes('qualified') || s.includes('won')) return 'successful_cases' as const
 
   if (s.includes('drop') || s.includes('dropped') || s.includes('cancel')) return 'dropped_retainers' as const
 
@@ -224,6 +227,7 @@ const totalOrders = computed(() => totalOrdersCount.value)
 const signedCount = computed(() => (ordersByStage.value.get('signed_retainers') ?? []).length)
 const droppedCount = computed(() => (ordersByStage.value.get('dropped_retainers') ?? []).length)
 const returnedCount = computed(() => (ordersByStage.value.get('returned_back') ?? []).length)
+const successfulCount = computed(() => (ordersByStage.value.get('successful_cases') ?? []).length)
 
 const orderOptions = computed(() => {
   return [
@@ -267,7 +271,7 @@ const openLead = (lead: FulfillmentOrder) => {
 
     <template #body>
       <div class="flex h-full min-h-0 flex-col">
-        <div class="mb-4 grid gap-4 sm:grid-cols-4">
+        <div class="mb-4 grid gap-4 sm:grid-cols-5">
           <UCard>
             <div class="flex items-center justify-between">
               <div>
@@ -275,6 +279,16 @@ const openLead = (lead: FulfillmentOrder) => {
                 <p class="text-2xl font-semibold">{{ totalOrders }}</p>
               </div>
               <UIcon name="i-lucide-package" class="size-8 text-primary" />
+            </div>
+          </UCard>
+
+          <UCard>
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm text-muted">Returned Back</p>
+                <p class="text-2xl font-semibold">{{ returnedCount }}</p>
+              </div>
+              <UIcon name="i-lucide-arrow-left-circle" class="size-8 text-warning" />
             </div>
           </UCard>
 
@@ -301,10 +315,10 @@ const openLead = (lead: FulfillmentOrder) => {
           <UCard>
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-muted">Returned Back</p>
-                <p class="text-2xl font-semibold">{{ returnedCount }}</p>
+                <p class="text-sm text-muted">Successfull Cases</p>
+                <p class="text-2xl font-semibold">{{ successfulCount }}</p>
               </div>
-              <UIcon name="i-lucide-arrow-left-circle" class="size-8 text-warning" />
+              <UIcon name="i-lucide-trophy" class="size-8 text-primary" />
             </div>
           </UCard>
         </div>
