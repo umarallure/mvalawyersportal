@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useStorage } from '@vueuse/core'
 import type { NavigationMenuItem } from '@nuxt/ui'
@@ -11,6 +11,8 @@ const route = useRoute()
 const auth = useAuth()
 
 const open = ref(false)
+const sidebarCollapsed = ref(false)
+let collapsedBeforeGuide = false
 
 onMounted(() => {
   auth.init().catch(() => {
@@ -61,7 +63,14 @@ const links = computed(() => [[{
     open.value = false
   }
 },
-...(auth.state.value.profile?.role === 'super_admin' ? [ {
+...(auth.state.value.profile?.role === 'super_admin' ? [{
+  label: 'Product Guide',
+  icon: 'i-lucide-play-circle',
+  to: '/product-guide',
+  onSelect: () => {
+    open.value = false
+  }
+}, {
   label: 'Users',
   icon: 'i-lucide-users',
   to: '/users',
@@ -117,6 +126,15 @@ const isPublicPage = computed(() =>
   || route.path.endsWith('/pdf')
 )
 
+watch(() => route.path, (to, from) => {
+  if (to === '/product-guide' && from !== '/product-guide') {
+    collapsedBeforeGuide = sidebarCollapsed.value
+    sidebarCollapsed.value = true
+  } else if (from === '/product-guide' && to !== '/product-guide') {
+    sidebarCollapsed.value = collapsedBeforeGuide
+  }
+})
+
 const groups = computed(() => [{
   id: 'links',
   label: 'Go to',
@@ -160,6 +178,7 @@ if (cookie.value !== 'accepted') {
         <UDashboardSidebar
           id="default"
           v-model:open="open"
+          v-model:collapsed="sidebarCollapsed"
           collapsible
           resizable
           class="bg-elevated/25"
