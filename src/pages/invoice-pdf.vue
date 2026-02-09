@@ -1,0 +1,827 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
+
+import { useAuth } from '../composables/useAuth'
+import { getInvoice, getLawyerProfile, markInvoiceAsPaid, requestChargeback, type InvoiceItem, type InvoiceRow } from '../lib/invoices'
+import { supabase } from '../lib/supabase'
+
+const route = useRoute()
+const auth = useAuth()
+
+const invoiceId = computed(() => (route.params as Record<string, string>).id ?? null)
+
+const loading = ref(true)
+const error = ref<string | null>(null)
+
+const invoice = ref<InvoiceRow | null>(null)
+
+const lawyerInfo = ref<{
+  full_name: string | null
+  firm_name: string | null
+  office_address: string | null
+  primary_email: string | null
+  direct_phone: string | null
+  bar_association_number: string | null
+} | null>(null)
+
+const lawyerFallback = ref<{
+  display_name: string | null
+  email: string | null
+} | null>(null)
+
+const formatMoney = (n: number) => {
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(n)
+  } catch {
+    return `$${n.toFixed(2)}`
+  }
+}
+
+const formatDate = (value: string | null) => {
+  if (!value) return '—'
+  try {
+    const d = new Date(value)
+    return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+  } catch {
+    return value
+  }
+}
+
+const formatDateShort = (value: string | null) => {
+  if (!value) return '—'
+  try {
+    const d = new Date(value)
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  } catch {
+    return value
+  }
+}
+
+const getStatusLabel = (status: string) => {
+  if (status === 'pending') return 'PENDING'
+  if (status === 'paid') return 'PAID'
+  return 'CHARGEBACK'
+}
+
+const getStatusClass = (status: string) => {
+  if (status === 'paid') return 'status-paid'
+  if (status === 'pending') return 'status-pending'
+  return 'status-chargeback'
+}
+
+const lawyerName = computed(() =>
+  lawyerInfo.value?.full_name || lawyerFallback.value?.display_name || lawyerFallback.value?.email || '—'
+)
+
+const lawyerEmail = computed(() =>
+  lawyerInfo.value?.primary_email || lawyerFallback.value?.email || '—'
+)
+
+const markingPaid = ref(false)
+const markPaidError = ref<string | null>(null)
+const requestingChargeback = ref(false)
+const chargebackError = ref<string | null>(null)
+
+const handlePrint = () => {
+  window.print()
+}
+
+const handleMarkAsPaid = async () => {
+  if (!invoice.value || invoice.value.status !== 'pending') return
+  markingPaid.value = true
+  markPaidError.value = null
+  try {
+    const updated = await markInvoiceAsPaid(invoice.value.id)
+    invoice.value = updated
+  } catch (e) {
+    markPaidError.value = e instanceof Error ? e.message : 'Failed to mark as paid'
+  } finally {
+    markingPaid.value = false
+  }
+}
+
+const handleRequestChargeback = async () => {
+  if (!invoice.value || invoice.value.status !== 'paid') return
+  requestingChargeback.value = true
+  chargebackError.value = null
+  try {
+    const updated = await requestChargeback(invoice.value.id)
+    invoice.value = updated
+  } catch (e) {
+    chargebackError.value = e instanceof Error ? e.message : 'Failed to request chargeback'
+  } finally {
+    requestingChargeback.value = false
+  }
+}
+
+onMounted(async () => {
+  loading.value = true
+  try {
+    await auth.init()
+
+    if (!invoiceId.value) {
+      error.value = 'No invoice ID provided'
+      return
+    }
+
+    const inv = await getInvoice(invoiceId.value)
+    if (!inv) {
+      error.value = 'Invoice not found'
+      return
+    }
+
+    invoice.value = inv
+
+    try {
+      lawyerInfo.value = await getLawyerProfile(inv.lawyer_id)
+    } catch {
+      lawyerInfo.value = null
+    }
+
+    const { data: appUser } = await supabase
+      .from('app_users')
+      .select('display_name,email')
+      .eq('user_id', inv.lawyer_id)
+      .maybeSingle()
+
+    lawyerFallback.value = appUser ? {
+      display_name: appUser.display_name ?? null,
+      email: appUser.email ?? null
+    } : null
+
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Failed to load invoice'
+  } finally {
+    loading.value = false
+  }
+})
+</script>
+
+<template>
+  <div class="invoice-pdf-page">
+    <!-- Loading -->
+    <div v-if="loading" class="loading-state">
+      <div class="spinner" />
+      <p>Loading invoice...</p>
+    </div>
+
+    <!-- Error -->
+    <div v-else-if="error" class="error-state">
+      <p>{{ error }}</p>
+    </div>
+
+    <!-- Invoice -->
+    <div v-else-if="invoice" class="invoice-container">
+      <!-- Action Buttons (hidden on print) -->
+      <div class="print-actions no-print">
+        <button
+          v-if="invoice.status === 'pending'"
+          class="mark-paid-btn"
+          :disabled="markingPaid"
+          @click="handleMarkAsPaid"
+        >
+          {{ markingPaid ? 'Marking...' : 'Mark as Paid' }}
+        </button>
+        <button
+          v-if="invoice.status === 'paid'"
+          class="chargeback-btn"
+          :disabled="requestingChargeback"
+          @click="handleRequestChargeback"
+        >
+          {{ requestingChargeback ? 'Requesting...' : 'Request Chargeback' }}
+        </button>
+        <button class="print-btn" @click="handlePrint">
+          Print / Save as PDF
+        </button>
+      </div>
+      <div v-if="markPaidError" class="mark-paid-error no-print">
+        {{ markPaidError }}
+      </div>
+      <div v-if="chargebackError" class="mark-paid-error no-print">
+        {{ chargebackError }}
+      </div>
+
+      <div class="invoice-paper">
+        <!-- Top accent bar -->
+        <div class="accent-bar" />
+
+        <!-- Header -->
+        <div class="invoice-header">
+          <div class="header-left">
+            <img src="/assets/logo-black.png" alt="Accident Payments" class="company-logo">
+          </div>
+          <div class="header-right">
+            <div class="invoice-title">INVOICE</div>
+            <div class="invoice-number">{{ invoice.invoice_number }}</div>
+            <div :class="['status-badge', getStatusClass(invoice.status)]">
+              {{ getStatusLabel(invoice.status) }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Divider -->
+        <div class="divider" />
+
+        <!-- Billing Info -->
+        <div class="billing-section">
+          <div class="billing-from">
+            <div class="billing-label">FROM</div>
+            <div class="billing-name">Accident Payments</div>
+            <div class="billing-detail">Motor Vehicle Accident Division</div>
+            <div class="billing-detail">admin@accidentpayments.com</div>
+          </div>
+
+          <div class="billing-to">
+            <div class="billing-label">BILL TO</div>
+            <div class="billing-name">{{ lawyerName }}</div>
+            <div class="billing-detail">{{ lawyerEmail }}</div>
+          </div>
+
+          <div class="billing-dates">
+            <div class="date-row">
+              <span class="date-label">Invoice Date</span>
+              <span class="date-value">{{ formatDate(invoice.created_at) }}</span>
+            </div>
+            <div class="date-row">
+              <span class="date-label">Due Date</span>
+              <span class="date-value">{{ formatDate(invoice.due_date) }}</span>
+            </div>
+            <div class="date-row">
+              <span class="date-label">Period</span>
+              <span class="date-value">{{ formatDateShort(invoice.date_range_start) }} — {{ formatDateShort(invoice.date_range_end) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Line Items Table -->
+        <div class="items-section">
+          <table class="items-table">
+            <thead>
+              <tr>
+                <th class="th-num">#</th>
+                <th class="th-desc">Description</th>
+                <th class="th-qty">Qty</th>
+                <th class="th-price">Unit Price</th>
+                <th class="th-amount">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(item, idx) in (invoice.items as InvoiceItem[])" :key="idx">
+                <td class="td-num">{{ idx + 1 }}</td>
+                <td class="td-desc">{{ item.description }}</td>
+                <td class="td-qty">{{ item.quantity }}</td>
+                <td class="td-price">{{ formatMoney(item.unit_price) }}</td>
+                <td class="td-amount">{{ formatMoney(item.amount) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Totals -->
+        <div class="totals-section">
+          <div class="totals-box">
+            <div class="total-row">
+              <span class="total-label">Subtotal</span>
+              <span class="total-value">{{ formatMoney(Number(invoice.subtotal)) }}</span>
+            </div>
+            <div v-if="Number(invoice.tax_rate) > 0" class="total-row">
+              <span class="total-label">Tax ({{ (Number(invoice.tax_rate) * 100).toFixed(1) }}%)</span>
+              <span class="total-value">{{ formatMoney(Number(invoice.tax_amount)) }}</span>
+            </div>
+            <div class="total-row total-grand">
+              <span class="total-label">Total Due</span>
+              <span class="total-value">{{ formatMoney(Number(invoice.total_amount)) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Notes -->
+        <div v-if="invoice.notes" class="notes-section">
+          <div class="notes-label">Notes</div>
+          <div class="notes-text">{{ invoice.notes }}</div>
+        </div>
+
+        <!-- Footer -->
+        <div class="invoice-footer">
+          <div class="footer-left">
+            <div class="footer-text">Thank you for your business.</div>
+            <div class="footer-sub">Payment is due by {{ formatDate(invoice.due_date) }}.</div>
+          </div>
+          <div class="footer-right" />
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style>
+/* Reset for PDF page — Accident Payments brand palette */
+.invoice-pdf-page {
+  min-height: 100vh;
+  background: #f5f0ec;
+  font-family: 'Montserrat', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #141010;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.loading-state,
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  gap: 16px;
+  color: #7c6a5a;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #e8ddd3;
+  border-top-color: #ae4010;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.error-state p {
+  color: #ae4010;
+  font-size: 14px;
+}
+
+.invoice-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 40px 20px;
+}
+
+.print-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.mark-paid-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  background: #16a34a;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-family: inherit;
+}
+
+.mark-paid-btn:hover {
+  background: #15803d;
+}
+
+.mark-paid-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.mark-paid-error {
+  text-align: right;
+  color: #b91c1c;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.chargeback-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  background: #b91c1c;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-family: inherit;
+}
+
+.chargeback-btn:hover {
+  background: #991b1b;
+}
+
+.chargeback-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.print-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  background: #ae4010;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-family: inherit;
+}
+
+.print-btn:hover {
+  background: #7c2c0a;
+}
+
+/* Invoice Paper */
+.invoice-paper {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 4px 32px rgba(174, 64, 16, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04);
+  padding: 48px;
+  position: relative;
+  overflow: hidden;
+}
+
+.accent-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5px;
+  background: linear-gradient(90deg, #7c2c0a, #ae4010, #f7c480);
+}
+
+/* Header */
+.invoice-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 32px;
+  padding-top: 8px;
+}
+
+.company-logo {
+  height: 44px;
+  width: auto;
+  object-fit: contain;
+}
+
+.company-tagline {
+  font-size: 11px;
+  color: #9a8a7c;
+  margin-top: 6px;
+  letter-spacing: 0.3px;
+}
+
+.header-right {
+  text-align: right;
+}
+
+.invoice-title {
+  font-size: 30px;
+  font-weight: 800;
+  color: #ae4010;
+  letter-spacing: 5px;
+}
+
+.invoice-number {
+  font-size: 14px;
+  font-weight: 600;
+  color: #7c6a5a;
+  margin-top: 4px;
+}
+
+.status-badge {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 4px 14px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.status-paid {
+  background: #e6f4ea;
+  color: #1a7a3a;
+}
+
+.status-pending {
+  background: #fef3e2;
+  color: #ae4010;
+}
+
+.status-chargeback {
+  background: #fde8e8;
+  color: #b91c1c;
+}
+
+/* Divider */
+.divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #e8ddd3, transparent);
+  margin: 24px 0;
+}
+
+/* Billing Section */
+.billing-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 32px;
+  margin-bottom: 40px;
+}
+
+.billing-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #ae4010;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+
+.billing-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #141010;
+  margin-bottom: 4px;
+}
+
+.billing-detail {
+  font-size: 13px;
+  color: #7c6a5a;
+  line-height: 1.6;
+}
+
+.billing-dates {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.date-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  background: #faf7f4;
+  border-radius: 8px;
+  border: 1px solid #f0e8e0;
+}
+
+.date-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9a8a7c;
+}
+
+.date-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #141010;
+}
+
+/* Items Table */
+.items-section {
+  margin-bottom: 32px;
+}
+
+.items-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.items-table thead tr {
+  background: #faf7f4;
+}
+
+.items-table th {
+  padding: 12px 16px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #ae4010;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  text-align: left;
+  border-bottom: 2px solid #e8ddd3;
+}
+
+.th-num { width: 50px; }
+.th-desc { width: auto; }
+.th-qty { width: 80px; text-align: center; }
+.th-price { width: 120px; text-align: right; }
+.th-amount { width: 120px; text-align: right; }
+
+.items-table td {
+  padding: 14px 16px;
+  font-size: 14px;
+  color: #3d3530;
+  border-bottom: 1px solid #f0e8e0;
+}
+
+.td-num {
+  color: #9a8a7c;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.td-desc {
+  font-weight: 500;
+}
+
+.td-qty {
+  text-align: center;
+  color: #7c6a5a;
+}
+
+.td-price {
+  text-align: right;
+  color: #7c6a5a;
+  font-variant-numeric: tabular-nums;
+}
+
+.td-amount {
+  text-align: right;
+  font-weight: 600;
+  color: #141010;
+  font-variant-numeric: tabular-nums;
+}
+
+.items-table tbody tr:last-child td {
+  border-bottom: 2px solid #e8ddd3;
+}
+
+/* Totals */
+.totals-section {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 40px;
+}
+
+.totals-box {
+  width: 300px;
+}
+
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.total-label {
+  font-size: 14px;
+  color: #7c6a5a;
+}
+
+.total-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #3d3530;
+  font-variant-numeric: tabular-nums;
+}
+
+.total-grand {
+  border-top: 2px solid #e8ddd3;
+  margin-top: 8px;
+  padding-top: 12px;
+}
+
+.total-grand .total-label {
+  font-size: 16px;
+  font-weight: 800;
+  color: #141010;
+}
+
+.total-grand .total-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: #ae4010;
+}
+
+/* Notes */
+.notes-section {
+  background: #faf7f4;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 40px;
+  border: 1px solid #f0e8e0;
+}
+
+.notes-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #ae4010;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+
+.notes-text {
+  font-size: 13px;
+  color: #7c6a5a;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* Footer */
+.invoice-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-top: 24px;
+  border-top: 1px solid #e8ddd3;
+}
+
+.footer-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: #141010;
+}
+
+.footer-sub {
+  font-size: 12px;
+  color: #9a8a7c;
+  margin-top: 4px;
+}
+
+.footer-id {
+  font-size: 11px;
+  color: #c4b8ac;
+  font-family: monospace;
+}
+
+/* Print Styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .invoice-pdf-page {
+    background: white;
+    padding: 0;
+  }
+
+  .invoice-container {
+    padding: 0;
+    max-width: none;
+  }
+
+  .invoice-paper {
+    box-shadow: none;
+    border-radius: 0;
+    padding: 24px;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  @page {
+    margin: 0.5in;
+    size: letter;
+  }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .invoice-paper {
+    padding: 24px;
+  }
+
+  .invoice-header {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .header-right {
+    text-align: left;
+  }
+
+  .billing-section {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .items-table {
+    font-size: 12px;
+  }
+
+  .items-table th,
+  .items-table td {
+    padding: 8px;
+  }
+}
+</style>

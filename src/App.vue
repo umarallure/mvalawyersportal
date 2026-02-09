@@ -112,7 +112,10 @@ const links = computed(() => [[{
   }]
 }]] satisfies NavigationMenuItem[][])
 
-const isPublicPage = computed(() => ['/login', '/', '/get-started'].includes(route.path))
+const isPublicPage = computed(() =>
+  ['/login', '/', '/get-started'].includes(route.path)
+  || route.path.endsWith('/pdf')
+)
 
 const groups = computed(() => [{
   id: 'links',
