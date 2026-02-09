@@ -38,7 +38,7 @@ const showCompletionMeter = computed(() => {
 </script>
 
 <template>
-  <UDashboardPanel id="settings" :ui="{ body: 'lg:py-12' }">
+  <UDashboardPanel id="settings">
     <template #header>
       <UDashboardNavbar title="Settings">
         <template #leading>
@@ -47,13 +47,12 @@ const showCompletionMeter = computed(() => {
       </UDashboardNavbar>
 
       <UDashboardToolbar>
-        <!-- NOTE: The `-mx-1` class is used to align with the `DashboardSidebarCollapse` button here. -->
         <UNavigationMenu :items="links" highlight class="-mx-1 flex-1" />
       </UDashboardToolbar>
     </template>
 
     <template #body>
-      <div class="flex flex-col gap-4 sm:gap-6 lg:gap-12 w-full">
+      <div class="mx-auto flex w-full max-w-4xl flex-col gap-6">
         <ProfileCompletionMeter v-if="showCompletionMeter" :profile-data="attorneyProfileData" />
         <RouterView />
       </div>

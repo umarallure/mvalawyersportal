@@ -239,7 +239,7 @@ watch(pageCount, () => {
     </template>
 
     <template #body>
-      <div class="flex h-full min-h-0 flex-col gap-5 p-5">
+      <div class="flex h-full min-h-0 flex-col gap-5">
         <!-- Stats Cards -->
         <div class="grid gap-4 sm:grid-cols-4">
           <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">

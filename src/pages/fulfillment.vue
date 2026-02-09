@@ -270,60 +270,72 @@ const openLead = (lead: FulfillmentOrder) => {
     </template>
 
     <template #body>
-      <div class="flex h-full min-h-0 flex-col">
-        <div class="mb-4 grid gap-4 sm:grid-cols-5">
-          <UCard>
+      <div class="flex h-full min-h-0 flex-col gap-5">
+        <!-- ═══ Stat Cards ═══ -->
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div class="group overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 transition-all duration-300 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.03]">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-muted">Total Orders</p>
-                <p class="text-2xl font-semibold">{{ totalOrders }}</p>
+                <p class="text-xs font-medium uppercase tracking-wider text-muted">Total Orders</p>
+                <p class="mt-1.5 text-3xl font-bold text-highlighted">{{ totalOrders }}</p>
               </div>
-              <UIcon name="i-lucide-package" class="size-8 text-primary" />
+              <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--ap-accent)]/10">
+                <UIcon name="i-lucide-package" class="text-xl text-[var(--ap-accent)]" />
+              </div>
             </div>
-          </UCard>
+          </div>
 
-          <UCard>
+          <div class="group overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 transition-all duration-300 hover:border-amber-500/30 hover:bg-amber-500/[0.03]">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-muted">Returned Back</p>
-                <p class="text-2xl font-semibold">{{ returnedCount }}</p>
+                <p class="text-xs font-medium uppercase tracking-wider text-muted">Returned Back</p>
+                <p class="mt-1.5 text-3xl font-bold text-amber-400">{{ returnedCount }}</p>
               </div>
-              <UIcon name="i-lucide-arrow-left-circle" class="size-8 text-warning" />
+              <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/10">
+                <UIcon name="i-lucide-arrow-left-circle" class="text-xl text-amber-400" />
+              </div>
             </div>
-          </UCard>
+          </div>
 
-          <UCard>
+          <div class="group overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 transition-all duration-300 hover:border-green-500/30 hover:bg-green-500/[0.03]">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-muted">Signed Retainers</p>
-                <p class="text-2xl font-semibold">{{ signedCount }}</p>
+                <p class="text-xs font-medium uppercase tracking-wider text-muted">Signed Retainers</p>
+                <p class="mt-1.5 text-3xl font-bold text-green-400">{{ signedCount }}</p>
               </div>
-              <UIcon name="i-lucide-check-circle" class="size-8 text-success" />
+              <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-green-500/10">
+                <UIcon name="i-lucide-check-circle" class="text-xl text-green-400" />
+              </div>
             </div>
-          </UCard>
+          </div>
 
-          <UCard>
+          <div class="group overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 transition-all duration-300 hover:border-red-500/30 hover:bg-red-500/[0.03]">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-muted">Dropped</p>
-                <p class="text-2xl font-semibold">{{ droppedCount }}</p>
+                <p class="text-xs font-medium uppercase tracking-wider text-muted">Dropped</p>
+                <p class="mt-1.5 text-3xl font-bold text-red-400">{{ droppedCount }}</p>
               </div>
-              <UIcon name="i-lucide-x-circle" class="size-8 text-error" />
+              <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-red-500/10">
+                <UIcon name="i-lucide-x-circle" class="text-xl text-red-400" />
+              </div>
             </div>
-          </UCard>
+          </div>
 
-          <UCard>
+          <div class="group overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 transition-all duration-300 hover:border-emerald-500/30 hover:bg-emerald-500/[0.03]">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-muted">Successfull Cases</p>
-                <p class="text-2xl font-semibold">{{ successfulCount }}</p>
+                <p class="text-xs font-medium uppercase tracking-wider text-muted">Successful Cases</p>
+                <p class="mt-1.5 text-3xl font-bold text-emerald-400">{{ successfulCount }}</p>
               </div>
-              <UIcon name="i-lucide-trophy" class="size-8 text-primary" />
+              <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/10">
+                <UIcon name="i-lucide-trophy" class="text-xl text-emerald-400" />
+              </div>
             </div>
-          </UCard>
+          </div>
         </div>
 
-        <div class="flex flex-wrap items-center justify-between gap-3">
+        <!-- ═══ Filters ═══ -->
+        <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] px-5 py-3">
           <div class="flex flex-wrap items-center gap-3">
             <USelect
               v-model="selectedOrderId"
@@ -350,58 +362,87 @@ const openLead = (lead: FulfillmentOrder) => {
             />
           </div>
 
-          <UBadge variant="subtle" :label="`${filteredOrders.length} leads`" />
+          <span class="inline-flex items-center rounded-lg border border-white/[0.06] bg-white/[0.04] px-3 py-1 text-xs font-semibold text-muted">
+            {{ filteredOrders.length }} leads
+          </span>
         </div>
 
-        <div class="mt-4 min-h-0 flex-1 overflow-auto">
-          <div class="flex min-h-0 gap-3 pr-2" style="min-width: 1400px;">
+        <!-- ═══ Kanban Board ═══ -->
+        <div class="min-h-0 flex-1 overflow-hidden">
+          <div class="flex h-full gap-4">
             <div
               v-for="stage in STAGES"
               :key="stage.key"
-              class="flex min-h-[560px] w-[28rem] flex-col rounded-lg border border-default bg-elevated/20"
+              class="flex min-w-0 flex-1 flex-col rounded-2xl border border-white/[0.06] bg-white/[0.02]"
             >
-              <div class="flex items-center justify-between border-b border-default px-3 py-2">
-                <div class="text-sm font-semibold">{{ stage.label }}</div>
-                <UBadge
-                  variant="subtle"
-                  :label="String(ordersByStage.get(stage.key)?.length ?? 0)"
-                />
+              <div class="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
+                <div class="flex items-center gap-2.5">
+                  <div
+                    class="flex h-7 w-7 items-center justify-center rounded-lg"
+                    :class="{
+                      'bg-amber-500/10': stage.key === 'returned_back',
+                      'bg-green-500/10': stage.key === 'signed_retainers',
+                      'bg-red-500/10': stage.key === 'dropped_retainers',
+                      'bg-emerald-500/10': stage.key === 'successful_cases'
+                    }"
+                  >
+                    <UIcon
+                      :name="stage.key === 'returned_back' ? 'i-lucide-arrow-left-circle' : stage.key === 'signed_retainers' ? 'i-lucide-check-circle' : stage.key === 'dropped_retainers' ? 'i-lucide-x-circle' : 'i-lucide-trophy'"
+                      class="text-xs"
+                      :class="{
+                        'text-amber-400': stage.key === 'returned_back',
+                        'text-green-400': stage.key === 'signed_retainers',
+                        'text-red-400': stage.key === 'dropped_retainers',
+                        'text-emerald-400': stage.key === 'successful_cases'
+                      }"
+                    />
+                  </div>
+                  <span class="text-sm font-semibold text-highlighted">{{ stage.label }}</span>
+                </div>
+                <span class="inline-flex items-center rounded-md bg-white/[0.04] px-2 py-0.5 text-[11px] font-semibold text-muted">
+                  {{ ordersByStage.get(stage.key)?.length ?? 0 }}
+                </span>
               </div>
 
-              <div class="flex-1 space-y-2 p-2">
-                <UCard
+              <div class="flex-1 space-y-2 overflow-y-auto p-3 fulfillment-scroll">
+                <div
                   v-for="order in (ordersByStage.get(stage.key) ?? [])"
                   :key="order.id"
-                  class="w-full"
-                  :ui="{ body: '!p-2 sm:!p-2' }"
+                  class="group cursor-pointer rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 transition-all duration-200 hover:border-[var(--ap-accent)]/20 hover:bg-[var(--ap-accent)]/[0.03]"
                   @click="openLead(order)"
                 >
                   <div class="flex items-start justify-between gap-2">
                     <div class="min-w-0">
-                      <div class="truncate text-sm font-semibold">{{ order.clientName }}</div>
-                      <div class="mt-0.5 text-xs text-muted">{{ order.phone }}</div>
+                      <div class="truncate text-sm font-semibold text-highlighted group-hover:text-[var(--ap-accent)] transition-colors">{{ order.clientName }}</div>
+                      <div class="mt-0.5 text-[11px] text-muted">{{ order.phone }}</div>
                     </div>
-                    <UBadge variant="subtle" size="xs" :label="order.status" />
+                    <span
+                      class="inline-flex shrink-0 items-center rounded-md bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-semibold text-muted"
+                    >
+                      {{ order.status }}
+                    </span>
                   </div>
 
                   <div class="mt-2 flex items-center justify-between gap-2">
-                    <UBadge variant="subtle" :label="order.state" size="xs" />
-                    <div class="text-xs text-muted">{{ order.date }}</div>
+                    <span class="inline-flex items-center rounded-md border border-white/[0.06] bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium text-default">
+                      {{ order.state }}
+                    </span>
+                    <span class="text-[11px] text-muted">{{ order.date }}</span>
                   </div>
 
-                  <div v-if="order.reason" class="mt-2 rounded bg-muted/30 px-2 py-1 text-xs text-muted">
+                  <div v-if="order.reason" class="mt-2 rounded-lg bg-white/[0.03] px-2.5 py-1.5 text-[11px] text-muted">
                     {{ order.reason }}
                   </div>
 
-                  <div v-if="order.signedDate" class="mt-2 flex items-center gap-1 text-xs text-success">
+                  <div v-if="order.signedDate" class="mt-2 flex items-center gap-1 text-[11px] text-green-400">
                     <UIcon name="i-lucide-check" class="size-3" />
                     <span>Signed: {{ order.signedDate }}</span>
                   </div>
-                </UCard>
+                </div>
 
                 <div
                   v-if="(ordersByStage.get(stage.key)?.length ?? 0) === 0"
-                  class="rounded-md border border-dashed border-default px-3 py-6 text-center text-xs text-muted"
+                  class="flex items-center justify-center rounded-xl border border-dashed border-white/[0.08] px-3 py-8 text-center text-xs text-muted"
                 >
                   No Retainers
                 </div>
@@ -413,3 +454,20 @@ const openLead = (lead: FulfillmentOrder) => {
     </template>
   </UDashboardPanel>
 </template>
+
+<style scoped>
+.fulfillment-scroll::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.fulfillment-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.fulfillment-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+}
+.fulfillment-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+</style>

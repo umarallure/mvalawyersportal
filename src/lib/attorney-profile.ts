@@ -29,7 +29,7 @@ export interface AttorneyProfileData {
   minimum_case_value?: number | null
   
   // Tab 3: Capacity & Performance
-  availability_status: 'accepting' | 'at_capacity' | 'on_leave'
+  availability_status?: 'accepting' | 'at_capacity' | 'on_leave' | null
   firm_size?: 'solo' | 'small' | 'medium' | 'large' | null
   case_management_software?: string | null
   insurance_carriers_handled?: string[]

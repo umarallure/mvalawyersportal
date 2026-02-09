@@ -95,71 +95,94 @@ const cancelEditing = () => {
     :state="profile"
     @submit="onSubmit"
   >
-    <UPageCard
-      title="Profile"
-      description="These informations will be displayed publicly."
-      variant="naked"
-      orientation="horizontal"
-      class="mb-4"
-    >
-      <div class="flex items-center gap-2 w-fit lg:ms-auto">
+    <!-- Page Header -->
+    <div class="flex items-center justify-between mb-6">
+      <div class="flex items-center gap-3">
+        <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--ap-accent)]/10">
+          <UIcon name="i-lucide-user" class="text-lg text-[var(--ap-accent)]" />
+        </div>
+        <div>
+          <h2 class="text-base font-semibold text-highlighted">Profile</h2>
+          <p class="text-xs text-muted">This information will be displayed publicly.</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
         <UButton
           v-if="!isEditing"
           label="Edit"
           color="neutral"
           variant="outline"
-          class="w-fit"
+          icon="i-lucide-pencil"
+          class="rounded-lg"
           @click="startEditing"
         />
         <template v-else>
           <UButton
             form="settings"
             label="Save changes"
-            color="neutral"
             type="submit"
+            icon="i-lucide-check"
             :loading="saving"
-            class="w-fit"
+            class="rounded-lg bg-[var(--ap-accent)] text-white hover:bg-[var(--ap-accent)]/90"
           />
           <UButton
             label="Cancel"
             color="neutral"
             variant="ghost"
-            class="w-fit"
+            class="rounded-lg"
             @click="cancelEditing"
           />
         </template>
       </div>
-    </UPageCard>
+    </div>
 
-    <UPageCard variant="subtle">
-      <UFormField
-        name="name"
-        label="Name"
-        description="Will appear on receipts, invoices, and other communication."
-        required
-        class="flex max-sm:flex-col justify-between items-start gap-4"
-      >
-        <UInput
-          v-model="profile.name"
-          autocomplete="off"
-          :disabled="disabled"
-        />
-      </UFormField>
-      <USeparator />
-      <UFormField
-        name="email"
-        label="Email"
-        description="Used to sign in, for email receipts and product updates."
-        required
-        class="flex max-sm:flex-col justify-between items-start gap-4"
-      >
-        <UInput
-          v-model="profile.email"
-          type="email"
-          autocomplete="off"
-          disabled
-        />
-      </UFormField>
-    </UPageCard>
+    <!-- Account Details Card -->
+    <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+      <div class="border-b border-white/[0.06] px-5 py-3">
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-id-card" class="text-sm text-muted" />
+          <span class="text-xs font-semibold uppercase tracking-wider text-muted">Account Details</span>
+        </div>
+      </div>
+
+      <div class="divide-y divide-white/[0.04]">
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">
+              Name
+              <span class="text-red-400">*</span>
+            </label>
+            <p class="mt-0.5 text-xs text-muted">Will appear on receipts, invoices, and other communication.</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInput
+              v-model="profile.name"
+              autocomplete="off"
+              :disabled="disabled"
+              size="md"
+            />
+          </div>
+        </div>
+
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">
+              Email
+              <span class="text-red-400">*</span>
+            </label>
+            <p class="mt-0.5 text-xs text-muted">Used to sign in, for email receipts and product updates.</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInput
+              v-model="profile.email"
+              type="email"
+              autocomplete="off"
+              disabled
+              size="md"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
   </UForm>
 </template>

@@ -84,7 +84,7 @@ const _useAttorneyProfile = () => {
     if ('exclusionaryCriteria' in data) out.exclusionary_criteria = data.exclusionaryCriteria ?? []
     if ('minimumCaseValue' in data) out.minimum_case_value = data.minimumCaseValue ?? null
 
-    if ('availabilityStatus' in data) out.availability_status = data.availabilityStatus ?? 'accepting'
+    if ('availabilityStatus' in data) out.availability_status = data.availabilityStatus ?? null
     if ('firmSize' in data) out.firm_size = data.firmSize ?? null
     if ('caseManagementSoftware' in data) out.case_management_software = data.caseManagementSoftware ? data.caseManagementSoftware : null
     if ('insuranceCarriers' in data) out.insurance_carriers_handled = data.insuranceCarriers ?? []
@@ -120,7 +120,7 @@ const _useAttorneyProfile = () => {
       injuryCategories: dbProfile.injury_categories || [],
       exclusionaryCriteria: dbProfile.exclusionary_criteria || [],
       minimumCaseValue: dbProfile.minimum_case_value || undefined,
-      availabilityStatus: dbProfile.availability_status || 'accepting',
+      availabilityStatus: dbProfile.availability_status || undefined,
       firmSize: dbProfile.firm_size || undefined,
       caseManagementSoftware: dbProfile.case_management_software || '',
       insuranceCarriers: dbProfile.insurance_carriers_handled || [],
@@ -187,7 +187,7 @@ const _useAttorneyProfile = () => {
         injury_categories: mergedData.injuryCategories || [],
         exclusionary_criteria: mergedData.exclusionaryCriteria || [],
         minimum_case_value: mergedData.minimumCaseValue || null,
-        availability_status: mergedData.availabilityStatus || 'accepting',
+        availability_status: mergedData.availabilityStatus || null,
         firm_size: mergedData.firmSize || null,
         case_management_software: mergedData.caseManagementSoftware || null,
         insurance_carriers_handled: mergedData.insuranceCarriers || [],
@@ -268,13 +268,13 @@ const _useAttorneyProfile = () => {
     const requiredFields = [
       'fullName', 'firmName', 'barNumber', 'languages', 'directPhone',
       'officeAddress', 'licensedStates', 'primaryCity', 'primaryPracticeFocus',
-      'injuryCategories', 'availabilityStatus'
+      'injuryCategories'
     ]
 
     const optionalFields = [
       'bio', 'yearsExperience', 'websiteUrl', 'preferredContact',
       'assistantName', 'assistantEmail', 'countiesCovered', 'federalCourts',
-      'exclusionaryCriteria', 'minimumCaseValue', 'firmSize',
+      'exclusionaryCriteria', 'minimumCaseValue', 'availabilityStatus', 'firmSize',
       'caseManagementSoftware', 'insuranceCarriers', 'litigationStyle',
       'largestSettlement', 'avgTimeToClose'
     ]

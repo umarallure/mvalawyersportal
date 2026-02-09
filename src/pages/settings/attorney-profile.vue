@@ -185,305 +185,223 @@ onBeforeRouteLeave((to) => {
     :schema="generalInfoSchema"
     :state="profile"
     @submit="onSubmit"
+    class="space-y-6"
   >
-    <UPageCard
-      title="Attorney Profile"
-      description="Manage your public profile, practice areas, and case availability."
-      variant="naked"
-      orientation="horizontal"
-      class="mb-4"
-    >
-      <div class="flex items-center gap-2 w-fit lg:ms-auto">
+    <!-- Page Header -->
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--ap-accent)]/10">
+          <UIcon name="i-lucide-briefcase" class="text-lg text-[var(--ap-accent)]" />
+        </div>
+        <div>
+          <h2 class="text-base font-semibold text-highlighted">Attorney Profile</h2>
+          <p class="text-xs text-muted">Manage your public profile, practice areas, and case availability.</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
         <UButton
           v-if="!isEditing"
           label="Edit"
           color="neutral"
           variant="outline"
-          class="w-fit"
+          icon="i-lucide-pencil"
+          class="rounded-lg"
           @click="startEditing"
         />
         <template v-else>
           <UButton
             form="attorney-profile"
             label="Save changes"
-            color="neutral"
             type="submit"
+            icon="i-lucide-check"
             :loading="saving"
-            class="w-fit"
+            class="rounded-lg bg-[var(--ap-accent)] text-white hover:bg-[var(--ap-accent)]/90"
           />
           <UButton
             label="Cancel"
             color="neutral"
             variant="ghost"
-            class="w-fit"
+            class="rounded-lg"
             @click="cancelEditing"
           />
         </template>
       </div>
-    </UPageCard>
+    </div>
 
-    <UPageCard variant="subtle" class="mb-6">
-      <div class="space-y-6">
-        <div class="flex items-center justify-between">
-          <h3 class="text-lg font-semibold">
-            Core Identity
-          </h3>
+    <!-- Core Identity -->
+    <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+      <div class="border-b border-white/[0.06] px-5 py-3">
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-fingerprint" class="text-sm text-muted" />
+          <span class="text-xs font-semibold uppercase tracking-wider text-muted">Core Identity</span>
+        </div>
+      </div>
+
+      <div class="divide-y divide-white/[0.04]">
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Profile Photo</label>
+            <p class="mt-0.5 text-xs text-muted">Upload a professional headshot (optional)</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInput v-model="profile.profilePhoto" placeholder="https://example.com/photo.jpg" autocomplete="off" :disabled="disabled" size="md" />
+          </div>
         </div>
 
-        <UFormField
-          name="profilePhoto"
-          label="Profile Photo"
-          description="Upload a professional headshot (optional)"
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInput
-            v-model="profile.profilePhoto"
-            placeholder="https://example.com/photo.jpg"
-            autocomplete="off"
-            :disabled="disabled"
-          />
-        </UFormField>
-
-        <USeparator />
-
-        <UFormField
-          name="fullName"
-          label="Full Name"
-          description="Your complete legal name"
-          required
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInput
-            v-model="profile.fullName"
-            placeholder="John Doe"
-            autocomplete="off"
-            :disabled="disabled"
-          />
-        </UFormField>
-
-        <USeparator />
-
-        <UFormField
-          name="firmName"
-          label="Firm Name"
-          description="Name of your law firm or practice"
-          required
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInput
-            v-model="profile.firmName"
-            placeholder="Doe & Associates Law Firm"
-            autocomplete="off"
-            :disabled="disabled"
-          />
-        </UFormField>
-
-        <USeparator />
-
-        <UFormField
-          name="barNumber"
-          label="Bar Association Number"
-          description="Your state bar registration number"
-          required
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInput
-            v-model="profile.barNumber"
-            placeholder="BAR123456"
-            autocomplete="off"
-            :disabled="disabled"
-          />
-        </UFormField>
-
-        <USeparator />
-
-        <UFormField
-          name="bio"
-          label="Professional Bio"
-          description="Brief description of your practice and experience (optional)"
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UTextarea
-            v-model="profile.bio"
-            :rows="4"
-            placeholder="Experienced attorney specializing in..."
-            autocomplete="off"
-            :disabled="disabled"
-          />
-        </UFormField>
-
-        <USeparator />
-
-        <UFormField
-          name="yearsExperience"
-          label="Years of Experience"
-          description="Total years practicing law (optional)"
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInput
-            v-model.number="profile.yearsExperience"
-            type="number"
-            min="0"
-            placeholder="10"
-            autocomplete="off"
-            :disabled="disabled"
-          />
-        </UFormField>
-
-        <USeparator />
-
-        <UFormField
-          name="languages"
-          label="Languages Spoken"
-          description="Select all languages you can communicate in"
-          required
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInputMenu
-            v-model="profile.languages"
-            :items="languageOptions"
-            multiple
-            searchable
-            creatable
-            placeholder="Select or type languages"
-            :disabled="disabled"
-          />
-        </UFormField>
-      </div>
-    </UPageCard>
-
-    <UPageCard variant="subtle" class="mb-6">
-      <div class="space-y-6">
-        <div class="flex items-center justify-between">
-          <h3 class="text-lg font-semibold">
-            Contact Details
-          </h3>
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Full Name <span class="text-red-400">*</span></label>
+            <p class="mt-0.5 text-xs text-muted">Your complete legal name</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInput v-model="profile.fullName" placeholder="John Doe" autocomplete="off" :disabled="disabled" size="md" />
+          </div>
         </div>
 
-        <UFormField
-          name="primaryEmail"
-          label="Primary Email"
-          description="Used for client communications and notifications"
-          required
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInput
-            v-model="profile.primaryEmail"
-            type="email"
-            autocomplete="off"
-            disabled
-          />
-        </UFormField>
-
-        <USeparator />
-
-        <UFormField
-          name="directPhone"
-          label="Direct Phone"
-          description="Your direct contact number"
-          required
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInput
-            v-model="profile.directPhone"
-            type="tel"
-            placeholder="+1 (555) 123-4567"
-            autocomplete="off"
-            :disabled="disabled"
-          />
-        </UFormField>
-
-        <USeparator />
-
-        <UFormField
-          name="officeAddress"
-          label="Primary Physical Location"
-          description="Your main office address where you practice law"
-          required
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UTextarea
-            v-model="profile.officeAddress"
-            :rows="3"
-            placeholder="123 Main Street, Suite 100, City, State, ZIP"
-            autocomplete="off"
-            :disabled="disabled"
-          />
-        </UFormField>
-
-        <USeparator />
-
-        <UFormField
-          name="websiteUrl"
-          label="Website URL"
-          description="Your firm's website (optional)"
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInput
-            v-model="profile.websiteUrl"
-            type="url"
-            placeholder="https://www.yourfirm.com"
-            autocomplete="off"
-            :disabled="disabled"
-          />
-        </UFormField>
-
-        <USeparator />
-
-        <UFormField
-          name="preferredContact"
-          label="Preferred Contact Method"
-          description="How you prefer to be contacted (optional)"
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <URadioGroup
-            v-model="profile.preferredContact"
-            :options="contactMethodOptions"
-            :disabled="disabled"
-          />
-        </UFormField>
-      </div>
-    </UPageCard>
-
-    <UPageCard variant="subtle">
-      <div class="space-y-6">
-        <div class="flex items-center justify-between">
-          <h3 class="text-lg font-semibold">
-            Support Staff
-          </h3>
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Firm Name <span class="text-red-400">*</span></label>
+            <p class="mt-0.5 text-xs text-muted">Name of your law firm or practice</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInput v-model="profile.firmName" placeholder="Doe & Associates Law Firm" autocomplete="off" :disabled="disabled" size="md" />
+          </div>
         </div>
 
-        <UFormField
-          name="assistantName"
-          label="Assistant/Paralegal Name"
-          description="Name of your assistant or paralegal (optional)"
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInput
-            v-model="profile.assistantName"
-            placeholder="Jane Smith"
-            autocomplete="off"
-            :disabled="disabled"
-          />
-        </UFormField>
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Bar Association Number <span class="text-red-400">*</span></label>
+            <p class="mt-0.5 text-xs text-muted">Your state bar registration number</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInput v-model="profile.barNumber" placeholder="BAR123456" autocomplete="off" :disabled="disabled" size="md" />
+          </div>
+        </div>
 
-        <USeparator />
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Professional Bio</label>
+            <p class="mt-0.5 text-xs text-muted">Brief description of your practice and experience (optional)</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UTextarea v-model="profile.bio" :rows="4" placeholder="Experienced attorney specializing in..." autocomplete="off" :disabled="disabled" />
+          </div>
+        </div>
 
-        <UFormField
-          name="assistantEmail"
-          label="Assistant/Paralegal Email"
-          description="Email address for your assistant (optional)"
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInput
-            v-model="profile.assistantEmail"
-            type="email"
-            placeholder="assistant@yourfirm.com"
-            autocomplete="off"
-            :disabled="disabled"
-          />
-        </UFormField>
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Years of Experience</label>
+            <p class="mt-0.5 text-xs text-muted">Total years practicing law (optional)</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInput v-model.number="profile.yearsExperience" type="number" min="0" placeholder="10" autocomplete="off" :disabled="disabled" size="md" />
+          </div>
+        </div>
+
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Languages Spoken <span class="text-red-400">*</span></label>
+            <p class="mt-0.5 text-xs text-muted">Select all languages you can communicate in</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInputMenu v-model="profile.languages" :items="languageOptions" multiple searchable creatable placeholder="Select or type languages" :disabled="disabled" />
+          </div>
+        </div>
       </div>
-    </UPageCard>
+    </div>
+
+    <!-- Contact Details -->
+    <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+      <div class="border-b border-white/[0.06] px-5 py-3">
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-phone" class="text-sm text-muted" />
+          <span class="text-xs font-semibold uppercase tracking-wider text-muted">Contact Details</span>
+        </div>
+      </div>
+
+      <div class="divide-y divide-white/[0.04]">
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Primary Email <span class="text-red-400">*</span></label>
+            <p class="mt-0.5 text-xs text-muted">Used for client communications and notifications</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInput v-model="profile.primaryEmail" type="email" autocomplete="off" disabled size="md" />
+          </div>
+        </div>
+
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Direct Phone <span class="text-red-400">*</span></label>
+            <p class="mt-0.5 text-xs text-muted">Your direct contact number</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInput v-model="profile.directPhone" type="tel" placeholder="+1 (555) 123-4567" autocomplete="off" :disabled="disabled" size="md" />
+          </div>
+        </div>
+
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Primary Physical Location <span class="text-red-400">*</span></label>
+            <p class="mt-0.5 text-xs text-muted">Your main office address where you practice law</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UTextarea v-model="profile.officeAddress" :rows="3" placeholder="123 Main Street, Suite 100, City, State, ZIP" autocomplete="off" :disabled="disabled" />
+          </div>
+        </div>
+
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Website URL</label>
+            <p class="mt-0.5 text-xs text-muted">Your firm's website (optional)</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInput v-model="profile.websiteUrl" type="url" placeholder="https://www.yourfirm.com" autocomplete="off" :disabled="disabled" size="md" />
+          </div>
+        </div>
+
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Preferred Contact Method</label>
+            <p class="mt-0.5 text-xs text-muted">How you prefer to be contacted (optional)</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <URadioGroup v-model="profile.preferredContact" :options="contactMethodOptions" :disabled="disabled" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Support Staff -->
+    <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+      <div class="border-b border-white/[0.06] px-5 py-3">
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-users" class="text-sm text-muted" />
+          <span class="text-xs font-semibold uppercase tracking-wider text-muted">Support Staff</span>
+        </div>
+      </div>
+
+      <div class="divide-y divide-white/[0.04]">
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Assistant/Paralegal Name</label>
+            <p class="mt-0.5 text-xs text-muted">Name of your assistant or paralegal (optional)</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInput v-model="profile.assistantName" placeholder="Jane Smith" autocomplete="off" :disabled="disabled" size="md" />
+          </div>
+        </div>
+
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Assistant/Paralegal Email</label>
+            <p class="mt-0.5 text-xs text-muted">Email address for your assistant (optional)</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInput v-model="profile.assistantEmail" type="email" placeholder="assistant@yourfirm.com" autocomplete="off" :disabled="disabled" size="md" />
+          </div>
+        </div>
+      </div>
+    </div>
   </UForm>
 </template>

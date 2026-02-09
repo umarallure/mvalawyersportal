@@ -9,7 +9,7 @@ import { useAttorneyProfile } from '../../composables/useAttorneyProfile'
 import UnsavedChangesModal from '../../components/settings/UnsavedChangesModal.vue'
 
 const capacitySchema = z.object({
-  availabilityStatus: z.enum(['accepting', 'at_capacity', 'on_leave']),
+  availabilityStatus: z.enum(['accepting', 'at_capacity', 'on_leave']).optional(),
   firmSize: z.enum(['solo', 'small', 'medium', 'large']).optional(),
   caseManagementSoftware: z.string().optional(),
   insuranceCarriers: z.array(z.string()).optional(),
@@ -28,12 +28,6 @@ const toast = useToast()
 const userId = computed(() => auth.state.value.user?.id ?? '')
 
 const profile = attorneyProfile.draft as unknown as { value: Partial<CapacitySchema> }
-
-const availabilityOptions = [
-  { label: 'Accepting Cases (Active)', value: 'accepting', description: 'Available for new case leads' },
-  { label: 'At Capacity (Paused)', value: 'at_capacity', description: 'Temporarily not accepting new cases' },
-  { label: 'On Leave', value: 'on_leave', description: 'Not available for case assignments' }
-]
 
 const firmSizeOptions = [
   'Solo',
@@ -174,196 +168,164 @@ onBeforeRouteLeave((to, from, next) => {
 
   <UForm
     id="capacity"
+    class="space-y-6"
     :schema="capacitySchema"
     :state="profile"
     @submit="onSubmit"
   >
-    <UPageCard
-      title="Capacity & Performance"
-      description="Manage your availability status and performance metrics."
-      variant="naked"
-      orientation="horizontal"
-      class="mb-4"
-    >
-      <div class="flex items-center gap-2 w-fit lg:ms-auto">
+    <!-- Page Header -->
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--ap-accent)]/10">
+          <UIcon name="i-lucide-activity" class="text-lg text-[var(--ap-accent)]" />
+        </div>
+        <div>
+          <h2 class="text-base font-semibold text-highlighted">
+            Capacity & Performance
+          </h2>
+          <p class="text-xs text-muted">
+            Manage your availability status and performance metrics.
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
         <UButton
           v-if="!isEditing"
           label="Edit"
           color="neutral"
           variant="outline"
-          class="w-fit"
+          icon="i-lucide-pencil"
+          class="rounded-lg"
           @click="startEditing"
         />
         <template v-else>
           <UButton
             form="capacity"
             label="Save changes"
-            color="neutral"
             type="submit"
+            icon="i-lucide-check"
             :loading="saving"
-            class="w-fit"
+            class="rounded-lg bg-[var(--ap-accent)] text-white hover:bg-[var(--ap-accent)]/90"
           />
           <UButton
             label="Cancel"
             color="neutral"
             variant="ghost"
-            class="w-fit"
+            class="rounded-lg"
             @click="cancelEditing"
           />
         </template>
       </div>
-    </UPageCard>
+    </div>
 
-    <UPageCard variant="subtle" class="mb-6">
-      <div class="space-y-6">
-        <div class="flex items-center justify-between">
-          <h3 class="text-lg font-semibold">
-            Real-Time Status
-          </h3>
+    <!-- Real-Time Status -->
+    <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+      <div class="border-b border-white/[0.06] px-5 py-3">
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-signal" class="text-sm text-muted" />
+          <span class="text-xs font-semibold uppercase tracking-wider text-muted">Real-Time Status</span>
         </div>
-
-        <UFormField
-          name="availabilityStatus"
-          label="Availability Status"
-          description="Control whether you receive new case leads"
-          required
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <URadioGroup
-            v-model="profile.availabilityStatus"
-            :options="availabilityOptions"
-            :disabled="disabled"
-          />
-        </UFormField>
-
-        <USeparator />
-
-        <UFormField
-          name="firmSize"
-          label="Firm Size"
-          description="Size of your law firm (optional)"
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInputMenu
-            v-model="profile.firmSize"
-            :items="firmSizeOptions"
-            searchable
-            creatable
-            placeholder="Select or type firm size"
-            :disabled="disabled"
-          />
-        </UFormField>
-
-        <USeparator />
-
-        <UFormField
-          name="caseManagementSoftware"
-          label="Case Management Software"
-          description="Software you use to manage cases (optional)"
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInputMenu
-            v-model="profile.caseManagementSoftware"
-            :items="caseManagementOptions"
-            searchable
-            creatable
-            placeholder="Select or type software"
-            :disabled="disabled"
-          />
-        </UFormField>
       </div>
-    </UPageCard>
 
-    <UPageCard variant="subtle">
-      <div class="space-y-6">
-        <div class="flex items-center justify-between">
-          <h3 class="text-lg font-semibold">
-            Performance Metrics
-          </h3>
-          <span class="text-sm text-dimmed">Self-Reported</span>
-        </div>
-
-        <UFormField
-          name="insuranceCarriers"
-          label="Insurance Carriers Handled"
-          description="Select carriers you have experience with (optional)"
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInputMenu
-            v-model="profile.insuranceCarriers"
-            :items="insuranceCarrierOptions"
-            multiple
-            searchable
-            creatable
-            placeholder="Select or type carriers"
-            :disabled="disabled"
-          />
-        </UFormField>
-
-        <USeparator />
-
-        <UFormField
-          name="litigationStyle"
-          label="Litigation Style"
-          description="Your approach to case resolution (optional)"
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <div class="w-full space-y-2">
-            <URange
-              v-model="profile.litigationStyle"
-              :min="1"
-              :max="5"
-              :step="1"
+      <div class="divide-y divide-white/[0.04]">
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">
+              Firm Size
+            </label>
+            <p class="mt-0.5 text-xs text-muted">
+              Size of your law firm (optional)
+            </p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInputMenu
+              v-model="profile.firmSize"
+              :items="firmSizeOptions"
+              searchable
+              creatable
+              placeholder="Select or type firm size"
               :disabled="disabled"
             />
-            <div class="flex justify-between text-xs text-dimmed">
-              <span>Settlement Focused</span>
-              <span>Balanced</span>
-              <span>Aggressive Trial</span>
-            </div>
           </div>
-        </UFormField>
+        </div>
 
-        <USeparator />
-
-        <UFormField
-          name="largestSettlement"
-          label="Largest Settlement Amount"
-          description="Your largest case settlement or verdict (optional)"
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInput
-            v-model.number="profile.largestSettlement"
-            type="number"
-            min="0"
-            placeholder="1000000"
-            autocomplete="off"
-            :disabled="disabled"
-          >
-            <template #leading>
-              <span class="text-dimmed">$</span>
-            </template>
-          </UInput>
-        </UFormField>
-
-        <USeparator />
-
-        <UFormField
-          name="avgTimeToClose"
-          label="Average Time to Close"
-          description="Typical duration from intake to resolution (optional)"
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInputMenu
-            v-model="profile.avgTimeToClose"
-            :items="timeToCloseOptions"
-            searchable
-            creatable
-            placeholder="Select or type time"
-            :disabled="disabled"
-          />
-        </UFormField>
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">
+              Case Management Software
+            </label>
+            <p class="mt-0.5 text-xs text-muted">
+              Software you use to manage cases (optional)
+            </p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInputMenu
+              v-model="profile.caseManagementSoftware"
+              :items="caseManagementOptions"
+              searchable
+              creatable
+              placeholder="Select or type software"
+              :disabled="disabled"
+            />
+          </div>
+        </div>
       </div>
-    </UPageCard>
+    </div>
+
+    <!-- Performance Metrics -->
+    <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+      <div class="flex items-center justify-between border-b border-white/[0.06] px-5 py-3">
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-bar-chart-3" class="text-sm text-muted" />
+          <span class="text-xs font-semibold uppercase tracking-wider text-muted">Performance Metrics</span>
+        </div>
+        <span class="text-[11px] text-muted">Self-Reported</span>
+      </div>
+
+      <div class="divide-y divide-white/[0.04]">
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">
+              Insurance Carriers Handled
+            </label>
+            <p class="mt-0.5 text-xs text-muted">
+              Select carriers you have experience with (optional)
+            </p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInputMenu
+              v-model="profile.insuranceCarriers"
+              :items="insuranceCarrierOptions"
+              multiple
+              searchable
+              creatable
+              placeholder="Select or type carriers"
+              :disabled="disabled"
+            />
+          </div>
+        </div>
+
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">
+              Average Time to Close
+            </label>
+            <p class="mt-0.5 text-xs text-muted">
+              Typical duration from intake to resolution (optional)
+            </p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInputMenu
+              v-model="profile.avgTimeToClose"
+              :items="timeToCloseOptions"
+              searchable
+              creatable
+              placeholder="Select or type time"
+              :disabled="disabled"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
   </UForm>
 </template>

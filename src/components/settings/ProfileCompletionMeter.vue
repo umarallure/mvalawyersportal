@@ -121,48 +121,59 @@ const completionMessage = computed(() => {
 </script>
 
 <template>
-  <div class="mb-6 p-4 rounded-lg border border-default bg-elevated/50">
-    <div class="flex items-center justify-between mb-3">
-      <div>
-        <h3 class="text-sm font-semibold">
-          Profile Completion
-        </h3>
-        <p class="text-xs text-dimmed mt-1">
-          {{ completionMessage }}
-        </p>
+  <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
+    <div class="flex items-center justify-between mb-4">
+      <div class="flex items-center gap-3">
+        <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--ap-accent)]/10">
+          <UIcon name="i-lucide-shield-check" class="text-lg text-[var(--ap-accent)]" />
+        </div>
+        <div>
+          <h3 class="text-sm font-semibold text-highlighted">
+            Profile Completion
+          </h3>
+          <p class="text-xs text-muted mt-0.5">
+            {{ completionMessage }}
+          </p>
+        </div>
       </div>
-      <div class="text-right">
-        <span class="text-2xl font-bold" :class="`text-${completionColor}`">
-          {{ completionPercentage }}%
-        </span>
-      </div>
-    </div>
-    <div class="h-2 w-full rounded-full bg-default overflow-hidden">
-      <div
-        class="h-full rounded-full transition-none"
+      <span
+        class="text-2xl font-bold"
         :class="{
-          'bg-success': completionColor === 'success',
-          'bg-warning': completionColor === 'warning',
-          'bg-error': completionColor === 'error'
+          'text-green-400': completionColor === 'success',
+          'text-amber-400': completionColor === 'warning',
+          'text-red-400': completionColor === 'error'
+        }"
+      >
+        {{ completionPercentage }}%
+      </span>
+    </div>
+
+    <div class="h-2 w-full overflow-hidden rounded-full bg-white/[0.06]">
+      <div
+        class="h-full rounded-full transition-all duration-500"
+        :class="{
+          'bg-green-400': completionColor === 'success',
+          'bg-amber-400': completionColor === 'warning',
+          'bg-red-400': completionColor === 'error'
         }"
         :style="{ width: `${completionPercentage}%` }"
       />
     </div>
-    
-    <div class="mt-3 flex items-center gap-4 text-xs text-dimmed">
-      <div class="flex items-center gap-1">
-        <UIcon name="i-lucide-check-circle" class="size-4" />
+
+    <div class="mt-3 flex items-center gap-5 text-xs text-muted">
+      <div class="flex items-center gap-1.5">
+        <UIcon name="i-lucide-check-circle" class="size-3.5 text-green-400/70" />
         <span>{{ requiredFields.filter(f => {
           const value = profileData?.[f as keyof ProfileData]
-          return value !== undefined && value !== null && value !== '' && 
+          return value !== undefined && value !== null && value !== '' &&
                  (!Array.isArray(value) || value.length > 0)
         }).length }} / {{ requiredFields.length }} Required</span>
       </div>
-      <div class="flex items-center gap-1">
-        <UIcon name="i-lucide-star" class="size-4" />
+      <div class="flex items-center gap-1.5">
+        <UIcon name="i-lucide-star" class="size-3.5 text-amber-400/70" />
         <span>{{ optionalFields.filter(f => {
           const value = profileData?.[f as keyof ProfileData]
-          return value !== undefined && value !== null && value !== '' && 
+          return value !== undefined && value !== null && value !== '' &&
                  (!Array.isArray(value) || value.length > 0)
         }).length }} / {{ optionalFields.length }} Optional</span>
       </div>

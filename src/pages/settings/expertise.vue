@@ -171,204 +171,141 @@ onBeforeRouteLeave((to, from, next) => {
     :schema="expertiseSchema"
     :state="profile"
     @submit="onSubmit"
+    class="space-y-6"
   >
-    <UPageCard
-      title="Expertise & Jurisdiction"
-      description="Define your practice areas and geographic coverage for case matching."
-      variant="naked"
-      orientation="horizontal"
-      class="mb-4"
-    >
-      <div class="flex items-center gap-2 w-fit lg:ms-auto">
+    <!-- Page Header -->
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--ap-accent)]/10">
+          <UIcon name="i-lucide-map-pin" class="text-lg text-[var(--ap-accent)]" />
+        </div>
+        <div>
+          <h2 class="text-base font-semibold text-highlighted">Expertise & Jurisdiction</h2>
+          <p class="text-xs text-muted">Define your practice areas and geographic coverage for case matching.</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
         <UButton
           v-if="!isEditing"
           label="Edit"
           color="neutral"
           variant="outline"
-          class="w-fit"
+          icon="i-lucide-pencil"
+          class="rounded-lg"
           @click="startEditing"
         />
         <template v-else>
           <UButton
             form="expertise"
             label="Save changes"
-            color="neutral"
             type="submit"
+            icon="i-lucide-check"
             :loading="saving"
-            class="w-fit"
+            class="rounded-lg bg-[var(--ap-accent)] text-white hover:bg-[var(--ap-accent)]/90"
           />
           <UButton
             label="Cancel"
             color="neutral"
             variant="ghost"
-            class="w-fit"
+            class="rounded-lg"
             @click="cancelEditing"
           />
         </template>
       </div>
-    </UPageCard>
+    </div>
 
-    <UPageCard variant="subtle" class="mb-6">
-      <div class="space-y-6">
-        <div class="flex items-center justify-between">
-          <h3 class="text-lg font-semibold">
-            Geographic Coverage
-          </h3>
+    <!-- Geographic Coverage -->
+    <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+      <div class="border-b border-white/[0.06] px-5 py-3">
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-globe" class="text-sm text-muted" />
+          <span class="text-xs font-semibold uppercase tracking-wider text-muted">Geographic Coverage</span>
+        </div>
+      </div>
+
+      <div class="divide-y divide-white/[0.04]">
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Licensed States <span class="text-red-400">*</span></label>
+            <p class="mt-0.5 text-xs text-muted">Select all states where you are licensed to practice</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInputMenu v-model="profile.licensedStates" :items="stateOptions" multiple searchable creatable placeholder="Select or type states" :disabled="disabled" />
+          </div>
         </div>
 
-        <UFormField
-          name="licensedStates"
-          label="Licensed States"
-          description="Select all states where you are licensed to practice"
-          required
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInputMenu
-            v-model="profile.licensedStates"
-            :items="stateOptions"
-            multiple
-            searchable
-            creatable
-            placeholder="Select or type states"
-            :disabled="disabled"
-          />
-        </UFormField>
-
-        <USeparator />
-
-        <UFormField
-          name="primaryCity"
-          label="Primary Physical Location"
-          description="Your main office location"
-          required
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInput
-            v-model="profile.primaryCity"
-            placeholder="Los Angeles, CA"
-            autocomplete="off"
-            :disabled="disabled"
-          />
-        </UFormField>
-
-        <USeparator />
-
-        <UFormField
-          name="countiesCovered"
-          label="Counties/Regions Covered"
-          description="Specific counties or regions (leave empty for statewide)"
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInput
-            v-model="profile.countiesCovered"
-            placeholder="Enter counties separated by commas"
-            autocomplete="off"
-            :disabled="disabled"
-          />
-        </UFormField>
-
-        <USeparator />
-
-        <UFormField
-          name="federalCourts"
-          label="Federal Court Admissions"
-          description="List any federal court admissions (optional)"
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UTextarea
-            v-model="profile.federalCourts"
-            :rows="3"
-            placeholder="e.g., Central District of California, 9th Circuit Court of Appeals"
-            autocomplete="off"
-            :disabled="disabled"
-          />
-        </UFormField>
-      </div>
-    </UPageCard>
-
-    <UPageCard variant="subtle">
-      <div class="space-y-6">
-        <div class="flex items-center justify-between">
-          <h3 class="text-lg font-semibold">
-            Case Specialization
-          </h3>
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Primary Physical Location <span class="text-red-400">*</span></label>
+            <p class="mt-0.5 text-xs text-muted">Your main office location</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInput v-model="profile.primaryCity" placeholder="Los Angeles, CA" autocomplete="off" :disabled="disabled" size="md" />
+          </div>
         </div>
 
-        <UFormField
-          name="primaryPracticeFocus"
-          label="Primary Practice Focus"
-          description="Your main area of legal practice"
-          required
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInputMenu
-            v-model="profile.primaryPracticeFocus"
-            :items="practiceFocusOptions"
-            searchable
-            creatable
-            placeholder="Select or type practice focus"
-            :disabled="disabled"
-          />
-        </UFormField>
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Counties/Regions Covered</label>
+            <p class="mt-0.5 text-xs text-muted">Specific counties or regions (leave empty for statewide)</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInput v-model="profile.countiesCovered" placeholder="Enter counties separated by commas" autocomplete="off" :disabled="disabled" size="md" />
+          </div>
+        </div>
 
-        <USeparator />
-
-        <UFormField
-          name="injuryCategories"
-          label="Specific Injury Categories"
-          description="Select all types of cases you handle"
-          required
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInputMenu
-            v-model="profile.injuryCategories"
-            :items="injuryCategoryOptions"
-            multiple
-            searchable
-            creatable
-            placeholder="Select or type categories"
-            :disabled="disabled"
-          />
-        </UFormField>
-
-        <USeparator />
-
-        <UFormField
-          name="exclusionaryCriteria"
-          label="Exclusionary Criteria"
-          description="Case types you do NOT handle (optional)"
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInput
-            v-model="profile.exclusionaryCriteria"
-            placeholder="e.g., Medical Malpractice, Class Actions"
-            autocomplete="off"
-            :disabled="disabled"
-          />
-        </UFormField>
-
-        <USeparator />
-
-        <UFormField
-          name="minimumCaseValue"
-          label="Minimum Case Value ($)"
-          description="Minimum case value you will consider (optional)"
-          class="flex max-sm:flex-col justify-between items-start gap-4"
-        >
-          <UInput
-            v-model.number="profile.minimumCaseValue"
-            type="number"
-            min="0"
-            placeholder="50000"
-            autocomplete="off"
-            :disabled="disabled"
-          >
-            <template #leading>
-              <span class="text-dimmed">$</span>
-            </template>
-          </UInput>
-        </UFormField>
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Federal Court Admissions</label>
+            <p class="mt-0.5 text-xs text-muted">List any federal court admissions (optional)</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UTextarea v-model="profile.federalCourts" :rows="3" placeholder="e.g., Central District of California, 9th Circuit Court of Appeals" autocomplete="off" :disabled="disabled" />
+          </div>
+        </div>
       </div>
-    </UPageCard>
+    </div>
+
+    <!-- Case Specialization -->
+    <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+      <div class="border-b border-white/[0.06] px-5 py-3">
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-scale" class="text-sm text-muted" />
+          <span class="text-xs font-semibold uppercase tracking-wider text-muted">Case Specialization</span>
+        </div>
+      </div>
+
+      <div class="divide-y divide-white/[0.04]">
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Primary Practice Focus <span class="text-red-400">*</span></label>
+            <p class="mt-0.5 text-xs text-muted">Your main area of legal practice</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInputMenu v-model="profile.primaryPracticeFocus" :items="practiceFocusOptions" searchable creatable placeholder="Select or type practice focus" :disabled="disabled" />
+          </div>
+        </div>
+
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Specific Injury Categories <span class="text-red-400">*</span></label>
+            <p class="mt-0.5 text-xs text-muted">Select all types of cases you handle</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInputMenu v-model="profile.injuryCategories" :items="injuryCategoryOptions" multiple searchable creatable placeholder="Select or type categories" :disabled="disabled" />
+          </div>
+        </div>
+
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">Exclusionary Criteria</label>
+            <p class="mt-0.5 text-xs text-muted">Case types you do NOT handle (optional)</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInput v-model="profile.exclusionaryCriteria" placeholder="e.g., Medical Malpractice, Class Actions" autocomplete="off" :disabled="disabled" size="md" />
+          </div>
+        </div>
+      </div>
+    </div>
   </UForm>
 </template>

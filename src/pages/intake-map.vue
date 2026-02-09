@@ -818,7 +818,7 @@ watch(myClosedOrders, () => {
     </template>
 
     <template #body>
-      <div class="space-y-4">
+      <div class="flex flex-col gap-5">
         <UAlert
           v-if="blockMode"
           color="neutral"
@@ -1104,78 +1104,80 @@ watch(myClosedOrders, () => {
           </template>
         </UModal>
 
+        <!-- ═══ Stat Card ═══ -->
         <div class="grid gap-4 sm:grid-cols-3">
-          <UCard>
+          <div class="group overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 transition-all duration-300 hover:border-blue-500/30 hover:bg-blue-500/[0.03]">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-muted">
-                  My Open Orders (All States)
-                </p>
-                <p class="text-2xl font-semibold">
-                  {{ totalOpenOrders }}
-                </p>
+                <p class="text-xs font-medium uppercase tracking-wider text-muted">My Open Orders (All States)</p>
+                <p class="mt-1.5 text-3xl font-bold text-highlighted">{{ totalOpenOrders }}</p>
               </div>
-              <UIcon name="i-lucide-activity" class="size-8 text-primary" />
-            </div>
-          </UCard>
-        </div>
-
-        <div>
-          <UCard>
-            <div class="space-y-3">
-              <div class="flex flex-wrap items-center justify-between gap-3">
-                <h3 class="font-semibold">
-                  My order volume by state
-                </h3>
-                <USelect v-model="mapFilter" :items="mapFilterOptions" size="sm" />
-              </div>
-              <div class="grid gap-3 sm:grid-cols-5">
-                <div class="flex items-center gap-2">
-                  <div class="size-4 rounded-full bg-gray-300" />
-                  <span class="text-sm">No orders</span>
-                </div>
-                <div class="flex items-center gap-2">
-                  <div class="size-4 rounded-full bg-green-500" />
-                  <span class="text-sm">Open (0% progress)</span>
-                </div>
-                <div class="flex items-center gap-2">
-                  <div class="size-4 rounded-full bg-yellow-500" />
-                  <span class="text-sm">In progress</span>
-                </div>
-                <div class="flex items-center gap-2">
-                  <div class="size-4 rounded-full bg-red-500" />
-                  <span class="text-sm">Fulfilled / Expired</span>
-                </div>
-                <div class="flex items-center gap-2">
-                  <div
-                    class="size-4 rounded-full"
-                    style="background: repeating-linear-gradient(45deg, #9ca3af 0 2px, #f3f4f6 2px 6px);"
-                  />
-                  <span class="text-sm">Blocked</span>
-                </div>
+              <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-500/10">
+                <UIcon name="i-lucide-activity" class="text-xl text-blue-400" />
               </div>
             </div>
-          </UCard>
+          </div>
         </div>
 
-        <UCard :ui="{ body: 'p-4' }">
+        <!-- ═══ Legend & Filter ═══ -->
+        <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
+          <div class="space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--ap-accent)]/10">
+                  <UIcon name="i-lucide-map" class="text-sm text-[var(--ap-accent)]" />
+                </div>
+                <h3 class="text-sm font-semibold text-highlighted">My order volume by state</h3>
+              </div>
+              <USelect v-model="mapFilter" :items="mapFilterOptions" size="sm" />
+            </div>
+            <div class="grid gap-3 sm:grid-cols-5">
+              <div class="flex items-center gap-2">
+                <div class="size-4 rounded-full bg-gray-300" />
+                <span class="text-xs text-muted">No orders</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="size-4 rounded-full bg-green-500" />
+                <span class="text-xs text-muted">Open (0% progress)</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="size-4 rounded-full bg-yellow-500" />
+                <span class="text-xs text-muted">In progress</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="size-4 rounded-full bg-red-500" />
+                <span class="text-xs text-muted">Fulfilled / Expired</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <div
+                  class="size-4 rounded-full"
+                  style="background: repeating-linear-gradient(45deg, #9ca3af 0 2px, #f3f4f6 2px 6px);"
+                />
+                <span class="text-xs text-muted">Blocked</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ Map ═══ -->
+        <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 overflow-hidden">
           <div class="relative">
             <div
               ref="mapRoot"
-              class="w-full rounded-lg bg-white overflow-hidden"
+              class="w-full rounded-xl bg-white overflow-hidden"
               style="height: 520px;"
             />
 
             <div
               v-if="tooltip.open && tooltip.state"
               ref="tooltipEl"
-              class="pointer-events-none absolute z-10 rounded-lg border border-default bg-elevated px-3 py-2 shadow-lg"
+              class="pointer-events-none absolute z-10 rounded-xl border border-white/[0.06] bg-[#1a1a1a] px-4 py-3 shadow-xl"
               :style="{ left: `${tooltip.x}px`, top: `${tooltip.y}px` }"
             >
-              <div class="font-semibold">
+              <div class="text-sm font-semibold text-highlighted">
                 {{ tooltip.state.name }} ({{ tooltip.state.code }})
               </div>
-              <div class="mt-1 flex items-center gap-2">
+              <div class="mt-1.5 flex items-center gap-2">
                 <UBadge
                   :color="getMyOrderBadgeColor(tooltip.state.code)"
                   variant="subtle"
@@ -1199,7 +1201,7 @@ watch(myClosedOrders, () => {
                   size="xs"
                 />
               </div>
-              <div class="mt-2 space-y-1 text-xs text-muted">
+              <div class="mt-2 space-y-1 text-[11px] text-muted">
                 <div>My open orders in state: {{ tooltip.state.openOrders }}</div>
                 <div v-if="tooltip.myOrder">
                   Your quota: {{ tooltip.myOrder.quota_filled }}/{{ tooltip.myOrder.quota_total }}
@@ -1210,74 +1212,86 @@ watch(myClosedOrders, () => {
               </div>
             </div>
           </div>
-        </UCard>
+        </div>
 
-        <UCard>
-          <div class="space-y-3">
-            <div class="flex items-center justify-between gap-3">
-              <div>
-                <h3 class="font-semibold">
-                  My Open Orders
-                </h3>
-                <p class="text-sm text-muted">
-                  Your currently active intake orders.
-                </p>
+        <!-- ═══ My Open Orders List ═══ -->
+        <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+          <!-- Header -->
+          <div class="flex items-center justify-between border-b border-white/[0.06] px-5 py-4">
+            <div class="flex items-center gap-3">
+              <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10">
+                <UIcon name="i-lucide-shopping-cart" class="text-sm text-blue-400" />
               </div>
-              <UBadge variant="subtle" :label="`${myOpenOrders.length} orders`" />
+              <div>
+                <h3 class="text-sm font-semibold text-highlighted">My Open Orders</h3>
+                <p class="text-[11px] text-muted">Your currently active intake orders</p>
+              </div>
             </div>
+            <span class="inline-flex items-center rounded-lg border border-white/[0.06] bg-white/[0.04] px-3 py-1 text-xs font-semibold text-muted">
+              {{ myOpenOrders.length }} orders
+            </span>
+          </div>
 
-            <div v-if="myOpenOrders.length === 0" class="text-sm text-muted">
-              No open orders.
+          <!-- Empty -->
+          <div v-if="myOpenOrders.length === 0" class="flex items-center justify-center p-10">
+            <div class="text-center">
+              <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-500/10 mb-3">
+                <UIcon name="i-lucide-shopping-cart" class="text-xl text-blue-400/50" />
+              </div>
+              <p class="text-sm text-muted">No open orders</p>
             </div>
+          </div>
 
-            <div v-else class="space-y-2">
-              <div
-                v-for="order in myOpenOrders"
-                :key="order.id"
-                class="cursor-pointer rounded-lg border border-default bg-elevated p-4 hover:bg-muted/30"
-                @click="router.push(`/orders/${order.id}`)"
-              >
-                <div class="flex flex-wrap items-start justify-between gap-3">
-                  <div class="min-w-0">
-                    <div class="font-semibold">
-                      {{ order.case_type }}
-                      <span v-if="order.case_subtype" class="text-muted">— {{ order.case_subtype }}</span>
-                    </div>
+          <!-- Orders -->
+          <div v-else class="divide-y divide-white/[0.04]">
+            <div
+              v-for="order in myOpenOrders"
+              :key="order.id"
+              class="group cursor-pointer px-5 py-4 transition-all duration-200 hover:bg-[var(--ap-accent)]/[0.04]"
+              @click="router.push(`/orders/${order.id}`)"
+            >
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="text-sm font-semibold text-highlighted group-hover:text-[var(--ap-accent)] transition-colors">
+                    {{ order.case_type }}
+                    <span v-if="order.case_subtype" class="text-muted">— {{ order.case_subtype }}</span>
+                  </div>
+                  <div class="mt-1 text-[11px] text-muted">
+                    States:
+                    {{ (order.target_states || []).map(s => String(s || '').toUpperCase()).join(', ') || '—' }}
+                  </div>
+                </div>
 
-                    <div class="mt-1 text-sm text-muted">
-                      States:
-                      {{ (order.target_states || []).map(s => String(s || '').toUpperCase()).join(', ') || '—' }}
-                    </div>
+                <div class="min-w-[170px]">
+                  <div class="flex items-center justify-end gap-2">
+                    <span class="inline-flex items-center rounded-md bg-blue-500/10 px-2 py-0.5 text-[11px] font-semibold text-blue-400">
+                      Quota {{ order.quota_filled }}/{{ order.quota_total }}
+                    </span>
+                    <span class="inline-flex items-center rounded-md bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium text-muted">
+                      Expires {{ String(order.expires_at || '').slice(0, 10) }}
+                    </span>
                   </div>
 
-                  <div class="min-w-[170px]">
-                    <div class="flex items-center justify-end gap-2">
-                      <UBadge color="primary" variant="subtle" :label="`Quota ${order.quota_filled}/${order.quota_total}`" />
-                      <UBadge color="neutral" variant="subtle" :label="`Expires ${String(order.expires_at || '').slice(0, 10)}`" />
+                  <div class="mt-2 flex items-center justify-end gap-2">
+                    <div class="w-10 text-right text-[11px] text-muted tabular-nums">
+                      {{ orderProgressPercent(order) }}%
                     </div>
-
-                    <div class="mt-2 flex items-center justify-end gap-2">
-                      <div class="w-10 text-right text-xs text-muted tabular-nums">
-                        {{ orderProgressPercent(order) }}%
-                      </div>
-
-                      <div class="h-2 w-28 overflow-hidden rounded bg-muted/70 ring-1 ring-inset ring-default">
-                        <div
-                          class="h-full rounded bg-primary"
-                          :style="{ width: `${orderProgressPercent(order)}%` }"
-                        />
-                      </div>
-
-                      <div class="w-12 text-right text-xs text-muted tabular-nums">
-                        {{ order.quota_filled }}/{{ order.quota_total }}
-                      </div>
+                    <div class="h-1.5 w-28 overflow-hidden rounded-full bg-white/[0.06]">
+                      <div
+                        class="h-full rounded-full transition-all duration-500"
+                        :class="orderProgressPercent(order) >= 100 ? 'bg-green-400' : 'bg-blue-400'"
+                        :style="{ width: `${Math.min(orderProgressPercent(order), 100)}%` }"
+                      />
+                    </div>
+                    <div class="w-12 text-right text-[11px] text-muted tabular-nums">
+                      {{ order.quota_filled }}/{{ order.quota_total }}
                     </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-        </UCard>
+        </div>
       </div>
     </template>
   </UDashboardPanel>
