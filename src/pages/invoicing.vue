@@ -242,7 +242,7 @@ watch(pageCount, () => {
       <div class="flex h-full min-h-0 flex-col gap-5">
         <!-- Stats Cards -->
         <div class="grid gap-4 sm:grid-cols-4">
-          <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
+          <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5">
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-xs font-medium uppercase tracking-wider text-muted">Total Invoiced</p>
@@ -254,7 +254,7 @@ watch(pageCount, () => {
             </div>
           </div>
 
-          <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
+          <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5">
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-xs font-medium uppercase tracking-wider text-muted">Paid</p>
@@ -266,7 +266,7 @@ watch(pageCount, () => {
             </div>
           </div>
 
-          <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
+          <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5">
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-xs font-medium uppercase tracking-wider text-muted">Pending</p>
@@ -278,7 +278,7 @@ watch(pageCount, () => {
             </div>
           </div>
 
-          <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
+          <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5">
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-xs font-medium uppercase tracking-wider text-muted">Chargeback</p>
@@ -297,7 +297,7 @@ watch(pageCount, () => {
             <div class="relative max-w-xs flex-1">
               <UInput
                 v-model="query"
-                class="w-full [&_input]:rounded-xl [&_input]:border-white/[0.06] [&_input]:bg-white/[0.03] [&_input]:pl-10 [&_input]:backdrop-blur-sm"
+                class="w-full [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)] [&_input]:pl-10 [&_input]:backdrop-blur-sm"
                 icon="i-lucide-search"
                 placeholder="Search invoices..."
               />
@@ -311,14 +311,14 @@ watch(pageCount, () => {
                 { label: 'Paid', value: 'paid' },
                 { label: 'Chargeback', value: 'chargeback' }
               ]"
-              class="w-44 [&_button]:rounded-xl [&_button]:border-white/[0.06] [&_button]:bg-white/[0.03]"
+              class="w-44 [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
               value-key="value"
               label-key="label"
             />
           </div>
 
           <div class="flex items-center gap-2.5">
-            <div class="inline-flex rounded-xl border border-white/[0.06] bg-white/[0.02] p-0.5">
+            <div class="inline-flex rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-0.5">
               <button
                 v-for="mode in (['kanban', 'list'] as ViewMode[])"
                 :key="mode"
@@ -326,7 +326,7 @@ watch(pageCount, () => {
                 class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all"
                 :class="viewMode === mode
                   ? 'bg-[var(--ap-accent)] text-white shadow-sm'
-                  : 'text-muted hover:text-highlighted hover:bg-white/[0.04]'"
+                  : 'text-muted hover:text-highlighted hover:bg-[var(--ap-card-divide)]'"
                 @click="viewMode = mode"
               >
                 {{ mode === 'kanban' ? 'Board' : 'List' }}
@@ -382,9 +382,9 @@ watch(pageCount, () => {
             <div
               v-for="status in (['pending', 'paid', 'chargeback'] as InvoiceStatus[])"
               :key="status"
-              class="flex min-w-0 flex-1 flex-col rounded-2xl border border-white/[0.06] bg-white/[0.02]"
+              class="flex min-w-0 flex-1 flex-col rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)]"
             >
-              <div class="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
+              <div class="flex items-center justify-between border-b border-[var(--ap-card-border)] px-4 py-3">
                 <div class="flex items-center gap-2">
                   <UIcon :name="getStatusIcon(status)" class="text-sm" :class="{
                     'text-amber-400': status === 'pending',
@@ -393,7 +393,7 @@ watch(pageCount, () => {
                   }" />
                   <span class="text-sm font-semibold text-highlighted">{{ getStatusLabel(status) }}</span>
                 </div>
-                <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white/[0.06] px-1.5 text-[10px] font-bold text-muted">
+                <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--ap-card-border)] px-1.5 text-[10px] font-bold text-muted">
                   {{ invoicesByStatus.get(status)?.length ?? 0 }}
                 </span>
               </div>
@@ -402,7 +402,7 @@ watch(pageCount, () => {
                 <div
                   v-for="invoice in (invoicesByStatus.get(status) ?? [])"
                   :key="invoice.id"
-                  class="group cursor-pointer rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 transition-all duration-200 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.04]"
+                  class="group cursor-pointer rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-3 transition-all duration-200 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.04]"
                   @click="openInvoicePdf(invoice)"
                 >
                   <div class="flex items-start justify-between gap-2">
@@ -446,14 +446,14 @@ watch(pageCount, () => {
                       </button>
                       <button
                         v-if="isAdminOrSuper"
-                        class="rounded-lg p-1 text-muted opacity-0 transition-all hover:bg-white/[0.06] hover:text-highlighted group-hover:opacity-100"
+                        class="rounded-lg p-1 text-muted opacity-0 transition-all hover:bg-[var(--ap-card-border)] hover:text-highlighted group-hover:opacity-100"
                         title="Edit invoice"
                         @click.stop="editInvoice(invoice)"
                       >
                         <UIcon name="i-lucide-pencil" class="text-xs" />
                       </button>
                       <button
-                        class="rounded-lg p-1 text-muted opacity-0 transition-all hover:bg-white/[0.06] hover:text-highlighted group-hover:opacity-100"
+                        class="rounded-lg p-1 text-muted opacity-0 transition-all hover:bg-[var(--ap-card-border)] hover:text-highlighted group-hover:opacity-100"
                         title="View PDF"
                         @click.stop="openInvoicePdf(invoice)"
                       >
@@ -470,7 +470,7 @@ watch(pageCount, () => {
 
                 <div
                   v-if="(invoicesByStatus.get(status)?.length ?? 0) === 0"
-                  class="rounded-xl border border-dashed border-white/[0.06] px-3 py-8 text-center text-xs text-muted"
+                  class="rounded-xl border border-dashed border-[var(--ap-card-border)] px-3 py-8 text-center text-xs text-muted"
                 >
                   No {{ getStatusLabel(status).toLowerCase() }} invoices
                 </div>
@@ -480,11 +480,11 @@ watch(pageCount, () => {
         </div>
 
         <!-- List View -->
-        <div v-else class="relative flex flex-1 min-h-0 flex-col overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+        <div v-else class="relative flex flex-1 min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)]">
           <div class="flex-1 min-h-0 overflow-y-auto invoicing-scroll">
             <table class="w-full">
               <thead class="sticky top-0 z-10">
-                <tr class="border-b border-white/[0.06] bg-white/[0.03] backdrop-blur-xl">
+                <tr class="border-b border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] backdrop-blur-xl">
                   <th class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted whitespace-nowrap">Invoice #</th>
                   <th v-if="isAdminOrSuper" class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted whitespace-nowrap">Lawyer</th>
                   <th class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted whitespace-nowrap">Date Range</th>
@@ -498,7 +498,7 @@ watch(pageCount, () => {
                 <tr
                   v-for="invoice in pagedRows"
                   :key="invoice.id"
-                  class="group cursor-pointer border-b border-white/[0.03] transition-all duration-200 hover:bg-[var(--ap-accent)]/[0.04]"
+                  class="group cursor-pointer border-b border-[var(--ap-card-hover)] transition-all duration-200 hover:bg-[var(--ap-accent)]/[0.04]"
                   @click="openInvoicePdf(invoice)"
                 >
                   <td class="px-5 py-3.5">
@@ -558,7 +558,7 @@ watch(pageCount, () => {
                         Edit
                       </button>
                       <button
-                        class="inline-flex items-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-1 text-xs font-medium text-muted transition-all hover:bg-white/[0.06] hover:text-highlighted"
+                        class="inline-flex items-center gap-1 rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] px-2.5 py-1 text-xs font-medium text-muted transition-all hover:bg-[var(--ap-card-border)] hover:text-highlighted"
                         @click.stop="openInvoicePdf(invoice)"
                       >
                         <UIcon name="i-lucide-file-text" class="text-xs" />
@@ -572,7 +572,7 @@ watch(pageCount, () => {
           </div>
 
           <!-- Pagination -->
-          <div class="flex items-center justify-between border-t border-white/[0.06] bg-white/[0.02] px-5 py-3 backdrop-blur-xl">
+          <div class="flex items-center justify-between border-t border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] px-5 py-3 backdrop-blur-xl">
             <div class="flex items-center gap-2">
               <span class="text-xs text-muted">
                 Showing <span class="font-medium text-highlighted">{{ pagedRows.length }}</span> of <span class="font-medium text-highlighted">{{ filteredInvoices.length }}</span>
@@ -581,7 +581,7 @@ watch(pageCount, () => {
 
             <div class="flex items-center gap-1.5">
               <button
-                class="inline-flex h-8 items-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 text-xs font-medium text-default transition-all hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-30"
+                class="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] px-3 text-xs font-medium text-default transition-all hover:bg-[var(--ap-card-border)] disabled:pointer-events-none disabled:opacity-30"
                 :disabled="page <= 1"
                 @click="page = Math.max(1, page - 1)"
               >
@@ -596,7 +596,7 @@ watch(pageCount, () => {
               </div>
 
               <button
-                class="inline-flex h-8 items-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 text-xs font-medium text-default transition-all hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-30"
+                class="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] px-3 text-xs font-medium text-default transition-all hover:bg-[var(--ap-card-border)] disabled:pointer-events-none disabled:opacity-30"
                 :disabled="page >= pageCount"
                 @click="page = Math.min(pageCount, page + 1)"
               >

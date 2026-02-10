@@ -121,7 +121,7 @@ const completionMessage = computed(() => {
 </script>
 
 <template>
-  <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
+  <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5">
     <div class="flex items-center justify-between mb-4">
       <div class="flex items-center gap-3">
         <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--ap-accent)]/10">
@@ -148,7 +148,7 @@ const completionMessage = computed(() => {
       </span>
     </div>
 
-    <div class="h-2 w-full overflow-hidden rounded-full bg-white/[0.06]">
+    <div class="h-2 w-full overflow-hidden rounded-full bg-[var(--ap-card-border)]">
       <div
         class="h-full rounded-full transition-all duration-500"
         :class="{

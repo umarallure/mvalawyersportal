@@ -273,7 +273,7 @@ const openLead = (lead: FulfillmentOrder) => {
       <div class="flex h-full min-h-0 flex-col gap-5">
         <!-- ═══ Stat Cards ═══ -->
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <div class="group overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 transition-all duration-300 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.03]">
+          <div class="group overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5 transition-all duration-300 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.03]">
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-xs font-medium uppercase tracking-wider text-muted">Total Orders</p>
@@ -285,7 +285,7 @@ const openLead = (lead: FulfillmentOrder) => {
             </div>
           </div>
 
-          <div class="group overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 transition-all duration-300 hover:border-amber-500/30 hover:bg-amber-500/[0.03]">
+          <div class="group overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5 transition-all duration-300 hover:border-amber-500/30 hover:bg-amber-500/[0.03]">
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-xs font-medium uppercase tracking-wider text-muted">Returned Back</p>
@@ -297,7 +297,7 @@ const openLead = (lead: FulfillmentOrder) => {
             </div>
           </div>
 
-          <div class="group overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 transition-all duration-300 hover:border-green-500/30 hover:bg-green-500/[0.03]">
+          <div class="group overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5 transition-all duration-300 hover:border-green-500/30 hover:bg-green-500/[0.03]">
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-xs font-medium uppercase tracking-wider text-muted">Signed Retainers</p>
@@ -309,7 +309,7 @@ const openLead = (lead: FulfillmentOrder) => {
             </div>
           </div>
 
-          <div class="group overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 transition-all duration-300 hover:border-red-500/30 hover:bg-red-500/[0.03]">
+          <div class="group overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5 transition-all duration-300 hover:border-red-500/30 hover:bg-red-500/[0.03]">
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-xs font-medium uppercase tracking-wider text-muted">Dropped</p>
@@ -321,7 +321,7 @@ const openLead = (lead: FulfillmentOrder) => {
             </div>
           </div>
 
-          <div class="group overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 transition-all duration-300 hover:border-emerald-500/30 hover:bg-emerald-500/[0.03]">
+          <div class="group overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5 transition-all duration-300 hover:border-emerald-500/30 hover:bg-emerald-500/[0.03]">
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-xs font-medium uppercase tracking-wider text-muted">Successful Cases</p>
@@ -335,7 +335,7 @@ const openLead = (lead: FulfillmentOrder) => {
         </div>
 
         <!-- ═══ Filters ═══ -->
-        <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] px-5 py-3">
+        <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] px-5 py-3">
           <div class="flex flex-wrap items-center gap-3">
             <USelect
               v-model="selectedOrderId"
@@ -362,7 +362,7 @@ const openLead = (lead: FulfillmentOrder) => {
             />
           </div>
 
-          <span class="inline-flex items-center rounded-lg border border-white/[0.06] bg-white/[0.04] px-3 py-1 text-xs font-semibold text-muted">
+          <span class="inline-flex items-center rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-border)] px-3 py-1 text-xs font-semibold text-muted">
             {{ filteredOrders.length }} leads
           </span>
         </div>
@@ -373,9 +373,9 @@ const openLead = (lead: FulfillmentOrder) => {
             <div
               v-for="stage in STAGES"
               :key="stage.key"
-              class="flex min-w-0 flex-1 flex-col rounded-2xl border border-white/[0.06] bg-white/[0.02]"
+              class="flex min-w-0 flex-1 flex-col rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)]"
             >
-              <div class="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
+              <div class="flex items-center justify-between border-b border-[var(--ap-card-border)] px-4 py-3">
                 <div class="flex items-center gap-2.5">
                   <div
                     class="flex h-7 w-7 items-center justify-center rounded-lg"
@@ -399,7 +399,7 @@ const openLead = (lead: FulfillmentOrder) => {
                   </div>
                   <span class="text-sm font-semibold text-highlighted">{{ stage.label }}</span>
                 </div>
-                <span class="inline-flex items-center rounded-md bg-white/[0.04] px-2 py-0.5 text-[11px] font-semibold text-muted">
+                <span class="inline-flex items-center rounded-md bg-[var(--ap-card-border)] px-2 py-0.5 text-[11px] font-semibold text-muted">
                   {{ ordersByStage.get(stage.key)?.length ?? 0 }}
                 </span>
               </div>
@@ -408,7 +408,7 @@ const openLead = (lead: FulfillmentOrder) => {
                 <div
                   v-for="order in (ordersByStage.get(stage.key) ?? [])"
                   :key="order.id"
-                  class="group cursor-pointer rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 transition-all duration-200 hover:border-[var(--ap-accent)]/20 hover:bg-[var(--ap-accent)]/[0.03]"
+                  class="group cursor-pointer rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-3 transition-all duration-200 hover:border-[var(--ap-accent)]/20 hover:bg-[var(--ap-accent)]/[0.03]"
                   @click="openLead(order)"
                 >
                   <div class="flex items-start justify-between gap-2">
@@ -417,20 +417,20 @@ const openLead = (lead: FulfillmentOrder) => {
                       <div class="mt-0.5 text-[11px] text-muted">{{ order.phone }}</div>
                     </div>
                     <span
-                      class="inline-flex shrink-0 items-center rounded-md bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-semibold text-muted"
+                      class="inline-flex shrink-0 items-center rounded-md bg-[var(--ap-card-border)] px-1.5 py-0.5 text-[10px] font-semibold text-muted"
                     >
                       {{ order.status }}
                     </span>
                   </div>
 
                   <div class="mt-2 flex items-center justify-between gap-2">
-                    <span class="inline-flex items-center rounded-md border border-white/[0.06] bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium text-default">
+                    <span class="inline-flex items-center rounded-md border border-[var(--ap-card-border)] bg-[var(--ap-card-border)] px-2 py-0.5 text-[11px] font-medium text-default">
                       {{ order.state }}
                     </span>
                     <span class="text-[11px] text-muted">{{ order.date }}</span>
                   </div>
 
-                  <div v-if="order.reason" class="mt-2 rounded-lg bg-white/[0.03] px-2.5 py-1.5 text-[11px] text-muted">
+                  <div v-if="order.reason" class="mt-2 rounded-lg bg-[var(--ap-card-hover)] px-2.5 py-1.5 text-[11px] text-muted">
                     {{ order.reason }}
                   </div>
 
@@ -442,7 +442,7 @@ const openLead = (lead: FulfillmentOrder) => {
 
                 <div
                   v-if="(ordersByStage.get(stage.key)?.length ?? 0) === 0"
-                  class="flex items-center justify-center rounded-xl border border-dashed border-white/[0.08] px-3 py-8 text-center text-xs text-muted"
+                  class="flex items-center justify-center rounded-xl border border-dashed border-[var(--ap-card-border)] px-3 py-8 text-center text-xs text-muted"
                 >
                   No Retainers
                 </div>

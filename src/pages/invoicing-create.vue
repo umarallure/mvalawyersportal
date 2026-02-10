@@ -498,7 +498,7 @@ onMounted(async () => {
             <!-- Left Column: Main Form -->
             <div class="lg:col-span-2 space-y-6">
               <!-- Invoice Details -->
-              <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6">
+              <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-6">
                 <h3 class="mb-4 text-sm font-semibold uppercase tracking-wider text-highlighted">
                   Invoice Details
                 </h3>
@@ -509,7 +509,7 @@ onMounted(async () => {
                     <USelect
                       v-model="form.status"
                       :items="statusOptions"
-                      class="w-full [&_button]:rounded-xl [&_button]:border-white/[0.06] [&_button]:bg-white/[0.03]"
+                      class="w-full [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
                       value-key="value"
                       label-key="label"
                     />
@@ -520,7 +520,7 @@ onMounted(async () => {
                     <USelect
                       v-model="form.lawyer_id"
                       :items="lawyerOptions"
-                      class="w-full [&_button]:rounded-xl [&_button]:border-white/[0.06] [&_button]:bg-white/[0.03]"
+                      class="w-full [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
                       value-key="value"
                       label-key="label"
                       placeholder="Choose a lawyer..."
@@ -532,7 +532,7 @@ onMounted(async () => {
                     <UInput
                       v-model="form.due_date"
                       type="date"
-                      class="w-full [&_input]:rounded-xl [&_input]:border-white/[0.06] [&_input]:bg-white/[0.03]"
+                      class="w-full [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)]"
                     />
                   </div>
 
@@ -541,7 +541,7 @@ onMounted(async () => {
                     <UInput
                       v-model="form.date_range_start"
                       type="date"
-                      class="w-full [&_input]:rounded-xl [&_input]:border-white/[0.06] [&_input]:bg-white/[0.03]"
+                      class="w-full [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)]"
                     />
                   </div>
 
@@ -550,7 +550,7 @@ onMounted(async () => {
                     <UInput
                       v-model="form.date_range_end"
                       type="date"
-                      class="w-full [&_input]:rounded-xl [&_input]:border-white/[0.06] [&_input]:bg-white/[0.03]"
+                      class="w-full [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)]"
                     />
                   </div>
                 </div>
@@ -559,7 +559,7 @@ onMounted(async () => {
                   <label class="mb-1.5 block text-xs font-medium text-muted">Notes</label>
                   <UTextarea
                     v-model="form.notes"
-                    class="w-full [&_textarea]:rounded-xl [&_textarea]:border-white/[0.06] [&_textarea]:bg-white/[0.03]"
+                    class="w-full [&_textarea]:rounded-xl [&_textarea]:border-[var(--ap-card-border)] [&_textarea]:bg-[var(--ap-card-hover)]"
                     placeholder="Additional notes..."
                     :rows="3"
                   />
@@ -567,7 +567,7 @@ onMounted(async () => {
               </div>
 
               <!-- Deals Selection -->
-              <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6">
+              <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-6">
                 <div class="mb-4 flex items-center justify-between">
                   <h3 class="text-sm font-semibold uppercase tracking-wider text-highlighted">
                     Assigned Deals
@@ -597,7 +597,7 @@ onMounted(async () => {
                   </div>
                 </div>
 
-                <div v-if="!form.lawyer_id || !form.date_range_start || !form.date_range_end" class="rounded-xl border border-dashed border-white/[0.06] px-4 py-8 text-center text-xs text-muted">
+                <div v-if="!form.lawyer_id || !form.date_range_start || !form.date_range_end" class="rounded-xl border border-dashed border-[var(--ap-card-border)] px-4 py-8 text-center text-xs text-muted">
                   Select a lawyer and date range to load deals
                 </div>
 
@@ -605,7 +605,7 @@ onMounted(async () => {
                   <UIcon name="i-lucide-loader-2" class="animate-spin text-lg text-[var(--ap-accent)]" />
                 </div>
 
-                <div v-else-if="!deals.length" class="rounded-xl border border-dashed border-white/[0.06] px-4 py-8 text-center text-xs text-muted">
+                <div v-else-if="!deals.length" class="rounded-xl border border-dashed border-[var(--ap-card-border)] px-4 py-8 text-center text-xs text-muted">
                   No deals found for this lawyer in the selected date range
                 </div>
 
@@ -616,14 +616,14 @@ onMounted(async () => {
                     class="flex items-center gap-3 rounded-xl border p-3 transition-all cursor-pointer"
                     :class="deal.selected
                       ? 'border-[var(--ap-accent)]/30 bg-[var(--ap-accent)]/[0.06]'
-                      : 'border-white/[0.06] bg-white/[0.02] hover:border-white/[0.12]'"
+                      : 'border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] hover:border-[var(--ap-card-border)]'"
                     @click="toggleDeal(deal.id)"
                   >
                     <div
                       class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all"
                       :class="deal.selected
                         ? 'border-[var(--ap-accent)] bg-[var(--ap-accent)] text-white'
-                        : 'border-white/[0.15] bg-white/[0.03]'"
+                        : 'border-[var(--ap-card-border)] bg-[var(--ap-card-hover)]'"
                     >
                       <UIcon v-if="deal.selected" name="i-lucide-check" class="text-xs" />
                     </div>
@@ -648,7 +648,7 @@ onMounted(async () => {
               </div>
 
               <!-- Line Items -->
-              <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6">
+              <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-6">
                 <div class="mb-4 flex items-center justify-between">
                   <h3 class="text-sm font-semibold uppercase tracking-wider text-highlighted">
                     Line Items
@@ -665,7 +665,7 @@ onMounted(async () => {
                   </UButton>
                 </div>
 
-                <div v-if="!form.items.length" class="rounded-xl border border-dashed border-white/[0.06] px-4 py-8 text-center text-xs text-muted">
+                <div v-if="!form.items.length" class="rounded-xl border border-dashed border-[var(--ap-card-border)] px-4 py-8 text-center text-xs text-muted">
                   No line items yet. Click "Add Item" to get started.
                 </div>
 
@@ -682,12 +682,12 @@ onMounted(async () => {
                   <div
                     v-for="(item, idx) in form.items"
                     :key="idx"
-                    class="grid grid-cols-12 gap-3 items-start rounded-xl border border-white/[0.06] bg-white/[0.02] p-3"
+                    class="grid grid-cols-12 gap-3 items-start rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-3"
                   >
                     <div class="col-span-5">
                       <UInput
                         v-model="item.description"
-                        class="w-full [&_input]:rounded-lg [&_input]:border-white/[0.06] [&_input]:bg-white/[0.03] [&_input]:text-sm"
+                        class="w-full [&_input]:rounded-lg [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)] [&_input]:text-sm"
                         placeholder="Description"
                       />
                     </div>
@@ -696,7 +696,7 @@ onMounted(async () => {
                         v-model.number="item.quantity"
                         type="number"
                         :min="1"
-                        class="w-full [&_input]:rounded-lg [&_input]:border-white/[0.06] [&_input]:bg-white/[0.03] [&_input]:text-sm"
+                        class="w-full [&_input]:rounded-lg [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)] [&_input]:text-sm"
                         @update:model-value="recalcItem(idx)"
                       />
                     </div>
@@ -706,7 +706,7 @@ onMounted(async () => {
                         type="number"
                         :min="0"
                         :step="0.01"
-                        class="w-full [&_input]:rounded-lg [&_input]:border-white/[0.06] [&_input]:bg-white/[0.03] [&_input]:text-sm"
+                        class="w-full [&_input]:rounded-lg [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)] [&_input]:text-sm"
                         @update:model-value="recalcItem(idx)"
                       />
                     </div>
@@ -725,7 +725,7 @@ onMounted(async () => {
                 </div>
 
                 <!-- Totals -->
-                <div v-if="form.items.length" class="mt-6 border-t border-white/[0.06] pt-4">
+                <div v-if="form.items.length" class="mt-6 border-t border-[var(--ap-card-border)] pt-4">
                   <div class="flex flex-col items-end gap-2">
                     <div class="flex items-center gap-8">
                       <span class="text-sm text-muted">Subtotal</span>
@@ -739,11 +739,11 @@ onMounted(async () => {
                         :min="0"
                         :max="1"
                         :step="0.01"
-                        class="w-24 [&_input]:rounded-lg [&_input]:border-white/[0.06] [&_input]:bg-white/[0.03] [&_input]:text-sm [&_input]:text-right"
+                        class="w-24 [&_input]:rounded-lg [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)] [&_input]:text-sm [&_input]:text-right"
                       />
                       <span class="text-sm font-semibold text-highlighted w-28 text-right">{{ formatMoney(taxAmount) }}</span>
                     </div>
-                    <div class="flex items-center gap-8 border-t border-white/[0.06] pt-2">
+                    <div class="flex items-center gap-8 border-t border-[var(--ap-card-border)] pt-2">
                       <span class="text-base font-bold text-highlighted">Total</span>
                       <span class="text-lg font-bold text-[var(--ap-accent)] w-28 text-right">{{ formatMoney(totalAmount) }}</span>
                     </div>
@@ -755,7 +755,7 @@ onMounted(async () => {
             <!-- Right Column: Preview & Info -->
             <div class="space-y-6">
               <!-- Lawyer Info Card -->
-              <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6">
+              <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-6">
                 <h3 class="mb-4 text-sm font-semibold uppercase tracking-wider text-highlighted">
                   Lawyer Info
                 </h3>
@@ -797,7 +797,7 @@ onMounted(async () => {
               </div>
 
               <!-- Invoice Summary -->
-              <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6">
+              <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-6">
                 <h3 class="mb-4 text-sm font-semibold uppercase tracking-wider text-highlighted">
                   Summary
                 </h3>
@@ -842,7 +842,7 @@ onMounted(async () => {
                     </span>
                   </div>
 
-                  <div class="border-t border-white/[0.06] pt-3">
+                  <div class="border-t border-[var(--ap-card-border)] pt-3">
                     <div class="flex items-center justify-between">
                       <span class="text-sm font-bold text-highlighted">Total</span>
                       <span class="text-lg font-bold text-[var(--ap-accent)]">{{ formatMoney(totalAmount) }}</span>

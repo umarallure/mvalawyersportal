@@ -215,15 +215,15 @@ onBeforeRouteLeave((to, from, next) => {
     </div>
 
     <!-- Geographic Coverage -->
-    <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
-      <div class="border-b border-white/[0.06] px-5 py-3">
+    <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] overflow-hidden">
+      <div class="border-b border-[var(--ap-card-border)] px-5 py-3">
         <div class="flex items-center gap-2">
           <UIcon name="i-lucide-globe" class="text-sm text-muted" />
           <span class="text-xs font-semibold uppercase tracking-wider text-muted">Geographic Coverage</span>
         </div>
       </div>
 
-      <div class="divide-y divide-white/[0.04]">
+      <div class="divide-y divide-[var(--ap-card-divide)]">
         <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
           <div class="min-w-0 flex-1">
             <label class="text-sm font-medium text-highlighted">Licensed States <span class="text-red-400">*</span></label>
@@ -267,15 +267,15 @@ onBeforeRouteLeave((to, from, next) => {
     </div>
 
     <!-- Case Specialization -->
-    <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
-      <div class="border-b border-white/[0.06] px-5 py-3">
+    <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] overflow-hidden">
+      <div class="border-b border-[var(--ap-card-border)] px-5 py-3">
         <div class="flex items-center gap-2">
           <UIcon name="i-lucide-scale" class="text-sm text-muted" />
           <span class="text-xs font-semibold uppercase tracking-wider text-muted">Case Specialization</span>
         </div>
       </div>
 
-      <div class="divide-y divide-white/[0.04]">
+      <div class="divide-y divide-[var(--ap-card-divide)]">
         <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
           <div class="min-w-0 flex-1">
             <label class="text-sm font-medium text-highlighted">Primary Practice Focus <span class="text-red-400">*</span></label>

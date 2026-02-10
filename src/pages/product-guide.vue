@@ -103,14 +103,14 @@ const isLast = computed(() => activeStepId.value === steps[steps.length - 1].id)
             <div class="flex items-center gap-1">
               <button
                 :disabled="isFirst"
-                class="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.06] bg-white/[0.03] text-muted transition-all hover:border-[var(--ap-accent)]/30 hover:text-[var(--ap-accent)] disabled:opacity-30 disabled:pointer-events-none"
+                class="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] text-muted transition-all hover:border-[var(--ap-accent)]/30 hover:text-[var(--ap-accent)] disabled:opacity-30 disabled:pointer-events-none"
                 @click="goToPrev"
               >
                 <UIcon name="i-lucide-chevron-left" class="text-sm" />
               </button>
               <button
                 :disabled="isLast"
-                class="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.06] bg-white/[0.03] text-muted transition-all hover:border-[var(--ap-accent)]/30 hover:text-[var(--ap-accent)] disabled:opacity-30 disabled:pointer-events-none"
+                class="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] text-muted transition-all hover:border-[var(--ap-accent)]/30 hover:text-[var(--ap-accent)] disabled:opacity-30 disabled:pointer-events-none"
                 @click="goToNext"
               >
                 <UIcon name="i-lucide-chevron-right" class="text-sm" />
@@ -126,7 +126,7 @@ const isLast = computed(() => activeStepId.value === steps[steps.length - 1].id)
         <!-- ═══ Left: Step List ═══ -->
         <div class="w-80 shrink-0 flex flex-col gap-4">
           <!-- Header Card -->
-          <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
+          <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5">
             <div class="flex items-center gap-3 mb-3">
               <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--ap-accent)]/10">
                 <UIcon name="i-lucide-play-circle" class="text-lg text-[var(--ap-accent)]" />
@@ -138,7 +138,7 @@ const isLast = computed(() => activeStepId.value === steps[steps.length - 1].id)
             </div>
             <!-- Progress -->
             <div class="flex items-center gap-2">
-              <div class="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+              <div class="flex-1 h-1.5 rounded-full bg-[var(--ap-card-border)] overflow-hidden">
                 <div
                   class="h-full rounded-full bg-[var(--ap-accent)] transition-all duration-300"
                   :style="{ width: `${((activeStepId) / steps.length) * 100}%` }"
@@ -151,7 +151,7 @@ const isLast = computed(() => activeStepId.value === steps[steps.length - 1].id)
           </div>
 
           <!-- Steps List -->
-          <div class="flex-1 overflow-y-auto rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+          <div class="flex-1 overflow-y-auto rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)]">
             <div class="p-2 space-y-1">
               <button
                 v-for="step in steps"
@@ -160,7 +160,7 @@ const isLast = computed(() => activeStepId.value === steps[steps.length - 1].id)
                 :class="[
                   activeStepId === step.id
                     ? 'bg-[var(--ap-accent)]/10 border border-[var(--ap-accent)]/20'
-                    : 'border border-transparent hover:bg-white/[0.03]'
+                    : 'border border-transparent hover:bg-[var(--ap-card-hover)]'
                 ]"
                 @click="selectStep(step.id)"
               >
@@ -170,7 +170,7 @@ const isLast = computed(() => activeStepId.value === steps[steps.length - 1].id)
                   :class="[
                     activeStepId === step.id
                       ? 'bg-[var(--ap-accent)] text-white'
-                      : 'bg-white/[0.06] text-muted'
+                      : 'bg-[var(--ap-card-border)] text-muted'
                   ]"
                 >
                   {{ step.id }}
@@ -211,9 +211,9 @@ const isLast = computed(() => activeStepId.value === steps[steps.length - 1].id)
         <!-- ═══ Right: Video Player ═══ -->
         <div class="flex-1 flex flex-col gap-4 min-w-0 overflow-y-auto">
           <!-- Video Card -->
-          <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+          <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] overflow-hidden">
             <!-- Video Header -->
-            <div class="flex items-center justify-between border-b border-white/[0.06] px-5 py-3">
+            <div class="flex items-center justify-between border-b border-[var(--ap-card-border)] px-5 py-3">
               <div class="flex items-center gap-3">
                 <div
                   class="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--ap-accent)] text-white text-xs font-bold"
@@ -254,7 +254,7 @@ const isLast = computed(() => activeStepId.value === steps[steps.length - 1].id)
                 <p class="text-sm text-muted max-w-sm text-center">
                   The walkthrough video for <span class="text-[var(--ap-accent)]">{{ activeStep.title }}</span> is being produced and will be available here shortly.
                 </p>
-                <div class="mt-4 flex items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2">
+                <div class="mt-4 flex items-center gap-2 rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] px-3 py-2">
                   <UIcon name="i-lucide-info" class="text-xs text-muted" />
                   <span class="text-[11px] text-muted">Vimeo video ID will be configured by admin</span>
                 </div>
@@ -263,11 +263,11 @@ const isLast = computed(() => activeStepId.value === steps[steps.length - 1].id)
           </div>
 
           <!-- Navigation Footer -->
-          <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] px-5 py-3">
+          <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] px-5 py-3">
             <div class="flex items-center justify-between">
               <button
                 :disabled="isFirst"
-                class="inline-flex items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.03] px-4 py-2 text-xs font-medium text-muted transition-all hover:border-[var(--ap-accent)]/30 hover:text-[var(--ap-accent)] disabled:opacity-30 disabled:pointer-events-none"
+                class="inline-flex items-center gap-2 rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] px-4 py-2 text-xs font-medium text-muted transition-all hover:border-[var(--ap-accent)]/30 hover:text-[var(--ap-accent)] disabled:opacity-30 disabled:pointer-events-none"
                 @click="goToPrev"
               >
                 <UIcon name="i-lucide-arrow-left" class="text-sm" />
@@ -282,7 +282,7 @@ const isLast = computed(() => activeStepId.value === steps[steps.length - 1].id)
                   :class="[
                     activeStepId === step.id
                       ? 'w-6 bg-[var(--ap-accent)]'
-                      : 'w-2 bg-white/[0.1] hover:bg-white/[0.2]'
+                      : 'w-2 bg-[var(--ap-dot-bg)] hover:bg-[var(--ap-dot-hover)]'
                   ]"
                   @click="selectStep(step.id)"
                 />

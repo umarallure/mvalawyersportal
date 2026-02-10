@@ -229,15 +229,15 @@ onBeforeRouteLeave((to) => {
     </div>
 
     <!-- Core Identity -->
-    <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
-      <div class="border-b border-white/[0.06] px-5 py-3">
+    <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] overflow-hidden">
+      <div class="border-b border-[var(--ap-card-border)] px-5 py-3">
         <div class="flex items-center gap-2">
           <UIcon name="i-lucide-fingerprint" class="text-sm text-muted" />
           <span class="text-xs font-semibold uppercase tracking-wider text-muted">Core Identity</span>
         </div>
       </div>
 
-      <div class="divide-y divide-white/[0.04]">
+      <div class="divide-y divide-[var(--ap-card-divide)]">
         <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
           <div class="min-w-0 flex-1">
             <label class="text-sm font-medium text-highlighted">Profile Photo</label>
@@ -311,15 +311,15 @@ onBeforeRouteLeave((to) => {
     </div>
 
     <!-- Contact Details -->
-    <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
-      <div class="border-b border-white/[0.06] px-5 py-3">
+    <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] overflow-hidden">
+      <div class="border-b border-[var(--ap-card-border)] px-5 py-3">
         <div class="flex items-center gap-2">
           <UIcon name="i-lucide-phone" class="text-sm text-muted" />
           <span class="text-xs font-semibold uppercase tracking-wider text-muted">Contact Details</span>
         </div>
       </div>
 
-      <div class="divide-y divide-white/[0.04]">
+      <div class="divide-y divide-[var(--ap-card-divide)]">
         <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
           <div class="min-w-0 flex-1">
             <label class="text-sm font-medium text-highlighted">Primary Email <span class="text-red-400">*</span></label>
@@ -373,15 +373,15 @@ onBeforeRouteLeave((to) => {
     </div>
 
     <!-- Support Staff -->
-    <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
-      <div class="border-b border-white/[0.06] px-5 py-3">
+    <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] overflow-hidden">
+      <div class="border-b border-[var(--ap-card-border)] px-5 py-3">
         <div class="flex items-center gap-2">
           <UIcon name="i-lucide-users" class="text-sm text-muted" />
           <span class="text-xs font-semibold uppercase tracking-wider text-muted">Support Staff</span>
         </div>
       </div>
 
-      <div class="divide-y divide-white/[0.04]">
+      <div class="divide-y divide-[var(--ap-card-divide)]">
         <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
           <div class="min-w-0 flex-1">
             <label class="text-sm font-medium text-highlighted">Assistant/Paralegal Name</label>

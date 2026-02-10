@@ -36,6 +36,14 @@
   --ap-border-strong: rgba(255, 255, 255, 0.4);
   --ap-text-dark: #141010;
 
+  /* Theme-aware card/surface tokens (light mode defaults) */
+  --ap-card-bg: rgba(0, 0, 0, 0.02);
+  --ap-card-border: rgba(0, 0, 0, 0.08);
+  --ap-card-hover: rgba(0, 0, 0, 0.04);
+  --ap-card-divide: rgba(0, 0, 0, 0.06);
+  --ap-dot-bg: rgba(0, 0, 0, 0.08);
+  --ap-dot-hover: rgba(0, 0, 0, 0.15);
+
   --ui-color-primary-400: var(--ap-accent);
   --ui-color-primary-500: var(--ap-accent);
   --ui-color-primary-600: var(--ap-accent-dark);
@@ -66,6 +74,14 @@ textarea {
   --ui-bg-elevated: var(--ap-surface);
   --ui-bg-muted: var(--ap-surface-soft);
   --ui-border: var(--ap-border);
+
+  /* Theme-aware card/surface tokens (dark mode) */
+  --ap-card-bg: rgba(255, 255, 255, 0.02);
+  --ap-card-border: rgba(255, 255, 255, 0.06);
+  --ap-card-hover: rgba(255, 255, 255, 0.03);
+  --ap-card-divide: rgba(255, 255, 255, 0.04);
+  --ap-dot-bg: rgba(255, 255, 255, 0.1);
+  --ap-dot-hover: rgba(255, 255, 255, 0.2);
 
   --ui-text-inverted: #ffffff;
 }

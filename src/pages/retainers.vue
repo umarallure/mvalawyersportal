@@ -541,7 +541,7 @@ const confirmDrop = async () => {
             <div class="relative max-w-xs flex-1">
               <UInput
                 v-model="query"
-                class="w-full [&_input]:rounded-xl [&_input]:border-white/[0.06] [&_input]:bg-white/[0.03] [&_input]:pl-10 [&_input]:backdrop-blur-sm"
+                class="w-full [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)] [&_input]:pl-10 [&_input]:backdrop-blur-sm"
                 icon="i-lucide-search"
                 placeholder="Search retainers..."
               />
@@ -551,14 +551,14 @@ const confirmDrop = async () => {
               v-if="isSuperAdmin"
               v-model="leadVendorFilter"
               :items="leadVendorOptions"
-              class="w-44 [&_button]:rounded-xl [&_button]:border-white/[0.06] [&_button]:bg-white/[0.03]"
+              class="w-44 [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
             />
 
             <USelect
               v-if="canSeeStatusFilter"
               v-model="statusFilter"
               :items="statusOptions"
-              class="w-44 [&_button]:rounded-xl [&_button]:border-white/[0.06] [&_button]:bg-white/[0.03]"
+              class="w-44 [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
             />
           </div>
         </div>
@@ -574,7 +574,7 @@ const confirmDrop = async () => {
         />
 
         <!-- Table Card -->
-        <div class="relative flex flex-1 min-h-0 flex-col overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+        <div class="relative flex flex-1 min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)]">
           <!-- Loading Skeleton -->
           <div v-if="loading && !rows.length" class="flex flex-1 items-center justify-center p-12">
             <div class="flex flex-col items-center gap-3">
@@ -604,7 +604,7 @@ const confirmDrop = async () => {
           <div v-else class="flex-1 min-h-0 overflow-y-auto retainers-scroll">
             <table class="w-full table-fixed">
               <thead class="sticky top-0 z-10">
-                <tr class="border-b border-white/[0.06] bg-white/[0.03] backdrop-blur-xl">
+                <tr class="border-b border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] backdrop-blur-xl">
                   <th :style="{ width: colWidth }" class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
                     Client
                   </th>
@@ -629,7 +629,7 @@ const confirmDrop = async () => {
                 <tr
                   v-for="row in pagedRows"
                   :key="row.id"
-                  class="group cursor-pointer border-b border-white/[0.03] transition-all duration-200 hover:bg-[var(--ap-accent)]/[0.04]"
+                  class="group cursor-pointer border-b border-[var(--ap-card-hover)] transition-all duration-200 hover:bg-[var(--ap-accent)]/[0.04]"
                   @click="openRow(row)"
                 >
                   <!-- Client -->
@@ -666,7 +666,7 @@ const confirmDrop = async () => {
                   <td v-if="isSuperAdmin" :style="{ width: colWidth }" class="px-5 py-3.5">
                     <span
                       v-if="row.lead_vendor"
-                      class="inline-flex items-center rounded-lg border border-white/[0.06] bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-default"
+                      class="inline-flex items-center rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-divide)] px-2.5 py-1 text-xs font-medium text-default"
                     >
                       {{ row.lead_vendor }}
                     </span>
@@ -689,7 +689,7 @@ const confirmDrop = async () => {
                         View
                       </button>
                       <button
-                        class="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-muted transition-all hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400 disabled:pointer-events-none disabled:opacity-30"
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] px-3 py-1.5 text-xs font-medium text-muted transition-all hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400 disabled:pointer-events-none disabled:opacity-30"
                         :disabled="row.source === 'leads'"
                         @click.stop="openDrop(row)"
                       >
@@ -704,7 +704,7 @@ const confirmDrop = async () => {
           </div>
 
           <!-- Pagination Footer -->
-          <div class="flex items-center justify-between border-t border-white/[0.06] bg-white/[0.02] px-5 py-3 backdrop-blur-xl">
+          <div class="flex items-center justify-between border-t border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] px-5 py-3 backdrop-blur-xl">
             <div class="flex items-center gap-2">
               <span class="text-xs text-muted">
                 Showing <span class="font-medium text-highlighted">{{ pagedRows.length }}</span> of <span class="font-medium text-highlighted">{{ totalCount }}</span>
@@ -713,7 +713,7 @@ const confirmDrop = async () => {
 
             <div class="flex items-center gap-1.5">
               <button
-                class="inline-flex h-8 items-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 text-xs font-medium text-default transition-all hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-30"
+                class="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] px-3 text-xs font-medium text-default transition-all hover:bg-[var(--ap-card-border)] disabled:pointer-events-none disabled:opacity-30"
                 :disabled="!canPrev"
                 @click="goPrev"
               >
@@ -728,7 +728,7 @@ const confirmDrop = async () => {
               </div>
 
               <button
-                class="inline-flex h-8 items-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 text-xs font-medium text-default transition-all hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-30"
+                class="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] px-3 text-xs font-medium text-default transition-all hover:bg-[var(--ap-card-border)] disabled:pointer-events-none disabled:opacity-30"
                 :disabled="!canNext"
                 @click="goNext"
               >

@@ -126,13 +126,13 @@ const getRetainerStatusStyle = (status: string | null) => {
   if (s.includes('drop') || s.includes('cancel')) return 'bg-red-500/10 text-red-400'
   if (s.includes('return') || s.includes('back')) return 'bg-blue-500/10 text-blue-400'
   if (s.includes('success') || s.includes('qualified') || s.includes('won')) return 'bg-emerald-500/10 text-emerald-400'
-  return 'bg-white/[0.04] text-muted'
+  return 'bg-[var(--ap-card-divide)] text-muted'
 }
 
 const getOrderStatusColor = (status: string) => {
   if (status === 'OPEN') return 'text-[var(--ap-accent)] bg-[var(--ap-accent)]/10'
   if (status === 'FULFILLED') return 'text-green-400 bg-green-500/10'
-  return 'text-muted bg-white/[0.04]'
+  return 'text-muted bg-[var(--ap-card-divide)]'
 }
 
 const orderFillPercent = (o: OrderRow) => {
@@ -288,7 +288,7 @@ onMounted(() => {
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <!-- Retainers -->
           <div
-            class="group relative cursor-pointer overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 transition-all duration-300 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.03]"
+            class="group relative cursor-pointer overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5 transition-all duration-300 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.03]"
             @click="router.push('/retainers')"
           >
             <div class="flex items-center justify-between">
@@ -308,7 +308,7 @@ onMounted(() => {
 
           <!-- Orders -->
           <div
-            class="group relative cursor-pointer overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 transition-all duration-300 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.03]"
+            class="group relative cursor-pointer overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5 transition-all duration-300 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.03]"
             @click="router.push('/fulfillment')"
           >
             <div class="flex items-center justify-between">
@@ -325,7 +325,7 @@ onMounted(() => {
                 <span>Fulfillment</span>
                 <span class="font-semibold text-highlighted">{{ fulfillmentPercent }}%</span>
               </div>
-              <div class="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
+              <div class="h-1.5 w-full overflow-hidden rounded-full bg-[var(--ap-card-border)]">
                 <div
                   class="h-full rounded-full bg-[var(--ap-accent)] transition-all duration-500"
                   :style="{ width: `${fulfillmentPercent}%` }"
@@ -336,7 +336,7 @@ onMounted(() => {
 
           <!-- Total Invoiced -->
           <div
-            class="group relative cursor-pointer overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 transition-all duration-300 hover:border-green-500/30 hover:bg-green-500/[0.03]"
+            class="group relative cursor-pointer overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5 transition-all duration-300 hover:border-green-500/30 hover:bg-green-500/[0.03]"
             @click="router.push('/invoicing')"
           >
             <div class="flex items-center justify-between">
@@ -357,7 +357,7 @@ onMounted(() => {
 
           <!-- Pending Invoices -->
           <div
-            class="group relative cursor-pointer overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 transition-all duration-300 hover:border-amber-500/30 hover:bg-amber-500/[0.03]"
+            class="group relative cursor-pointer overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5 transition-all duration-300 hover:border-amber-500/30 hover:bg-amber-500/[0.03]"
             @click="router.push('/invoicing')"
           >
             <div class="flex items-center justify-between">
@@ -380,9 +380,9 @@ onMounted(() => {
         <div class="grid gap-5 lg:grid-cols-3">
 
           <!-- ── Latest Retainers Card ── -->
-          <div class="lg:col-span-2 flex flex-col rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+          <div class="lg:col-span-2 flex flex-col rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] overflow-hidden">
             <!-- Header -->
-            <div class="flex items-center justify-between border-b border-white/[0.06] px-5 py-4">
+            <div class="flex items-center justify-between border-b border-[var(--ap-card-border)] px-5 py-4">
               <div class="flex items-center gap-3">
                 <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--ap-accent)]/10">
                   <UIcon name="i-lucide-briefcase" class="text-sm text-[var(--ap-accent)]" />
@@ -393,7 +393,7 @@ onMounted(() => {
                 </div>
               </div>
               <button
-                class="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-muted transition-all hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/10 hover:text-[var(--ap-accent)]"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] px-3 py-1.5 text-xs font-medium text-muted transition-all hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/10 hover:text-[var(--ap-accent)]"
                 @click="router.push('/retainers')"
               >
                 See All
@@ -420,7 +420,7 @@ onMounted(() => {
             <div v-else class="flex-1 overflow-auto dash-scroll">
               <table class="w-full">
                 <thead>
-                  <tr class="border-b border-white/[0.04] bg-white/[0.015]">
+                  <tr class="border-b border-[var(--ap-card-divide)] bg-[var(--ap-card-bg)]">
                     <th class="px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted">Client</th>
                     <th class="px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted">Phone</th>
                     <th class="px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted">Status</th>
@@ -432,7 +432,7 @@ onMounted(() => {
                   <tr
                     v-for="row in retainers"
                     :key="row.id"
-                    class="group cursor-pointer border-b border-white/[0.03] transition-all duration-200 hover:bg-[var(--ap-accent)]/[0.04]"
+                    class="group cursor-pointer border-b border-[var(--ap-card-hover)] transition-all duration-200 hover:bg-[var(--ap-accent)]/[0.04]"
                     @click="openRetainer(row)"
                   >
                     <td class="px-5 py-3">
@@ -477,9 +477,9 @@ onMounted(() => {
           </div>
 
           <!-- ── Invoices Card ── -->
-          <div class="flex flex-col rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+          <div class="flex flex-col rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] overflow-hidden">
             <!-- Header -->
-            <div class="flex items-center justify-between border-b border-white/[0.06] px-5 py-4">
+            <div class="flex items-center justify-between border-b border-[var(--ap-card-border)] px-5 py-4">
               <div class="flex items-center gap-3">
                 <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10">
                   <UIcon name="i-lucide-receipt" class="text-sm text-amber-400" />
@@ -490,7 +490,7 @@ onMounted(() => {
                 </div>
               </div>
               <button
-                class="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-muted transition-all hover:border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-400"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] px-3 py-1.5 text-xs font-medium text-muted transition-all hover:border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-400"
                 @click="router.push('/invoicing')"
               >
                 See All
@@ -525,11 +525,11 @@ onMounted(() => {
 
             <!-- Invoice List -->
             <div v-else class="flex-1 overflow-auto dash-scroll">
-              <div class="divide-y divide-white/[0.04]">
+              <div class="divide-y divide-[var(--ap-card-divide)]">
                 <div
                   v-for="inv in latestInvoices"
                   :key="inv.id"
-                  class="group flex items-center gap-3 px-5 py-3.5 cursor-pointer transition-all duration-200 hover:bg-white/[0.03]"
+                  class="group flex items-center gap-3 px-5 py-3.5 cursor-pointer transition-all duration-200 hover:bg-[var(--ap-card-hover)]"
                   @click="openInvoicePdf(inv)"
                 >
                   <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" :class="getStatusBg(inv.status)">
@@ -558,9 +558,9 @@ onMounted(() => {
             </div>
 
             <!-- Quick Create -->
-            <div v-if="isAdminOrSuper && invoices.length" class="border-t border-white/[0.06] px-5 py-3">
+            <div v-if="isAdminOrSuper && invoices.length" class="border-t border-[var(--ap-card-border)] px-5 py-3">
               <button
-                class="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/[0.08] bg-white/[0.02] px-3 py-2.5 text-xs font-medium text-muted transition-all hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.04] hover:text-[var(--ap-accent)]"
+                class="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] px-3 py-2.5 text-xs font-medium text-muted transition-all hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.04] hover:text-[var(--ap-accent)]"
                 @click="router.push('/invoicing/create')"
               >
                 <UIcon name="i-lucide-plus" class="text-sm" />
@@ -571,9 +571,9 @@ onMounted(() => {
         </div>
 
         <!-- ═══ Orders Section ═══ -->
-        <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+        <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] overflow-hidden">
           <!-- Header -->
-          <div class="flex items-center justify-between border-b border-white/[0.06] px-5 py-4">
+          <div class="flex items-center justify-between border-b border-[var(--ap-card-border)] px-5 py-4">
             <div class="flex items-center gap-3">
               <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--ap-accent)]/10">
                 <UIcon name="i-lucide-shopping-cart" class="text-sm text-[var(--ap-accent)]" />
@@ -584,7 +584,7 @@ onMounted(() => {
               </div>
             </div>
             <button
-              class="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-muted transition-all hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/10 hover:text-[var(--ap-accent)]"
+              class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] px-3 py-1.5 text-xs font-medium text-muted transition-all hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/10 hover:text-[var(--ap-accent)]"
               @click="router.push('/fulfillment')"
             >
               See All
@@ -612,7 +612,7 @@ onMounted(() => {
             <div
               v-for="order in orders"
               :key="order.id"
-              class="group cursor-pointer rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 transition-all duration-200 hover:border-[var(--ap-accent)]/20 hover:bg-[var(--ap-accent)]/[0.03]"
+              class="group cursor-pointer rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4 transition-all duration-200 hover:border-[var(--ap-accent)]/20 hover:bg-[var(--ap-accent)]/[0.03]"
               @click="openOrder(order)"
             >
               <div class="flex items-start justify-between gap-2">
@@ -640,7 +640,7 @@ onMounted(() => {
                     {{ orderFillPercent(order) }}%
                   </span>
                 </div>
-                <div class="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
+                <div class="h-1.5 w-full overflow-hidden rounded-full bg-[var(--ap-card-border)]">
                   <div
                     class="h-full rounded-full transition-all duration-500"
                     :class="orderFillPercent(order) >= 100 ? 'bg-green-400' : 'bg-[var(--ap-accent)]'"

@@ -1106,7 +1106,7 @@ watch(myClosedOrders, () => {
 
         <!-- ═══ Stat Card ═══ -->
         <div class="grid gap-4 sm:grid-cols-3">
-          <div class="group overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 transition-all duration-300 hover:border-blue-500/30 hover:bg-blue-500/[0.03]">
+          <div class="group overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5 transition-all duration-300 hover:border-blue-500/30 hover:bg-blue-500/[0.03]">
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-xs font-medium uppercase tracking-wider text-muted">My Open Orders (All States)</p>
@@ -1120,7 +1120,7 @@ watch(myClosedOrders, () => {
         </div>
 
         <!-- ═══ Legend & Filter ═══ -->
-        <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
+        <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5">
           <div class="space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div class="flex items-center gap-3">
@@ -1160,7 +1160,7 @@ watch(myClosedOrders, () => {
         </div>
 
         <!-- ═══ Map ═══ -->
-        <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 overflow-hidden">
+        <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4 overflow-hidden">
           <div class="relative">
             <div
               ref="mapRoot"
@@ -1171,7 +1171,7 @@ watch(myClosedOrders, () => {
             <div
               v-if="tooltip.open && tooltip.state"
               ref="tooltipEl"
-              class="pointer-events-none absolute z-10 rounded-xl border border-white/[0.06] bg-[#1a1a1a] px-4 py-3 shadow-xl"
+              class="pointer-events-none absolute z-10 rounded-xl border border-[var(--ap-card-border)] bg-white dark:bg-[#1a1a1a] px-4 py-3 shadow-xl"
               :style="{ left: `${tooltip.x}px`, top: `${tooltip.y}px` }"
             >
               <div class="text-sm font-semibold text-highlighted">
@@ -1215,9 +1215,9 @@ watch(myClosedOrders, () => {
         </div>
 
         <!-- ═══ My Open Orders List ═══ -->
-        <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+        <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] overflow-hidden">
           <!-- Header -->
-          <div class="flex items-center justify-between border-b border-white/[0.06] px-5 py-4">
+          <div class="flex items-center justify-between border-b border-[var(--ap-card-border)] px-5 py-4">
             <div class="flex items-center gap-3">
               <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10">
                 <UIcon name="i-lucide-shopping-cart" class="text-sm text-blue-400" />
@@ -1227,7 +1227,7 @@ watch(myClosedOrders, () => {
                 <p class="text-[11px] text-muted">Your currently active intake orders</p>
               </div>
             </div>
-            <span class="inline-flex items-center rounded-lg border border-white/[0.06] bg-white/[0.04] px-3 py-1 text-xs font-semibold text-muted">
+            <span class="inline-flex items-center rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-divide)] px-3 py-1 text-xs font-semibold text-muted">
               {{ myOpenOrders.length }} orders
             </span>
           </div>
@@ -1243,7 +1243,7 @@ watch(myClosedOrders, () => {
           </div>
 
           <!-- Orders -->
-          <div v-else class="divide-y divide-white/[0.04]">
+          <div v-else class="divide-y divide-[var(--ap-card-divide)]">
             <div
               v-for="order in myOpenOrders"
               :key="order.id"
@@ -1267,7 +1267,7 @@ watch(myClosedOrders, () => {
                     <span class="inline-flex items-center rounded-md bg-blue-500/10 px-2 py-0.5 text-[11px] font-semibold text-blue-400">
                       Quota {{ order.quota_filled }}/{{ order.quota_total }}
                     </span>
-                    <span class="inline-flex items-center rounded-md bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium text-muted">
+                    <span class="inline-flex items-center rounded-md bg-[var(--ap-card-divide)] px-2 py-0.5 text-[11px] font-medium text-muted">
                       Expires {{ String(order.expires_at || '').slice(0, 10) }}
                     </span>
                   </div>
@@ -1276,7 +1276,7 @@ watch(myClosedOrders, () => {
                     <div class="w-10 text-right text-[11px] text-muted tabular-nums">
                       {{ orderProgressPercent(order) }}%
                     </div>
-                    <div class="h-1.5 w-28 overflow-hidden rounded-full bg-white/[0.06]">
+                    <div class="h-1.5 w-28 overflow-hidden rounded-full bg-[var(--ap-card-border)]">
                       <div
                         class="h-full rounded-full transition-all duration-500"
                         :class="orderProgressPercent(order) >= 100 ? 'bg-green-400' : 'bg-blue-400'"
