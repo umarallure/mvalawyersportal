@@ -104,7 +104,7 @@ const handleSubmit = async () => {
           <div class="space-y-8">
             <div class="space-y-4">
               <img src="/assets/logo-white.png" alt="Accident Payments" class="h-15 w-auto mb-8" />
-              <p class="text-xs uppercase tracking-[0.4em] text-white/60">Publisher Portal</p>
+              <p class="text-xs uppercase tracking-[0.4em] text-white/60">Lawyer Portal</p>
               <h1 class="text-4xl font-semibold leading-tight text-white md:text-5xl">Secure entry for your MVA workspace.</h1>
               <p class="text-base leading-relaxed text-white/70">
                 Sign in with your work email to access your dashboard, manage intake workflows, and keep handoffs moving.
