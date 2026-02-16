@@ -5,7 +5,7 @@ import type { DropdownMenuItem } from '@nuxt/ui'
 import { useDashboard } from '../composables/useDashboard'
 import { useAuth } from '../composables/useAuth'
 import { supabase } from '../lib/supabase'
-import { listInvoices, markInvoiceAsPaid, type InvoiceRow, type InvoiceStatus } from '../lib/invoices'
+import { listInvoices, type InvoiceRow, type InvoiceStatus } from '../lib/invoices'
 import { listOrdersForLawyer, type OrderRow } from '../lib/orders'
 
 const router = useRouter()
@@ -42,13 +42,15 @@ type RetainerRow = {
   invoice_id: string | null
 }
 
+type InvoiceRowWithLawyerName = InvoiceRow & { lawyer_name?: string | null }
+
 const retainers = ref<RetainerRow[]>([])
 const retainerCount = ref(0)
 
 const orders = ref<OrderRow[]>([])
 const orderCount = ref(0)
 
-const invoices = ref<(InvoiceRow & { lawyer_name?: string | null })[]>([])
+const invoices = ref<InvoiceRowWithLawyerName[]>([])
 
 // ── Computed stats ──
 const totalInvoiced = computed(() => invoices.value.reduce((s, i) => s + Number(i.total_amount), 0))
@@ -121,12 +123,21 @@ const getStatusLabel = (status: InvoiceStatus) => {
 
 const getRetainerStatusStyle = (status: string | null) => {
   const s = (status ?? '').toLowerCase()
-  if (s.includes('pending')) return 'bg-amber-500/10 text-amber-400'
   if (s.includes('sign')) return 'bg-green-500/10 text-green-400'
   if (s.includes('drop') || s.includes('cancel')) return 'bg-red-500/10 text-red-400'
   if (s.includes('return') || s.includes('back')) return 'bg-blue-500/10 text-blue-400'
   if (s.includes('success') || s.includes('qualified') || s.includes('won')) return 'bg-emerald-500/10 text-emerald-400'
   return 'bg-[var(--ap-card-divide)] text-muted'
+}
+
+const getFulfillmentRetainerStatusLabel = (status: string | null) => {
+  const s = String(status ?? '').trim().toLowerCase()
+  if (!s) return null
+  if (s.includes('sign')) return 'Signed Retainers'
+  if (s.includes('success') || s.includes('qualified') || s.includes('won')) return 'Successful Cases'
+  if (s.includes('drop') || s.includes('dropped') || s.includes('cancel')) return 'Dropped Retainers'
+  if (s.includes('return') || s.includes('back')) return 'Returned Back'
+  return null
 }
 
 const getOrderStatusColor = (status: string) => {
@@ -175,7 +186,7 @@ const load = async () => {
     if (role === 'lawyer' && userId) {
       invFilters.lawyer_id = userId
     }
-    const invData = await listInvoices(invFilters)
+    const invData = (await listInvoices(invFilters)) as InvoiceRowWithLawyerName[]
 
     if (role === 'super_admin' || role === 'admin') {
       const lawyerIds = [...new Set(invData.map(d => d.lawyer_id).filter(Boolean))]
@@ -185,42 +196,28 @@ const load = async () => {
           .select('user_id,full_name')
           .in('user_id', lawyerIds)
 
-        const nameMap = new Map(
-          (profiles ?? []).map((p: any) => [String(p.user_id), String(p.full_name ?? '').trim()])
-        )
+        const profileRows = (profiles ?? []) as Array<{ user_id?: string | null, full_name?: string | null }>
+        const nameMap = new Map(profileRows.map(p => [String(p.user_id ?? ''), String(p.full_name ?? '').trim()]))
 
         const { data: appUsers } = await supabase
           .from('app_users')
           .select('user_id,display_name,email')
           .in('user_id', lawyerIds)
 
-        const fallbackMap = new Map(
-          (appUsers ?? []).map((u: any) => [String(u.user_id), String(u.display_name || u.email || '').trim()])
-        )
+        const appUserRows = (appUsers ?? []) as Array<{ user_id?: string | null, display_name?: string | null, email?: string | null }>
+        const fallbackMap = new Map(appUserRows.map(u => [String(u.user_id ?? ''), String(u.display_name || u.email || '').trim()]))
 
-        invData.forEach((inv: any) => {
+        invData.forEach((inv: InvoiceRowWithLawyerName) => {
           inv.lawyer_name = nameMap.get(inv.lawyer_id) || fallbackMap.get(inv.lawyer_id) || null
         })
       }
     }
 
-    invoices.value = invData as (InvoiceRow & { lawyer_name?: string | null })[]
+    invoices.value = invData
   } catch (e) {
     console.error('[dashboard] load error', e)
   } finally {
     loading.value = false
-  }
-}
-
-const handleMarkAsPaid = async (invoice: InvoiceRow) => {
-  try {
-    const updated = await markInvoiceAsPaid(invoice.id)
-    const idx = invoices.value.findIndex(i => i.id === invoice.id)
-    if (idx !== -1) {
-      invoices.value[idx] = { ...invoices.value[idx], ...updated }
-    }
-  } catch (e) {
-    console.error('[dashboard] mark paid error', e)
   }
 }
 
@@ -285,18 +282,18 @@ onMounted(() => {
     <template #body>
       <div class="flex flex-col gap-6">
         <!-- ═══ Stat Cards ═══ -->
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <!-- Retainers -->
           <div
-            class="group relative cursor-pointer overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5 transition-all duration-300 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.03]"
+            class="group relative cursor-pointer overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4 sm:p-5 transition-all duration-300 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.03]"
             @click="router.push('/retainers')"
           >
-            <div class="flex items-center justify-between">
+            <div class="flex items-start justify-between gap-3">
               <div>
                 <p class="text-xs font-medium uppercase tracking-wider text-muted">Retainers</p>
                 <p class="mt-1.5 text-3xl font-bold text-highlighted">{{ retainerCount }}</p>
               </div>
-              <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--ap-accent)]/10 transition-all duration-300 group-hover:bg-[var(--ap-accent)]/20">
+              <div class="flex h-11 w-11 shrink-0 items-center justify-center self-start rounded-xl bg-[var(--ap-accent)]/10 transition-all duration-300 group-hover:bg-[var(--ap-accent)]/20 sm:h-12 sm:w-12">
                 <UIcon name="i-lucide-briefcase" class="text-xl text-[var(--ap-accent)]" />
               </div>
             </div>
@@ -308,15 +305,15 @@ onMounted(() => {
 
           <!-- Orders -->
           <div
-            class="group relative cursor-pointer overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5 transition-all duration-300 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.03]"
+            class="group relative cursor-pointer overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4 sm:p-5 transition-all duration-300 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.03]"
             @click="router.push('/fulfillment')"
           >
-            <div class="flex items-center justify-between">
+            <div class="flex items-start justify-between gap-3">
               <div>
                 <p class="text-xs font-medium uppercase tracking-wider text-muted">Active Orders</p>
                 <p class="mt-1.5 text-3xl font-bold text-highlighted">{{ orderCount }}</p>
               </div>
-              <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--ap-accent)]/10 transition-all duration-300 group-hover:bg-[var(--ap-accent)]/20">
+              <div class="flex h-11 w-11 shrink-0 items-center justify-center self-start rounded-xl bg-[var(--ap-accent)]/10 transition-all duration-300 group-hover:bg-[var(--ap-accent)]/20 sm:h-12 sm:w-12">
                 <UIcon name="i-lucide-shopping-cart" class="text-xl text-[var(--ap-accent)]" />
               </div>
             </div>
@@ -336,15 +333,15 @@ onMounted(() => {
 
           <!-- Total Invoiced -->
           <div
-            class="group relative cursor-pointer overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5 transition-all duration-300 hover:border-green-500/30 hover:bg-green-500/[0.03]"
+            class="group relative cursor-pointer overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4 sm:p-5 transition-all duration-300 hover:border-green-500/30 hover:bg-green-500/[0.03]"
             @click="router.push('/invoicing')"
           >
-            <div class="flex items-center justify-between">
-              <div>
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
                 <p class="text-xs font-medium uppercase tracking-wider text-muted">Total Invoiced</p>
                 <p class="mt-1.5 text-3xl font-bold text-green-400">{{ formatMoney(totalInvoiced) }}</p>
               </div>
-              <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-green-500/10 transition-all duration-300 group-hover:bg-green-500/20">
+              <div class="flex h-11 w-11 shrink-0 items-center justify-center self-start rounded-xl bg-green-500/10 transition-all duration-300 group-hover:bg-green-500/20 sm:h-12 sm:w-12">
                 <UIcon name="i-lucide-circle-dollar-sign" class="text-xl text-green-400" />
               </div>
             </div>
@@ -357,15 +354,15 @@ onMounted(() => {
 
           <!-- Pending Invoices -->
           <div
-            class="group relative cursor-pointer overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5 transition-all duration-300 hover:border-amber-500/30 hover:bg-amber-500/[0.03]"
+            class="group relative cursor-pointer overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4 sm:p-5 transition-all duration-300 hover:border-amber-500/30 hover:bg-amber-500/[0.03]"
             @click="router.push('/invoicing')"
           >
-            <div class="flex items-center justify-between">
+            <div class="flex items-start justify-between gap-3">
               <div>
                 <p class="text-xs font-medium uppercase tracking-wider text-muted">Pending Invoices</p>
                 <p class="mt-1.5 text-3xl font-bold text-amber-400">{{ pendingInvoiceCount }}</p>
               </div>
-              <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/10 transition-all duration-300 group-hover:bg-amber-500/20">
+              <div class="flex h-11 w-11 shrink-0 items-center justify-center self-start rounded-xl bg-amber-500/10 transition-all duration-300 group-hover:bg-amber-500/20 sm:h-12 sm:w-12">
                 <UIcon name="i-lucide-clock" class="text-xl text-amber-400" />
               </div>
             </div>
@@ -422,8 +419,8 @@ onMounted(() => {
                 <thead>
                   <tr class="border-b border-[var(--ap-card-divide)] bg-[var(--ap-card-bg)]">
                     <th class="px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted">Client</th>
-                    <th class="px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted">Phone</th>
-                    <th class="px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted">Status</th>
+                    <th class="hidden px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted sm:table-cell">Phone</th>
+                    <th class="hidden px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted sm:table-cell">Status</th>
                     <th class="px-5 py-2.5 text-center text-[10px] font-semibold uppercase tracking-widest text-muted">Invoice</th>
                     <th class="px-5 py-2.5 text-right text-[10px] font-semibold uppercase tracking-widest text-muted" />
                   </tr>
@@ -440,21 +437,35 @@ onMounted(() => {
                         <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[var(--ap-accent)]/20 to-[var(--ap-accent)]/5 text-[10px] font-bold text-[var(--ap-accent)] ring-1 ring-[var(--ap-accent)]/10">
                           {{ getInitials(row.insured_name) }}
                         </div>
-                        <span class="text-sm font-medium text-highlighted truncate max-w-[160px] group-hover:text-[var(--ap-accent)] transition-colors">
-                          {{ row.insured_name ?? 'Unknown' }}
-                        </span>
+                        <div class="min-w-0">
+                          <div class="text-sm font-medium text-highlighted truncate max-w-[160px] group-hover:text-[var(--ap-accent)] transition-colors">
+                            {{ row.insured_name ?? 'Unknown' }}
+                          </div>
+                          <div class="mt-0.5 flex flex-col items-start gap-1 text-[11px] text-muted sm:hidden">
+                            <span class="tabular-nums">{{ formatPhone(row.client_phone_number) }}</span>
+                            <span
+                              v-if="getFulfillmentRetainerStatusLabel(row.status)"
+                              class="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
+                              :class="getRetainerStatusStyle(getFulfillmentRetainerStatusLabel(row.status))"
+                            >
+                              {{ getFulfillmentRetainerStatusLabel(row.status) }}
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     </td>
-                    <td class="px-5 py-3">
+                    <td class="hidden px-5 py-3 sm:table-cell">
                       <span class="text-sm text-default tabular-nums">{{ formatPhone(row.client_phone_number) }}</span>
                     </td>
-                    <td class="px-5 py-3">
+                    <td class="hidden px-5 py-3 sm:table-cell">
                       <span
+                        v-if="getFulfillmentRetainerStatusLabel(row.status)"
                         class="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[11px] font-semibold"
-                        :class="getRetainerStatusStyle(row.status)"
+                        :class="getRetainerStatusStyle(getFulfillmentRetainerStatusLabel(row.status))"
                       >
-                        {{ row.status ?? '—' }}
+                        {{ getFulfillmentRetainerStatusLabel(row.status) }}
                       </span>
+                      <span v-else class="text-xs text-muted/40">—</span>
                     </td>
                     <td class="px-5 py-3 text-center">
                       <button
