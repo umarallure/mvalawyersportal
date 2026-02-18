@@ -7,14 +7,16 @@ import { supabase } from './supabase'
 export const PIPELINE_STAGES = {
   RETAINER_SIGNED: { key: 'retainer_signed', label: 'Retainer Signed', display_order: 7 },
   ATTORNEY_REVIEW: { key: 'attorney_review', label: 'Attorney Review', display_order: 8 },
-  APPROVED_PAYABLE: { key: 'approved_payable', label: 'Approved \u2013 Payable', display_order: 9 },
-  PAID_TO_BPO: { key: 'paid_to_bpo', label: 'Paid to BPO', display_order: 10 },
+  ATTORNEY_PAID: { key: 'attorney_paid', label: 'Attorney Paid', display_order: 9 },
+  APPROVED_PAYABLE: { key: 'approved_payable', label: 'Approved \u2013 Payable', display_order: 10 },
+  PAID_TO_BPO: { key: 'paid_to_bpo', label: 'Paid to BPO', display_order: 11 },
 } as const
 
 // The status labels we filter daily_deal_flow by
 export const SETTLEMENT_STAGE_LABELS = [
   PIPELINE_STAGES.RETAINER_SIGNED.label,
   PIPELINE_STAGES.ATTORNEY_REVIEW.label,
+  PIPELINE_STAGES.ATTORNEY_PAID.label,
   PIPELINE_STAGES.APPROVED_PAYABLE.label,
   PIPELINE_STAGES.PAID_TO_BPO.label,
 ] as const
@@ -44,6 +46,7 @@ export type RetainerSettlementRow = {
   lead_vendor: string | null
   date_signed: string | null
   status: string
+  face_amount: number | null
   assigned_attorney_id: string | null
   assigned_attorney_name: string | null
   inbound_payment_status: InboundStatus
@@ -79,6 +82,9 @@ export function derivePaymentState(status: string): {
   if (status === PIPELINE_STAGES.PAID_TO_BPO.label) {
     return { inbound: INBOUND_STATUS.RECEIVED, outbound: OUTBOUND_STATUS.PAID }
   }
+  if (status === PIPELINE_STAGES.ATTORNEY_PAID.label) {
+    return { inbound: INBOUND_STATUS.RECEIVED, outbound: OUTBOUND_STATUS.LOCKED }
+  }
   return { inbound: INBOUND_STATUS.PENDING, outbound: OUTBOUND_STATUS.LOCKED }
 }
 
@@ -87,7 +93,7 @@ export function derivePaymentState(status: string): {
 export async function listSettlements(): Promise<RetainerSettlementRow[]> {
   const { data, error } = await supabase
     .from('daily_deal_flow')
-    .select('id,submission_id,insured_name,client_phone_number,lead_vendor,date,status,assigned_attorney_id,created_at')
+    .select('id,submission_id,insured_name,client_phone_number,lead_vendor,date,status,face_amount,assigned_attorney_id,created_at')
     .in('status', [...SETTLEMENT_STAGE_LABELS])
     .order('created_at', { ascending: false })
 
@@ -132,6 +138,7 @@ export async function listSettlements(): Promise<RetainerSettlementRow[]> {
       lead_vendor: r.lead_vendor ? String(r.lead_vendor) : null,
       date_signed: r.date ? String(r.date) : null,
       status,
+      face_amount: (r.face_amount === null || r.face_amount === undefined) ? null : Number(r.face_amount),
       assigned_attorney_id: attId,
       assigned_attorney_name: attName,
       inbound_payment_status: payment.inbound,
@@ -181,6 +188,15 @@ export const KANBAN_COLUMNS = [
     headerBg: 'bg-violet-50/60 dark:bg-violet-950/10',
     bodyBg: 'bg-violet-50/50 dark:bg-violet-950/15',
     badgeClass: 'bg-violet-500/10 text-violet-500',
+  },
+  {
+    key: PIPELINE_STAGES.ATTORNEY_PAID.key,
+    label: PIPELINE_STAGES.ATTORNEY_PAID.label,
+    icon: 'i-lucide-badge-dollar-sign',
+    borderClass: 'border-t-amber-500/50',
+    headerBg: 'bg-amber-50/60 dark:bg-amber-950/10',
+    bodyBg: 'bg-amber-50/50 dark:bg-amber-950/15',
+    badgeClass: 'bg-amber-500/10 text-amber-500',
   },
   {
     key: PIPELINE_STAGES.APPROVED_PAYABLE.key,

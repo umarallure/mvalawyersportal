@@ -111,6 +111,14 @@ const receivedInbound = computed(() => rows.value.filter(r => r.inbound_payment_
 const paidOutbound = computed(() => rows.value.filter(r => r.outbound_payment_status === 'paid').length)
 
 // ── Helpers ──
+const formatMoney = (n: number) => {
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n)
+  } catch {
+    return `$${n.toFixed(2)}`
+  }
+}
+
 const formatDate = (value: string | null) => {
   if (!value) return '—'
   try {
@@ -132,6 +140,8 @@ const getStatusStyle = (status: string) => {
       return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
     case PIPELINE_STAGES.ATTORNEY_REVIEW.label:
       return 'bg-violet-500/10 text-violet-400 border-violet-500/20'
+    case PIPELINE_STAGES.ATTORNEY_PAID.label:
+      return 'bg-amber-500/10 text-amber-400 border-amber-500/20'
     case PIPELINE_STAGES.APPROVED_PAYABLE.label:
       return 'bg-teal-500/10 text-teal-400 border-teal-500/20'
     case PIPELINE_STAGES.PAID_TO_BPO.label:
@@ -145,6 +155,7 @@ const getStatusIcon = (status: string) => {
   switch (status) {
     case PIPELINE_STAGES.RETAINER_SIGNED.label: return 'i-lucide-file-signature'
     case PIPELINE_STAGES.ATTORNEY_REVIEW.label: return 'i-lucide-scale'
+    case PIPELINE_STAGES.ATTORNEY_PAID.label: return 'i-lucide-badge-dollar-sign'
     case PIPELINE_STAGES.APPROVED_PAYABLE.label: return 'i-lucide-check-circle'
     case PIPELINE_STAGES.PAID_TO_BPO.label: return 'i-lucide-banknote'
     default: return 'i-lucide-circle'
@@ -166,9 +177,39 @@ const canMarkInbound = (row: RetainerSettlementRow) => {
 }
 
 // ── Actions ──
-const toggleInbound = (row: RetainerSettlementRow) => {
+const toggleInbound = async (row: RetainerSettlementRow) => {
   if (!canMarkInbound(row)) return
+
+  const oldInbound = row.inbound_payment_status
+  const oldStatus = row.status
+
+  // Optimistic UI
   row.inbound_payment_status = INBOUND_STATUS.RECEIVED
+
+  // If this lead isn't already beyond Attorney Paid, advance it to the new stage.
+  // This keeps the pipeline aligned: Attorney Review -> Attorney Paid -> Approved – Payable -> Paid to BPO
+  const shouldAdvanceStage =
+    row.status !== PIPELINE_STAGES.ATTORNEY_PAID.label &&
+    row.status !== PIPELINE_STAGES.APPROVED_PAYABLE.label &&
+    row.status !== PIPELINE_STAGES.PAID_TO_BPO.label
+
+  if (shouldAdvanceStage) {
+    row.status = PIPELINE_STAGES.ATTORNEY_PAID.label
+    row.outbound_payment_status = OUTBOUND_STATUS.LOCKED
+  }
+
+  try {
+    if (shouldAdvanceStage) {
+      await updateDealStatus(row.id, PIPELINE_STAGES.ATTORNEY_PAID.label)
+    }
+  } catch (e) {
+    // Revert
+    row.inbound_payment_status = oldInbound
+    row.status = oldStatus
+    const payment = derivePaymentState(oldStatus)
+    row.outbound_payment_status = payment.outbound
+    error.value = e instanceof Error ? e.message : 'Failed to update inbound payment'
+  }
 }
 
 const toggleOutbound = async (row: RetainerSettlementRow) => {
@@ -184,10 +225,15 @@ const toggleOutbound = async (row: RetainerSettlementRow) => {
 
 // ── Kanban ──
 const kanbanColumns = computed(() =>
-  KANBAN_COLUMNS.map(col => ({
-    ...col,
-    cards: filtered.value.filter(r => r.status === col.label),
-  }))
+  KANBAN_COLUMNS.map(col => {
+    const cards = filtered.value.filter(r => r.status === col.label)
+    const totalValue = cards.reduce((sum, c) => sum + Number(c.face_amount ?? 0), 0)
+    return {
+      ...col,
+      cards,
+      totalValue,
+    }
+  })
 )
 
 // Drag-and-drop state
@@ -250,7 +296,7 @@ const onDragEnd = () => {
 
 const onCardClick = (row: RetainerSettlementRow) => {
   if (isDragging.value) return
-  router.push(`/retainers/${row.id}`)
+  router.push({ path: `/retainers/${row.id}`, query: { from: '/retainer-settlements' } })
 }
 
 // ── Watchers ──
@@ -651,12 +697,18 @@ onMounted(load)
                   <UIcon :name="col.icon" class="text-sm text-muted" />
                   <span class="text-xs font-semibold text-highlighted">{{ col.label }}</span>
                 </div>
-                <span
-                  class="inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold"
-                  :class="col.badgeClass"
-                >
-                  {{ col.cards.length }}
-                </span>
+                <div class="flex items-end gap-2">
+                  <div class="text-right">
+                    <div class="text-[10px] font-semibold text-muted">{{ formatMoney(col.totalValue) }}</div>
+                    <div class="text-[9px] text-muted">Total value</div>
+                  </div>
+                  <span
+                    class="inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold"
+                    :class="col.badgeClass"
+                  >
+                    {{ col.cards.length }}
+                  </span>
+                </div>
               </div>
 
               <!-- Column Body / Cards -->
@@ -680,8 +732,8 @@ onMounted(load)
                       <p class="truncate text-sm font-medium text-highlighted leading-tight">
                         {{ card.insured_name ?? 'Unknown' }}
                       </p>
-                      <p class="truncate text-[10px] text-muted font-mono mt-0.5">
-                        {{ card.submission_id }}
+                      <p class="truncate text-[10px] text-muted mt-0.5">
+                        {{ card.face_amount ? formatMoney(Number(card.face_amount)) : '—' }}
                       </p>
                     </div>
                   </div>

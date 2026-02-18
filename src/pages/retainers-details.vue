@@ -40,6 +40,21 @@ const headerTitle = computed(() => {
   return `${name} - ${phone}`
 })
 
+const goBack = () => {
+  const from = String(route.query.from ?? '').trim()
+  if (from) {
+    router.push(from)
+    return
+  }
+
+  if (window.history.length > 1) {
+    router.back()
+    return
+  }
+
+  router.push('/retainers')
+}
+
 const load = async () => {
   loading.value = true
   error.value = null
@@ -224,7 +239,7 @@ const accidentDetailsFields = computed(() => {
             color="neutral"
             variant="ghost"
             icon="i-lucide-arrow-left"
-            @click="router.push('/retainers')"
+            @click="goBack"
           >
             Back
           </UButton>

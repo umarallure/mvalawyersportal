@@ -7,6 +7,7 @@ SELECT
   d.insured_name,
   d.client_phone_number,
   d.lead_vendor,
+  d.face_amount,
   d.date         AS date_signed,
   d.status,
   d.assigned_attorney_id,
@@ -17,6 +18,7 @@ LEFT JOIN attorney_profiles a ON a.user_id = d.assigned_attorney_id
 WHERE d.status IN (
   'Retainer Signed',
   'Attorney Review',
+  'Attorney Paid',
   'Approved – Payable',
   'Paid to BPO'
 )
