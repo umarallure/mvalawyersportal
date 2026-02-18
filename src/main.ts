@@ -21,6 +21,7 @@ const router = createRouter({
     { path: '/retainers', component: () => import('./pages/retainers.vue') },
     { path: '/retainers/:id', component: () => import('./pages/retainers-details.vue') },
     { path: '/fulfillment', component: () => import('./pages/fulfillment.vue') },
+    { path: '/retainer-settlements', component: () => import('./pages/retainer-settlements.vue'), meta: { requiresAdmin: true } },
     { path: '/invoicing', component: () => import('./pages/invoicing.vue') },
     { path: '/invoicing/create', component: () => import('./pages/invoicing-create.vue') },
     { path: '/invoicing/edit/:id', component: () => import('./pages/invoicing-create.vue') },
@@ -52,6 +53,7 @@ router.beforeEach(async (to, from) => {
   const isPublic = Boolean(to.meta.public)
   const isLoggedIn = Boolean(auth.state.value.user)
   const requiresSuperAdmin = Boolean(to.meta.requiresSuperAdmin)
+  const requiresAdmin = Boolean(to.meta.requiresAdmin)
   const isSuperAdmin = auth.state.value.profile?.role === 'super_admin'
   const role = auth.state.value.profile?.role
   const isRoleAllowed = role === 'super_admin' || role === 'admin' || role === 'lawyer'
@@ -91,6 +93,18 @@ router.beforeEach(async (to, from) => {
     }
 
     if (!isSuperAdmin) {
+      return { path: '/dashboard' }
+    }
+
+    return true
+  }
+
+  if (requiresAdmin) {
+    if (!isLoggedIn) {
+      return { path: '/login', query: { redirect: to.fullPath } }
+    }
+
+    if (!isSuperAdmin && role !== 'admin') {
       return { path: '/dashboard' }
     }
 

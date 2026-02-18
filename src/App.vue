@@ -63,6 +63,14 @@ const links = computed(() => [[{
     open.value = false
   }
 },
+...((auth.state.value.profile?.role === 'super_admin' || auth.state.value.profile?.role === 'admin') ? [{
+  label: 'Retainer Settlements',
+  icon: 'i-lucide-landmark',
+  to: '/retainer-settlements',
+  onSelect: () => {
+    open.value = false
+  }
+}] : []),
 ...(auth.state.value.profile?.role === 'super_admin' ? [{
   label: 'Product Guide',
   icon: 'i-lucide-play-circle',
