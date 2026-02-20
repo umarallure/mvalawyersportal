@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { useAuth } from '../composables/useAuth'
 import { listInvoices, markInvoiceAsPaid, requestChargeback, type InvoiceRow, type InvoiceStatus } from '../lib/invoices'
@@ -8,12 +8,18 @@ import { supabase } from '../lib/supabase'
 
 type ViewMode = 'kanban' | 'list'
 
+const route = useRoute()
 const router = useRouter()
 const auth = useAuth()
 
 const isSuperAdmin = computed(() => auth.state.value.profile?.role === 'super_admin')
 const isAdmin = computed(() => auth.state.value.profile?.role === 'admin')
-const isAdminOrSuper = computed(() => isSuperAdmin.value || isAdmin.value)
+const isAccounts = computed(() => auth.state.value.profile?.role === 'accounts')
+const isAdminOrSuper = computed(() => isSuperAdmin.value || isAdmin.value || isAccounts.value)
+
+const isPublisherMode = computed(() => route.path === '/invoicing/publisher')
+const pageTitle = computed(() => isPublisherMode.value ? 'Publisher Invoicing' : 'Lawyer Invoicing')
+const createRoute = computed(() => isPublisherMode.value ? '/invoicing/create?mode=publisher' : '/invoicing/create?mode=lawyer')
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -23,14 +29,14 @@ const PAGE_SIZE = 25
 const viewMode = ref<ViewMode>('kanban')
 const selectedStatus = ref<'all' | InvoiceStatus>('all')
 
-const invoices = ref<(InvoiceRow & { lawyer_name?: string | null })[]>([])
+const invoices = ref<(InvoiceRow & { lawyer_name?: string | null; vendor_name?: string | null })[]>([])
 
 const filteredInvoices = computed(() => {
   const q = query.value.trim().toLowerCase()
   return invoices.value.filter((inv) => {
     if (selectedStatus.value !== 'all' && inv.status !== selectedStatus.value) return false
     if (!q) return true
-    const haystack = [inv.invoice_number, inv.lawyer_name ?? '', inv.notes ?? ''].join(' ').toLowerCase()
+    const haystack = [inv.invoice_number, inv.lawyer_name ?? '', inv.vendor_name ?? '', inv.notes ?? ''].join(' ').toLowerCase()
     return haystack.includes(q)
   })
 })
@@ -97,10 +103,15 @@ const load = async () => {
     const userId = auth.state.value.user?.id ?? null
     const role = auth.state.value.profile?.role ?? null
 
-    const filters: { lawyer_id?: string; status?: InvoiceStatus } = {}
+    const filters: { lawyer_id?: string; status?: InvoiceStatus; invoice_type?: 'lawyer' | 'publisher' } = {}
 
-    if (role === 'lawyer' && userId) {
-      filters.lawyer_id = userId
+    if (isPublisherMode.value) {
+      filters.invoice_type = 'publisher'
+    } else {
+      filters.invoice_type = 'lawyer'
+      if (role === 'lawyer' && userId) {
+        filters.lawyer_id = userId
+      }
     }
 
     if (selectedStatus.value !== 'all') {
@@ -109,9 +120,26 @@ const load = async () => {
 
     const data = await listInvoices(filters)
 
-    // Fetch lawyer names for admin view
-    if (role === 'super_admin' || role === 'admin') {
-      const lawyerIds = [...new Set(data.map(d => d.lawyer_id).filter(Boolean))]
+    if (isPublisherMode.value) {
+      // Resolve vendor (center) names via lead_vendor_id
+      const vendorIds = [...new Set(data.map(d => d.lead_vendor_id).filter(Boolean))] as string[]
+      if (vendorIds.length) {
+        const { data: centers } = await supabase
+          .from('centers')
+          .select('id,center_name,lead_vendor')
+          .in('id', vendorIds)
+
+        const vendorMap = new Map(
+          (centers ?? []).map((c: any) => [String(c.id), String(c.center_name ?? c.lead_vendor ?? '').trim()])
+        )
+
+        data.forEach((inv: any) => {
+          inv.vendor_name = vendorMap.get(inv.lead_vendor_id) ?? null
+        })
+      }
+    } else if (role === 'super_admin' || role === 'admin' || role === 'accounts') {
+      // Fetch lawyer names for admin view
+      const lawyerIds = [...new Set(data.map(d => d.lawyer_id).filter(Boolean))] as string[]
       if (lawyerIds.length) {
         const { data: profiles } = await supabase
           .from('attorney_profiles')
@@ -122,7 +150,6 @@ const load = async () => {
           (profiles ?? []).map((p: any) => [String(p.user_id), String(p.full_name ?? '').trim()])
         )
 
-        // Also fetch from app_users as fallback
         const { data: appUsers } = await supabase
           .from('app_users')
           .select('user_id,display_name,email')
@@ -138,7 +165,7 @@ const load = async () => {
       }
     }
 
-    invoices.value = data as (InvoiceRow & { lawyer_name?: string | null })[]
+    invoices.value = data as (InvoiceRow & { lawyer_name?: string | null; vendor_name?: string | null })[]
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Failed to load invoices'
     error.value = msg
@@ -153,7 +180,8 @@ const openInvoicePdf = (invoice: InvoiceRow) => {
 }
 
 const editInvoice = (invoice: InvoiceRow) => {
-  router.push(`/invoicing/edit/${invoice.id}`)
+  const mode = isPublisherMode.value ? 'publisher' : 'lawyer'
+  router.push(`/invoicing/edit/${invoice.id}?mode=${mode}`)
 }
 
 const handleMarkAsPaid = async (invoice: InvoiceRow & { lawyer_name?: string | null }) => {
@@ -181,7 +209,7 @@ const handleRequestChargeback = async (invoice: InvoiceRow & { lawyer_name?: str
 }
 
 const createInvoice = () => {
-  router.push('/invoicing/create')
+  router.push(createRoute.value)
 }
 
 onMounted(() => {
@@ -189,6 +217,11 @@ onMounted(() => {
 })
 
 watch([selectedStatus], () => {
+  page.value = 1
+  load()
+})
+
+watch(isPublisherMode, () => {
   page.value = 1
   load()
 })
@@ -201,7 +234,7 @@ watch(pageCount, () => {
 <template>
   <UDashboardPanel id="invoicing">
     <template #header>
-      <UDashboardNavbar title="Invoicing">
+      <UDashboardNavbar :title="pageTitle">
         <template #leading>
           <UDashboardSidebarCollapse />
         </template>
@@ -221,7 +254,7 @@ watch(pageCount, () => {
               class="rounded-lg"
               @click="createInvoice"
             >
-              Create Invoice
+              {{ isPublisherMode ? 'Create Publisher Invoice' : 'Create Invoice' }}
             </UButton>
 
             <UButton
@@ -371,7 +404,7 @@ watch(pageCount, () => {
               icon="i-lucide-plus"
               @click="createInvoice"
             >
-              Create Invoice
+              {{ isPublisherMode ? 'Create Publisher Invoice' : 'Create Invoice' }}
             </UButton>
           </div>
         </div>
@@ -410,8 +443,8 @@ watch(pageCount, () => {
                       <div class="truncate text-sm font-semibold text-highlighted group-hover:text-[var(--ap-accent)]">
                         {{ invoice.invoice_number }}
                       </div>
-                      <div v-if="isAdminOrSuper && invoice.lawyer_name" class="mt-0.5 text-xs text-muted">
-                        {{ invoice.lawyer_name }}
+                      <div v-if="isAdminOrSuper" class="mt-0.5 text-xs text-muted">
+                        {{ isPublisherMode ? (invoice as any).vendor_name : invoice.lawyer_name }}
                       </div>
                     </div>
                     <div class="shrink-0 text-sm font-bold text-highlighted">
@@ -486,7 +519,7 @@ watch(pageCount, () => {
               <thead class="sticky top-0 z-10">
                 <tr class="border-b border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] backdrop-blur-xl">
                   <th class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted whitespace-nowrap">Invoice #</th>
-                  <th v-if="isAdminOrSuper" class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted whitespace-nowrap">Lawyer</th>
+                  <th v-if="isAdminOrSuper" class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted whitespace-nowrap">{{ isPublisherMode ? 'Vendor' : 'Lawyer' }}</th>
                   <th class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted whitespace-nowrap">Date Range</th>
                   <th class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted whitespace-nowrap">Amount</th>
                   <th class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted whitespace-nowrap">Due Date</th>
@@ -507,7 +540,7 @@ watch(pageCount, () => {
                     </span>
                   </td>
                   <td v-if="isAdminOrSuper" class="px-5 py-3.5">
-                    <span class="text-sm text-default">{{ invoice.lawyer_name ?? '—' }}</span>
+                    <span class="text-sm text-default">{{ isPublisherMode ? ((invoice as any).vendor_name ?? '—') : (invoice.lawyer_name ?? '—') }}</span>
                   </td>
                   <td class="px-5 py-3.5">
                     <span class="text-sm text-default">{{ formatDate(invoice.date_range_start) }} - {{ formatDate(invoice.date_range_end) }}</span>

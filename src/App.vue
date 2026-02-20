@@ -19,115 +19,111 @@ onMounted(() => {
   })
 })
 
-const links = computed(() => [[{
-  label: 'Dashboard',
-  icon: 'i-lucide-house',
-  to: '/dashboard',
-  onSelect: () => {
-    open.value = false
-  }
-}, /* {
-  label: 'Inbox',
-  icon: 'i-lucide-inbox',
-  to: '/inbox',
-  badge: '4',
-  onSelect: () => {
-    open.value = false
-  }
-}, */ {
-  label: 'Intake Map',
-  icon: 'i-lucide-map',
-  to: '/intake-map',
-  onSelect: () => {
-    open.value = false
-  }
-}, {
-  label: 'Retainers',
-  icon: 'i-lucide-briefcase',
-  to: '/retainers',
-  onSelect: () => {
-    open.value = false
-  }
-}, {
-  label: 'Fulfillment',
-  icon: 'i-lucide-package',
-  to: '/fulfillment',
-  onSelect: () => {
-    open.value = false
-  }
-}, {
-  label: 'Invoicing',
-  icon: 'i-lucide-receipt',
-  to: '/invoicing',
-  onSelect: () => {
-    open.value = false
-  }
-},
-...((auth.state.value.profile?.role === 'super_admin' || auth.state.value.profile?.role === 'admin') ? [{
-  label: 'Retainer Settlements',
-  icon: 'i-lucide-landmark',
-  to: '/retainer-settlements',
-  onSelect: () => {
-    open.value = false
-  }
-}] : []),
-...(auth.state.value.profile?.role === 'super_admin' ? [{
-  label: 'Product Guide',
-  icon: 'i-lucide-play-circle',
-  to: '/product-guide',
-  onSelect: () => {
-    open.value = false
-  }
-}, {
-  label: 'Users',
-  icon: 'i-lucide-users',
-  to: '/users',
-  onSelect: () => {
-    open.value = false
-  }
-}, {
-  label: 'Centers',
-  icon: 'i-lucide-building-2',
-  to: '/centers',
-  onSelect: () => {
-    open.value = false
-  }
-}] : []), {
-  label: 'Settings',
-  to: '/settings',
-  icon: 'i-lucide-settings',
-  defaultOpen: route.path.startsWith('/settings'),
-  type: 'trigger',
-  children: [{
-    label: 'General',
+const role = computed(() => auth.state.value.profile?.role)
+const isAdmin = computed(() => role.value === 'super_admin' || role.value === 'admin')
+const isSuperAdmin = computed(() => role.value === 'super_admin')
+const isAccounts = computed(() => role.value === 'accounts')
+const isAdminOrAccounts = computed(() => isAdmin.value || isAccounts.value)
+
+const links = computed(() => [[
+  // Pages hidden from accounts role
+  ...(!isAccounts.value ? [{
+    label: 'Dashboard',
+    icon: 'i-lucide-house',
+    to: '/dashboard',
+    onSelect: () => { open.value = false }
+  }, {
+    label: 'Intake Map',
+    icon: 'i-lucide-map',
+    to: '/intake-map',
+    onSelect: () => { open.value = false }
+  }, {
+    label: 'Retainers',
+    icon: 'i-lucide-briefcase',
+    to: '/retainers',
+    onSelect: () => { open.value = false }
+  }, {
+    label: 'Fulfillment',
+    icon: 'i-lucide-package',
+    to: '/fulfillment',
+    onSelect: () => { open.value = false }
+  }] : []),
+
+  // Invoicing — visible to all roles that can log in (lawyer sees lawyer only via route guard)
+  {
+    label: 'Lawyer Invoicing',
+    icon: 'i-lucide-receipt',
+    to: '/invoicing/lawyer',
+    onSelect: () => { open.value = false }
+  },
+
+  // Publisher Invoicing — admin, super_admin, accounts
+  ...(isAdminOrAccounts.value ? [{
+    label: 'Publisher Invoicing',
+    icon: 'i-lucide-store',
+    to: '/invoicing/publisher',
+    onSelect: () => { open.value = false }
+  }] : []),
+
+  // Retainer Settlements — admin, super_admin, accounts
+  ...(isAdminOrAccounts.value ? [{
+    label: 'Retainer Settlements',
+    icon: 'i-lucide-landmark',
+    to: '/retainer-settlements',
+    onSelect: () => { open.value = false }
+  }] : []),
+
+  // Super admin only
+  ...(isSuperAdmin.value ? [{
+    label: 'Product Guide',
+    icon: 'i-lucide-play-circle',
+    to: '/product-guide',
+    onSelect: () => { open.value = false }
+  }, {
+    label: 'Users',
+    icon: 'i-lucide-users',
+    to: '/users',
+    onSelect: () => { open.value = false }
+  }, {
+    label: 'Centers',
+    icon: 'i-lucide-building-2',
+    to: '/centers',
+    onSelect: () => { open.value = false }
+  }] : []),
+
+  // Settings — accounts sees General only; others see all sub-pages
+  {
+    label: 'Settings',
     to: '/settings',
-    exact: true,
-    onSelect: () => {
-      open.value = false
-    }
-  }, {
-    label: 'Attorney Profile',
-    to: '/settings/attorney-profile',
-    exact: true,
-    onSelect: () => {
-      open.value = false
-    }
-  }, {
-    label: 'Expertise & Jurisdiction',
-    to: '/settings/expertise',
-    exact: true,
-    onSelect: () => {
-      open.value = false
-    }
-  }, {
-    label: 'Capacity & Performance',
-    to: '/settings/capacity',
-    exact: true,
-    onSelect: () => {
-      open.value = false
-    }
-  }]
-}]] satisfies NavigationMenuItem[][])
+    icon: 'i-lucide-settings',
+    defaultOpen: route.path.startsWith('/settings'),
+    type: 'trigger',
+    children: [
+      {
+        label: 'General',
+        to: '/settings',
+        exact: true,
+        onSelect: () => { open.value = false }
+      },
+      ...(!isAccounts.value ? [{
+        label: 'Attorney Profile',
+        to: '/settings/attorney-profile',
+        exact: true,
+        onSelect: () => { open.value = false }
+      }, {
+        label: 'Expertise & Jurisdiction',
+        to: '/settings/expertise',
+        exact: true,
+        onSelect: () => { open.value = false }
+      }, {
+        label: 'Capacity & Performance',
+        to: '/settings/capacity',
+        exact: true,
+        onSelect: () => { open.value = false }
+      }] : [])
+    ]
+  }
+]] satisfies NavigationMenuItem[][])
 
 const isPublicPage = computed(() =>
   ['/login', '/', '/get-started'].includes(route.path)

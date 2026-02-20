@@ -30,6 +30,29 @@ const lawyerFallback = ref<{
   email: string | null
 } | null>(null)
 
+const vendorInfo = ref<{
+  center_name: string | null
+  lead_vendor: string | null
+  contact_email: string | null
+} | null>(null)
+
+const isPublisherInvoice = computed(() => invoice.value?.invoice_type === 'publisher')
+
+const billToName = computed(() => {
+  if (isPublisherInvoice.value) return vendorInfo.value?.center_name ?? vendorInfo.value?.lead_vendor ?? '—'
+  return lawyerName.value
+})
+
+const billToSubName = computed(() => {
+  if (isPublisherInvoice.value) return vendorInfo.value?.lead_vendor ?? null
+  return lawyerInfo.value?.firm_name ?? null
+})
+
+const billToEmail = computed(() => {
+  if (isPublisherInvoice.value) return vendorInfo.value?.contact_email ?? '—'
+  return lawyerEmail.value
+})
+
 const formatMoney = (n: number) => {
   try {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(n)
@@ -133,22 +156,36 @@ onMounted(async () => {
 
     invoice.value = inv
 
-    try {
-      lawyerInfo.value = await getLawyerProfile(inv.lawyer_id)
-    } catch {
-      lawyerInfo.value = null
+    if (inv.invoice_type === 'publisher' && inv.lead_vendor_id) {
+      // Fetch vendor info from centers table
+      const { data: center } = await supabase
+        .from('centers')
+        .select('center_name,lead_vendor,contact_email')
+        .eq('id', inv.lead_vendor_id)
+        .maybeSingle()
+      vendorInfo.value = center ? {
+        center_name: center.center_name ?? null,
+        lead_vendor: center.lead_vendor ?? null,
+        contact_email: center.contact_email ?? null
+      } : null
+    } else if (inv.lawyer_id) {
+      try {
+        lawyerInfo.value = await getLawyerProfile(inv.lawyer_id)
+      } catch {
+        lawyerInfo.value = null
+      }
+
+      const { data: appUser } = await supabase
+        .from('app_users')
+        .select('display_name,email')
+        .eq('user_id', inv.lawyer_id)
+        .maybeSingle()
+
+      lawyerFallback.value = appUser ? {
+        display_name: appUser.display_name ?? null,
+        email: appUser.email ?? null
+      } : null
     }
-
-    const { data: appUser } = await supabase
-      .from('app_users')
-      .select('display_name,email')
-      .eq('user_id', inv.lawyer_id)
-      .maybeSingle()
-
-    lawyerFallback.value = appUser ? {
-      display_name: appUser.display_name ?? null,
-      email: appUser.email ?? null
-    } : null
 
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load invoice'
@@ -234,8 +271,9 @@ onMounted(async () => {
 
           <div class="billing-to">
             <div class="billing-label">BILL TO</div>
-            <div class="billing-name">{{ lawyerName }}</div>
-            <div class="billing-detail">{{ lawyerEmail }}</div>
+            <div class="billing-name">{{ billToName }}</div>
+            <div v-if="billToSubName" class="billing-detail">{{ billToSubName }}</div>
+            <div class="billing-detail">{{ billToEmail }}</div>
           </div>
 
           <div class="billing-dates">

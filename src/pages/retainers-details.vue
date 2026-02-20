@@ -10,6 +10,10 @@ type DailyDealFlow = Record<string, unknown> & {
   submission_id: string
   insured_name?: string | null
   client_phone_number?: string | null
+  assigned_attorney_id?: string | null
+  lead_vendor?: string | null
+  invoice_id?: string | null
+  publisher_invoice_id?: string | null
   created_at?: string | null
   updated_at?: string | null
 }
@@ -22,9 +26,16 @@ const auth = useAuth()
 
 const id = computed(() => route.params.id as string)
 
+const isAdminOrSuper = computed(() => {
+  const role = auth.state.value.profile?.role
+  return role === 'admin' || role === 'super_admin' || role === 'accounts'
+})
+
 const loading = ref(false)
 const error = ref<string | null>(null)
 const row = ref<DailyDealFlow | null>(null)
+const centerLookupId = ref<string | null>(null)
+const actionLoading = ref(false)
 
 const activeTab = ref('basic')
 
@@ -39,6 +50,38 @@ const headerTitle = computed(() => {
   const phone = row.value.client_phone_number || 'N/A'
   return `${name} - ${phone}`
 })
+
+const payToPublisher = async () => {
+  if (!row.value) return
+  actionLoading.value = true
+  try {
+    // Look up the center by lead_vendor text to get its UUID
+    let centerId = centerLookupId.value
+    if (!centerId && row.value.lead_vendor) {
+      const { data } = await supabase
+        .from('centers')
+        .select('id')
+        .eq('lead_vendor', row.value.lead_vendor)
+        .maybeSingle()
+      centerId = data?.id ?? null
+      centerLookupId.value = centerId
+    }
+    const params = new URLSearchParams({ mode: 'publisher' })
+    if (centerId) params.set('center_id', centerId)
+    params.set('deal_id', row.value.id)
+    router.push(`/invoicing/create?${params.toString()}`)
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+const getPaidByLawyer = () => {
+  if (!row.value) return
+  const params = new URLSearchParams({ mode: 'lawyer' })
+  if (row.value.assigned_attorney_id) params.set('lawyer_id', row.value.assigned_attorney_id)
+  params.set('deal_id', row.value.id)
+  router.push(`/invoicing/create?${params.toString()}`)
+}
 
 const goBack = () => {
   const from = String(route.query.from ?? '').trim()
@@ -246,15 +289,41 @@ const accidentDetailsFields = computed(() => {
         </template>
 
         <template #right>
-          <UButton
-            color="neutral"
-            variant="outline"
-            icon="i-lucide-refresh-cw"
-            :loading="loading"
-            @click="load"
-          >
-            Refresh
-          </UButton>
+          <div class="flex items-center gap-2">
+            <template v-if="isAdminOrSuper && row">
+              <UButton
+                color="info"
+                variant="soft"
+                icon="i-lucide-send"
+                size="sm"
+                :disabled="!!row.publisher_invoice_id"
+                :title="row.publisher_invoice_id ? 'Already paid to publisher' : 'Pay to Publisher'"
+                @click="payToPublisher"
+              >
+                {{ row.publisher_invoice_id ? 'Paid to Publisher' : 'Pay to Publisher' }}
+              </UButton>
+              <UButton
+                color="primary"
+                variant="soft"
+                icon="i-lucide-wallet"
+                size="sm"
+                :disabled="!!row.invoice_id"
+                :title="row.invoice_id ? 'Already paid by lawyer' : 'Get Paid by Lawyer'"
+                @click="getPaidByLawyer"
+              >
+                {{ row.invoice_id ? 'Paid by Lawyer' : 'Get Paid by Lawyer' }}
+              </UButton>
+            </template>
+            <UButton
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-refresh-cw"
+              :loading="loading"
+              @click="load"
+            >
+              Refresh
+            </UButton>
+          </div>
         </template>
       </UDashboardNavbar>
     </template>

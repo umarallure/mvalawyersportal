@@ -32,7 +32,8 @@ const roleOptions = [
   { value: NO_ROLE, label: 'No role' },
   { value: 'admin', label: 'Admin' },
   { value: 'lawyer', label: 'Lawyer' },
-  { value: 'agent', label: 'Agent' }
+  { value: 'agent', label: 'Agent' },
+  { value: 'accounts', label: 'Accounts' }
 ]
 
 const centerOptions = computed(() => {

@@ -22,7 +22,9 @@ const router = createRouter({
     { path: '/retainers/:id', component: () => import('./pages/retainers-details.vue') },
     { path: '/fulfillment', component: () => import('./pages/fulfillment.vue') },
     { path: '/retainer-settlements', component: () => import('./pages/retainer-settlements.vue'), meta: { requiresAdmin: true } },
-    { path: '/invoicing', component: () => import('./pages/invoicing.vue') },
+    { path: '/invoicing', redirect: '/invoicing/lawyer' },
+    { path: '/invoicing/lawyer', component: () => import('./pages/invoicing.vue') },
+    { path: '/invoicing/publisher', component: () => import('./pages/invoicing.vue'), meta: { requiresAdmin: true } },
     { path: '/invoicing/create', component: () => import('./pages/invoicing-create.vue') },
     { path: '/invoicing/edit/:id', component: () => import('./pages/invoicing-create.vue') },
     { path: '/invoicing/:id/pdf', component: () => import('./pages/invoice-pdf.vue'), meta: { public: true } },
@@ -56,7 +58,8 @@ router.beforeEach(async (to, from) => {
   const requiresAdmin = Boolean(to.meta.requiresAdmin)
   const isSuperAdmin = auth.state.value.profile?.role === 'super_admin'
   const role = auth.state.value.profile?.role
-  const isRoleAllowed = role === 'super_admin' || role === 'admin' || role === 'lawyer'
+  const isRoleAllowed = role === 'super_admin' || role === 'admin' || role === 'lawyer' || role === 'accounts'
+  const isAccounts = role === 'accounts'
 
   const userId = auth.state.value.user?.id ?? null
   const lawyerCompletion = async () => {
@@ -104,11 +107,24 @@ router.beforeEach(async (to, from) => {
       return { path: '/login', query: { redirect: to.fullPath } }
     }
 
-    if (!isSuperAdmin && role !== 'admin') {
+    if (!isSuperAdmin && role !== 'admin' && role !== 'accounts') {
       return { path: '/dashboard' }
     }
 
     return true
+  }
+
+  // Accounts role: can only access invoicing + settlements + settings
+  if (isLoggedIn && isAccounts) {
+    const allowed = [
+      '/invoicing',
+      '/retainer-settlements',
+      '/settings',
+      '/retainers/'
+    ]
+    const isAllowed = allowed.some(p => to.path.startsWith(p))
+      || to.path.startsWith('/invoicing')
+    if (!isAllowed) return { path: '/invoicing/lawyer' }
   }
 
   if (isLoggedIn) return true

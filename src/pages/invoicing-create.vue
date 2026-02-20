@@ -9,14 +9,18 @@ import {
   getInvoice,
   getLawyerProfile,
   linkDealsToInvoice,
+  linkDealsToPublisherInvoice,
   listLawyers,
   listDealsForInvoice,
+  listDealsForPublisherInvoice,
   unlinkDealsFromInvoice,
+  unlinkDealsFromPublisherInvoice,
   updateInvoice,
   type InvoiceItem,
   type InvoiceStatus,
   type DealFlowRow
 } from '../lib/invoices'
+import { listCenters, type CenterRow } from '../lib/centers'
 
 const route = useRoute()
 const router = useRouter()
@@ -24,6 +28,11 @@ const auth = useAuth()
 
 const isEdit = computed(() => route.path.includes('/edit/'))
 const invoiceId = computed(() => (route.params as Record<string, string>).id ?? null)
+const isPublisherMode = computed(() => route.query.mode === 'publisher')
+const pageTitle = computed(() => {
+  if (isEdit.value) return isPublisherMode.value ? 'Edit Publisher Invoice' : 'Edit Invoice'
+  return isPublisherMode.value ? 'Create Publisher Invoice' : 'Create Invoice'
+})
 
 const loading = ref(false)
 const saving = ref(false)
@@ -31,6 +40,8 @@ const error = ref<string | null>(null)
 const success = ref<string | null>(null)
 
 const lawyers = ref<Array<{ user_id: string; email: string; display_name: string | null }>>([])
+const vendors = ref<CenterRow[]>([])
+const selectedVendor = ref<CenterRow | null>(null)
 const deals = ref<Array<DealFlowRow & { selected: boolean }>>([])
 const loadingDeals = ref(false)
 
@@ -38,6 +49,7 @@ const invoiceNumber = ref('')
 
 const form = ref({
   lawyer_id: '',
+  lead_vendor_id: '',
   date_range_start: '',
   date_range_end: '',
   deal_ids: [] as string[],
@@ -70,6 +82,27 @@ const lawyerOptions = computed(() =>
     value: l.user_id
   }))
 )
+
+const vendorOptions = computed(() =>
+  vendors.value.map(v => ({
+    label: v.center_name + (v.lead_vendor ? ` (${v.lead_vendor})` : ''),
+    value: v.id
+  }))
+)
+
+const selectedVendorLabel = computed(() =>
+  selectedVendor.value?.center_name ?? ''
+)
+
+const recipientLabel = computed(() => isPublisherMode.value ? 'Lead Vendor' : 'Lawyer')
+const recipientOptions = computed(() => isPublisherMode.value ? vendorOptions.value : lawyerOptions.value)
+const recipientValue = computed({
+  get: () => isPublisherMode.value ? form.value.lead_vendor_id : form.value.lawyer_id,
+  set: (v: string) => {
+    if (isPublisherMode.value) form.value.lead_vendor_id = v
+    else form.value.lawyer_id = v
+  }
+})
 
 const statusOptions = [
   { label: 'Pending', value: 'pending' },
@@ -190,14 +223,44 @@ const syncItemsWithSelectedDeals = () => {
 }
 
 const canSubmit = computed(() => {
-  if (!form.value.lawyer_id) return false
-  if (!form.value.date_range_start || !form.value.date_range_end) return false
+  if (isPublisherMode.value) {
+    if (!form.value.lead_vendor_id) return false
+  } else {
+    if (!form.value.lawyer_id) return false
+    if (!form.value.date_range_start || !form.value.date_range_end) return false
+  }
   if (!form.value.due_date) return false
   if (validItems.value.length === 0) return false
   return true
 })
 
 const fetchDeals = async () => {
+  if (isPublisherMode.value) {
+    if (!form.value.lead_vendor_id || !selectedVendor.value?.lead_vendor) {
+      deals.value = []
+      return
+    }
+    loadingDeals.value = true
+    try {
+      const data = await listDealsForPublisherInvoice({
+        vendorLeadName: selectedVendor.value.lead_vendor,
+        dateStart: form.value.date_range_start || null,
+        dateEnd: form.value.date_range_end || null,
+        editingInvoiceId: isEdit.value ? invoiceId.value : null
+      })
+      deals.value = data.map((d: DealFlowRow) => ({
+        ...d,
+        selected: form.value.deal_ids.includes(d.id)
+      }))
+      syncItemsWithSelectedDeals()
+    } catch (e) {
+      console.error('Failed to fetch publisher deals:', e)
+    } finally {
+      loadingDeals.value = false
+    }
+    return
+  }
+
   if (!form.value.lawyer_id || !form.value.date_range_start || !form.value.date_range_end) {
     deals.value = []
     return
@@ -279,6 +342,14 @@ const fetchLawyerProfile = async () => {
   }
 }
 
+const fetchVendorInfo = () => {
+  if (!form.value.lead_vendor_id) {
+    selectedVendor.value = null
+    return
+  }
+  selectedVendor.value = vendors.value.find(v => v.id === form.value.lead_vendor_id) ?? null
+}
+
 const loadExisting = async () => {
   if (!invoiceId.value) return
 
@@ -293,7 +364,8 @@ const loadExisting = async () => {
     invoiceNumber.value = inv.invoice_number
 
     form.value = {
-      lawyer_id: inv.lawyer_id,
+      lawyer_id: inv.lawyer_id ?? '',
+      lead_vendor_id: inv.lead_vendor_id ?? '',
       date_range_start: inv.date_range_start,
       date_range_end: inv.date_range_end,
       deal_ids: inv.deal_ids ?? [],
@@ -304,9 +376,12 @@ const loadExisting = async () => {
       due_date: inv.due_date ?? ''
     }
 
-    await fetchLawyerProfile()
+    if (isPublisherMode.value) {
+      fetchVendorInfo()
+    } else {
+      await fetchLawyerProfile()
+    }
     await fetchDeals()
-    // Make sure deal selections are reflected in line items
     syncItemsWithSelectedDeals()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load invoice'
@@ -319,13 +394,20 @@ const handleSave = async () => {
   error.value = null
   success.value = null
 
-  if (!form.value.lawyer_id) {
-    error.value = 'Please select a lawyer'
-    return
-  }
-  if (!form.value.date_range_start || !form.value.date_range_end) {
-    error.value = 'Please select a date range'
-    return
+  if (isPublisherMode.value) {
+    if (!form.value.lead_vendor_id) {
+      error.value = 'Please select a lead vendor'
+      return
+    }
+  } else {
+    if (!form.value.lawyer_id) {
+      error.value = 'Please select a lawyer'
+      return
+    }
+    if (!form.value.date_range_start || !form.value.date_range_end) {
+      error.value = 'Please select a date range'
+      return
+    }
   }
   if (!form.value.due_date) {
     error.value = 'Please select a due date'
@@ -341,10 +423,10 @@ const handleSave = async () => {
     const userId = auth.state.value.user?.id
     if (!userId) throw new Error('Not authenticated')
 
-    const payload = {
-      lawyer_id: form.value.lawyer_id,
-      date_range_start: form.value.date_range_start,
-      date_range_end: form.value.date_range_end,
+    const today = new Date().toISOString().slice(0, 10)
+    const basePayload = {
+      date_range_start: form.value.date_range_start || today,
+      date_range_end: form.value.date_range_end || today,
       deal_ids: form.value.deal_ids,
       items: validItems.value.map(({ description, quantity, unit_price, amount }) => ({
         description,
@@ -361,11 +443,22 @@ const handleSave = async () => {
       due_date: form.value.due_date || null
     }
 
+    const payload = isPublisherMode.value
+      ? { ...basePayload, invoice_type: 'publisher' as const, lead_vendor_id: form.value.lead_vendor_id, lawyer_id: null }
+      : { ...basePayload, invoice_type: 'lawyer' as const, lawyer_id: form.value.lawyer_id, lead_vendor_id: null }
+
+    const backRoute = isPublisherMode.value ? '/invoicing/publisher' : '/invoicing/lawyer'
+
     if (isEdit.value && invoiceId.value) {
-      // Unlink old deals, update invoice, then re-link new deals
-      await unlinkDealsFromInvoice(invoiceId.value)
-      await updateInvoice(invoiceId.value, payload)
-      await linkDealsToInvoice(form.value.deal_ids, invoiceId.value)
+      if (isPublisherMode.value) {
+        await unlinkDealsFromPublisherInvoice(invoiceId.value)
+        await updateInvoice(invoiceId.value, payload)
+        await linkDealsToPublisherInvoice(form.value.deal_ids, invoiceId.value)
+      } else {
+        await unlinkDealsFromInvoice(invoiceId.value)
+        await updateInvoice(invoiceId.value, payload)
+        await linkDealsToInvoice(form.value.deal_ids, invoiceId.value)
+      }
       success.value = 'Invoice updated successfully'
     } else {
       const invNumber = invoiceNumber.value || await generateInvoiceNumber()
@@ -374,13 +467,16 @@ const handleSave = async () => {
         invoice_number: invNumber,
         created_by: userId
       })
-      // Link selected deals to the newly created invoice
-      await linkDealsToInvoice(form.value.deal_ids, created.id)
+      if (isPublisherMode.value) {
+        await linkDealsToPublisherInvoice(form.value.deal_ids, created.id)
+      } else {
+        await linkDealsToInvoice(form.value.deal_ids, created.id)
+      }
       success.value = 'Invoice created successfully'
     }
 
     setTimeout(() => {
-      router.push('/invoicing')
+      router.push(backRoute)
     }, 1200)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to save invoice'
@@ -390,12 +486,21 @@ const handleSave = async () => {
 }
 
 const goBack = () => {
-  router.push('/invoicing')
+  router.push(isPublisherMode.value ? '/invoicing/publisher' : '/invoicing/lawyer')
 }
 
 watch(() => form.value.lawyer_id, () => {
-  fetchLawyerProfile()
-  fetchDeals()
+  if (!isPublisherMode.value) {
+    fetchLawyerProfile()
+    fetchDeals()
+  }
+})
+
+watch(() => form.value.lead_vendor_id, () => {
+  if (isPublisherMode.value) {
+    fetchVendorInfo()
+    fetchDeals()
+  }
 })
 
 watch([() => form.value.date_range_start, () => form.value.date_range_end], () => {
@@ -409,17 +514,49 @@ onMounted(async () => {
 
     const role = auth.state.value.profile?.role
     if (role !== 'super_admin' && role !== 'admin') {
-      router.push('/invoicing')
+      router.push('/invoicing/lawyer')
       return
     }
 
-    const lawyerData = await listLawyers()
+    // Load both lawyers and vendors in parallel
+    const [lawyerData, vendorData] = await Promise.all([
+      listLawyers(),
+      listCenters()
+    ])
     lawyers.value = lawyerData
+    vendors.value = vendorData
 
     if (isEdit.value) {
       await loadExisting()
     } else {
       invoiceNumber.value = await generateInvoiceNumber()
+
+      // Pre-select from query params (e.g. navigating from retainers-details)
+      const qLawyerId = route.query.lawyer_id as string | undefined
+      const qCenterId = route.query.center_id as string | undefined
+      const qDealId = route.query.deal_id as string | undefined
+
+      if (isPublisherMode.value && qCenterId) {
+        form.value.lead_vendor_id = qCenterId
+        fetchVendorInfo()
+        await fetchDeals()
+        if (qDealId) {
+          const deal = deals.value.find(d => d.id === qDealId)
+          if (deal) {
+            deal.selected = true
+            form.value.deal_ids = [qDealId]
+            syncItemsWithSelectedDeals()
+          }
+        }
+      } else if (!isPublisherMode.value && qLawyerId) {
+        form.value.lawyer_id = qLawyerId
+        await fetchLawyerProfile()
+        // Deals need a date range — we can't auto-load without one
+        // but we store the deal_id so it auto-selects once dates are picked
+        if (qDealId) {
+          form.value.deal_ids = [qDealId]
+        }
+      }
     }
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to initialize'
@@ -432,7 +569,7 @@ onMounted(async () => {
 <template>
   <UDashboardPanel id="create-invoice">
     <template #header>
-      <UDashboardNavbar :title="isEdit ? 'Edit Invoice' : 'Create Invoice'">
+      <UDashboardNavbar :title="pageTitle">
         <template #leading>
           <UDashboardSidebarCollapse />
         </template>
@@ -459,7 +596,7 @@ onMounted(async () => {
               :disabled="saving || !canSubmit"
               @click="handleSave"
             >
-              {{ isEdit ? 'Update Invoice' : 'Create Invoice' }}
+              {{ isEdit ? 'Update Invoice' : (isPublisherMode ? 'Create Publisher Invoice' : 'Create Invoice') }}
             </UButton>
           </div>
         </template>
@@ -516,14 +653,16 @@ onMounted(async () => {
                   </div>
 
                   <div>
-                    <label class="mb-1.5 block text-xs font-medium text-muted">Select Lawyer <span class="text-red-400">*</span></label>
+                    <label class="mb-1.5 block text-xs font-medium text-muted">
+                      {{ recipientLabel }} <span class="text-red-400">*</span>
+                    </label>
                     <USelect
-                      v-model="form.lawyer_id"
-                      :items="lawyerOptions"
+                      v-model="recipientValue"
+                      :items="recipientOptions"
                       class="w-full [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
                       value-key="value"
                       label-key="label"
-                      placeholder="Choose a lawyer..."
+                      :placeholder="isPublisherMode ? 'Choose a vendor...' : 'Choose a lawyer...'"
                     />
                   </div>
 
@@ -537,7 +676,9 @@ onMounted(async () => {
                   </div>
 
                   <div>
-                    <label class="mb-1.5 block text-xs font-medium text-muted">Date Range Start <span class="text-red-400">*</span></label>
+                    <label class="mb-1.5 block text-xs font-medium text-muted">
+                      Date Range Start <span v-if="!isPublisherMode" class="text-red-400">*</span>
+                    </label>
                     <UInput
                       v-model="form.date_range_start"
                       type="date"
@@ -546,7 +687,9 @@ onMounted(async () => {
                   </div>
 
                   <div>
-                    <label class="mb-1.5 block text-xs font-medium text-muted">Date Range End <span class="text-red-400">*</span></label>
+                    <label class="mb-1.5 block text-xs font-medium text-muted">
+                      Date Range End <span v-if="!isPublisherMode" class="text-red-400">*</span>
+                    </label>
                     <UInput
                       v-model="form.date_range_end"
                       type="date"
@@ -597,8 +740,11 @@ onMounted(async () => {
                   </div>
                 </div>
 
-                <div v-if="!form.lawyer_id || !form.date_range_start || !form.date_range_end" class="rounded-xl border border-dashed border-[var(--ap-card-border)] px-4 py-8 text-center text-xs text-muted">
-                  Select a lawyer and date range to load deals
+                <div
+                  v-if="isPublisherMode ? !form.lead_vendor_id : (!form.lawyer_id || !form.date_range_start || !form.date_range_end)"
+                  class="rounded-xl border border-dashed border-[var(--ap-card-border)] px-4 py-8 text-center text-xs text-muted"
+                >
+                  {{ isPublisherMode ? 'Select a lead vendor to load their approved deals' : 'Select a lawyer and date range to load deals' }}
                 </div>
 
                 <div v-else-if="loadingDeals" class="flex items-center justify-center py-8">
@@ -606,7 +752,7 @@ onMounted(async () => {
                 </div>
 
                 <div v-else-if="!deals.length" class="rounded-xl border border-dashed border-[var(--ap-card-border)] px-4 py-8 text-center text-xs text-muted">
-                  No deals found for this lawyer in the selected date range
+                  {{ isPublisherMode ? 'No approved payable deals found for this vendor' : 'No deals found for this lawyer in the selected date range' }}
                 </div>
 
                 <div v-else class="space-y-2 max-h-64 overflow-y-auto create-invoice-scroll">
@@ -754,46 +900,71 @@ onMounted(async () => {
 
             <!-- Right Column: Preview & Info -->
             <div class="space-y-6">
-              <!-- Lawyer Info Card -->
+              <!-- Recipient Info Card -->
               <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-6">
                 <h3 class="mb-4 text-sm font-semibold uppercase tracking-wider text-highlighted">
-                  Lawyer Info
+                  {{ isPublisherMode ? 'Vendor Info' : 'Lawyer Info' }}
                 </h3>
 
-                <div v-if="!form.lawyer_id" class="text-xs text-muted">
-                  Select a lawyer to see their details
-                </div>
+                <!-- Publisher mode: Vendor Info -->
+                <template v-if="isPublisherMode">
+                  <div v-if="!form.lead_vendor_id" class="text-xs text-muted">
+                    Select a lead vendor to see their details
+                  </div>
+                  <div v-else-if="selectedVendor" class="space-y-3">
+                    <div>
+                      <div class="text-xs text-muted">Center Name</div>
+                      <div class="text-sm font-medium text-highlighted">{{ selectedVendor.center_name }}</div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-muted">Lead Vendor</div>
+                      <div class="text-sm text-default">{{ selectedVendor.lead_vendor ?? '—' }}</div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-muted">Contact Email</div>
+                      <div class="text-sm text-default">{{ selectedVendor.contact_email ?? '—' }}</div>
+                    </div>
+                  </div>
+                  <div v-else class="text-xs text-muted">
+                    No details found for this vendor
+                  </div>
+                </template>
 
-                <div v-else-if="lawyerProfile" class="space-y-3">
-                  <div>
-                    <div class="text-xs text-muted">Name</div>
-                    <div class="text-sm font-medium text-highlighted">{{ lawyerProfile.full_name ?? '—' }}</div>
+                <!-- Lawyer mode: Lawyer Profile -->
+                <template v-else>
+                  <div v-if="!form.lawyer_id" class="text-xs text-muted">
+                    Select a lawyer to see their details
                   </div>
-                  <div>
-                    <div class="text-xs text-muted">Firm</div>
-                    <div class="text-sm text-default">{{ lawyerProfile.firm_name ?? '—' }}</div>
+                  <div v-else-if="lawyerProfile" class="space-y-3">
+                    <div>
+                      <div class="text-xs text-muted">Name</div>
+                      <div class="text-sm font-medium text-highlighted">{{ lawyerProfile.full_name ?? '—' }}</div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-muted">Firm</div>
+                      <div class="text-sm text-default">{{ lawyerProfile.firm_name ?? '—' }}</div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-muted">Email</div>
+                      <div class="text-sm text-default">{{ lawyerProfile.primary_email ?? '—' }}</div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-muted">Phone</div>
+                      <div class="text-sm text-default">{{ lawyerProfile.direct_phone ?? '—' }}</div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-muted">Address</div>
+                      <div class="text-sm text-default">{{ lawyerProfile.office_address ?? '—' }}</div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-muted">Bar #</div>
+                      <div class="text-sm text-default">{{ lawyerProfile.bar_association_number ?? '—' }}</div>
+                    </div>
                   </div>
-                  <div>
-                    <div class="text-xs text-muted">Email</div>
-                    <div class="text-sm text-default">{{ lawyerProfile.primary_email ?? '—' }}</div>
+                  <div v-else class="text-xs text-muted">
+                    No profile found for this lawyer
                   </div>
-                  <div>
-                    <div class="text-xs text-muted">Phone</div>
-                    <div class="text-sm text-default">{{ lawyerProfile.direct_phone ?? '—' }}</div>
-                  </div>
-                  <div>
-                    <div class="text-xs text-muted">Address</div>
-                    <div class="text-sm text-default">{{ lawyerProfile.office_address ?? '—' }}</div>
-                  </div>
-                  <div>
-                    <div class="text-xs text-muted">Bar #</div>
-                    <div class="text-sm text-default">{{ lawyerProfile.bar_association_number ?? '—' }}</div>
-                  </div>
-                </div>
-
-                <div v-else class="text-xs text-muted">
-                  No profile found for this lawyer
-                </div>
+                </template>
               </div>
 
               <!-- Invoice Summary -->
@@ -808,8 +979,8 @@ onMounted(async () => {
                     <span class="text-sm font-medium text-highlighted">{{ invoiceNumber || '—' }}</span>
                   </div>
                   <div class="flex items-center justify-between">
-                    <span class="text-xs text-muted">Lawyer</span>
-                    <span class="text-sm text-default">{{ selectedLawyerLabel || '—' }}</span>
+                    <span class="text-xs text-muted">{{ recipientLabel }}</span>
+                    <span class="text-sm text-default">{{ isPublisherMode ? (selectedVendor?.center_name || '—') : (selectedLawyerLabel || '—') }}</span>
                   </div>
                   <div class="flex items-center justify-between">
                     <span class="text-xs text-muted">Date Range</span>
@@ -862,7 +1033,7 @@ onMounted(async () => {
                   :disabled="saving || !canSubmit"
                   @click="handleSave"
                 >
-                  {{ isEdit ? 'Update Invoice' : 'Create Invoice' }}
+                  {{ isEdit ? 'Update Invoice' : (isPublisherMode ? 'Create Publisher Invoice' : 'Create Invoice') }}
                 </UButton>
                 <UButton
                   color="neutral"
