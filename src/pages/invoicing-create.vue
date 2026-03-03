@@ -85,14 +85,11 @@ const lawyerOptions = computed(() =>
 
 const vendorOptions = computed(() =>
   vendors.value.map(v => ({
-    label: v.center_name + (v.lead_vendor ? ` (${v.lead_vendor})` : ''),
+    label: v.center_name,
     value: v.id
   }))
 )
 
-const selectedVendorLabel = computed(() =>
-  selectedVendor.value?.center_name ?? ''
-)
 
 const recipientLabel = computed(() => isPublisherMode.value ? 'Lead Vendor' : 'Lawyer')
 const recipientOptions = computed(() => isPublisherMode.value ? vendorOptions.value : lawyerOptions.value)
@@ -104,11 +101,29 @@ const recipientValue = computed({
   }
 })
 
-const statusOptions = [
-  { label: 'Pending', value: 'pending' },
-  { label: 'Paid', value: 'paid' },
-  { label: 'Chargeback', value: 'chargeback' }
-]
+const statusOptions = computed(() =>
+  isPublisherMode.value
+    ? [
+        { label: 'Billable – Awaiting to be Paid', value: 'pending' },
+        { label: 'In Review', value: 'in_review' },
+        { label: 'Paid', value: 'paid' },
+        { label: 'Chargeback', value: 'chargeback' }
+      ]
+    : [
+        { label: 'Billable', value: 'pending' },
+        { label: 'Signed – Awaiting to be Paid', value: 'signed_awaiting' },
+        { label: 'In Preview', value: 'in_preview' },
+        { label: 'Paid', value: 'paid' },
+        { label: 'Chargeback', value: 'chargeback' }
+      ]
+)
+
+watch(isPublisherMode, (isPub) => {
+  // Default newly-created lawyer invoices to the second stage
+  if (!isEdit.value) {
+    form.value.status = (isPub ? 'pending' : 'signed_awaiting') as InvoiceStatus
+  }
+})
 
 const validItems = computed(() => {
   return form.value.items
@@ -1004,12 +1019,14 @@ onMounted(async () => {
                     <span
                       class="inline-flex items-center rounded-lg px-2 py-0.5 text-xs font-medium"
                       :class="{
+                        'bg-blue-500/10 text-blue-400': form.status === 'billable',
                         'bg-amber-500/10 text-amber-400': form.status === 'pending',
+                        'bg-violet-500/10 text-violet-400': form.status === 'in_review',
                         'bg-green-500/10 text-green-400': form.status === 'paid',
                         'bg-red-500/10 text-red-400': form.status === 'chargeback'
                       }"
                     >
-                      {{ form.status.charAt(0).toUpperCase() + form.status.slice(1) }}
+                      {{ statusOptions.find(o => o.value === form.status)?.label ?? form.status }}
                     </span>
                   </div>
 

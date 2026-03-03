@@ -3,10 +3,16 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useAuth } from '../composables/useAuth'
-import { listInvoices, markInvoiceAsPaid, requestChargeback, type InvoiceRow, type InvoiceStatus } from '../lib/invoices'
+import { listInvoices, markInvoiceAsPaid, requestChargeback, updateInvoice, type InvoiceRow, type InvoiceStatus } from '../lib/invoices'
 import { supabase } from '../lib/supabase'
 
 type ViewMode = 'kanban' | 'list'
+
+type InvoiceListRow = InvoiceRow & {
+  lawyer_name?: string | null
+  vendor_name?: string | null
+  lead_names?: string | null
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -28,15 +34,65 @@ const page = ref(1)
 const PAGE_SIZE = 25
 const viewMode = ref<ViewMode>('kanban')
 const selectedStatus = ref<'all' | InvoiceStatus>('all')
+const filterVendor = ref('')
+const filterAttorney = ref('')
+const filterDateStart = ref('')
+const filterDateEnd = ref('')
+const filterDueDate = ref<'all' | 'today' | 'yesterday' | 'this_week'>('all')
 
-const invoices = ref<(InvoiceRow & { lawyer_name?: string | null; vendor_name?: string | null })[]>([])
+// Drag & drop
+const dragInvoiceId = ref<string | null>(null)
+
+const loadSeq = ref(0)
+
+const invoices = ref<InvoiceListRow[]>([])
 
 const filteredInvoices = computed(() => {
   const q = query.value.trim().toLowerCase()
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const todayStr = today.toISOString().slice(0, 10)
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayStr = yesterday.toISOString().slice(0, 10)
+  const weekStart = new Date(today)
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay())
+  const weekStartStr = weekStart.toISOString().slice(0, 10)
+
   return invoices.value.filter((inv) => {
-    if (selectedStatus.value !== 'all' && inv.status !== selectedStatus.value) return false
+    const ds = getDisplayStatus(inv)
+    if (selectedStatus.value !== 'all' && ds !== selectedStatus.value) return false
+
+    if (filterVendor.value && isPublisherMode.value) {
+      const vn = (inv.vendor_name ?? '').toLowerCase()
+      if (!vn.includes(filterVendor.value.toLowerCase())) return false
+    }
+
+    if (filterAttorney.value && !isPublisherMode.value) {
+      const an = (inv.lawyer_name ?? '').toLowerCase()
+      if (!an.includes(filterAttorney.value.toLowerCase())) return false
+    }
+
+    if (filterDateStart.value && inv.date_range_start < filterDateStart.value) return false
+    if (filterDateEnd.value && inv.date_range_end > filterDateEnd.value) return false
+
+    if (filterDueDate.value !== 'all' && inv.due_date) {
+      const dd = inv.due_date.slice(0, 10)
+      if (filterDueDate.value === 'today' && dd !== todayStr) return false
+      if (filterDueDate.value === 'yesterday' && dd !== yesterdayStr) return false
+      if (filterDueDate.value === 'this_week' && dd < weekStartStr) return false
+    }
+
     if (!q) return true
-    const haystack = [inv.invoice_number, inv.lawyer_name ?? '', inv.vendor_name ?? '', inv.notes ?? ''].join(' ').toLowerCase()
+    const itemDescriptions = (inv.items ?? []).map((i) => i.description ?? '').join(' ')
+    const haystack = [
+      inv.invoice_number,
+      inv.lawyer_name ?? '',
+      inv.vendor_name ?? '',
+      inv.lead_names ?? '',
+      itemDescriptions,
+      inv.notes ?? ''
+    ].join(' ').toLowerCase()
     return haystack.includes(q)
   })
 })
@@ -48,12 +104,23 @@ const pagedRows = computed(() => {
   return filteredInvoices.value.slice(start, start + PAGE_SIZE)
 })
 
+const PUBLISHER_KANBAN_STATUSES: InvoiceStatus[] = ['pending', 'in_review', 'paid', 'chargeback']
+const LAWYER_KANBAN_STATUSES: InvoiceStatus[] = ['pending', 'signed_awaiting', 'in_preview', 'paid', 'chargeback']
+
+const kanbanStatuses = computed(() =>
+  isPublisherMode.value ? PUBLISHER_KANBAN_STATUSES : LAWYER_KANBAN_STATUSES
+)
+
+const getDisplayStatus = (invoice: InvoiceRow): InvoiceStatus => {
+  if (isPublisherMode.value && invoice.status === 'billable') return 'pending'
+  return invoice.status
+}
+
 const invoicesByStatus = computed(() => {
   const grouped = new Map<InvoiceStatus, typeof invoices.value>()
-  const statuses: InvoiceStatus[] = ['pending', 'paid', 'chargeback']
-  statuses.forEach((s) => grouped.set(s, []))
+  kanbanStatuses.value.forEach((s) => grouped.set(s, []))
   filteredInvoices.value.forEach((inv) => {
-    const arr = grouped.get(inv.status)
+    const arr = grouped.get(getDisplayStatus(inv))
     if (arr) arr.push(inv)
   })
   return grouped
@@ -83,18 +150,69 @@ const formatDate = (value: string | null) => {
 }
 
 const getStatusLabel = (status: InvoiceStatus) => {
-  if (status === 'pending') return 'Pending'
+  if (status === 'billable') return 'Billable'
+  if (status === 'pending') return isPublisherMode.value ? 'Billable – Awaiting to be Paid' : 'Billable'
+  if (status === 'in_review') return 'In Review'
+  if (status === 'signed_awaiting') return 'Signed – Awaiting to be Paid'
+  if (status === 'in_preview') return 'In Preview'
   if (status === 'paid') return 'Paid'
   return 'Chargeback'
 }
 
 const getStatusIcon = (status: InvoiceStatus) => {
-  if (status === 'paid') return 'i-lucide-check-circle'
+  if (status === 'billable') return 'i-lucide-file-plus'
   if (status === 'pending') return 'i-lucide-clock'
+  if (status === 'in_review') return 'i-lucide-eye'
+  if (status === 'signed_awaiting') return 'i-lucide-pen-line'
+  if (status === 'in_preview') return 'i-lucide-search'
+  if (status === 'paid') return 'i-lucide-check-circle'
   return 'i-lucide-alert-triangle'
 }
 
+const getStatusColorClass = (status: InvoiceStatus) => {
+  if (status === 'billable') return 'text-blue-400'
+  if (status === 'pending') return 'text-amber-400'
+  if (status === 'in_review') return 'text-violet-400'
+  if (status === 'signed_awaiting') return 'text-emerald-400'
+  if (status === 'in_preview') return 'text-sky-400'
+  if (status === 'paid') return 'text-green-400'
+  return 'text-red-400'
+}
+
+const handleDragStart = (invoiceId: string) => {
+  dragInvoiceId.value = invoiceId
+}
+
+const handleDragOver = (e: DragEvent) => {
+  e.preventDefault()
+}
+
+const handleDrop = async (e: DragEvent, targetStatus: InvoiceStatus) => {
+  e.preventDefault()
+  if (!dragInvoiceId.value) return
+  const id = dragInvoiceId.value
+  dragInvoiceId.value = null
+
+  const idx = invoices.value.findIndex(i => i.id === id)
+  if (idx === -1) return
+  const prev = invoices.value[idx].status
+  if (prev === targetStatus) return
+
+  // Optimistic update
+  invoices.value[idx] = { ...invoices.value[idx], status: targetStatus }
+
+  try {
+    await updateInvoice(id, { status: targetStatus })
+  } catch (err) {
+    // Revert on error
+    invoices.value[idx] = { ...invoices.value[idx], status: prev }
+    error.value = err instanceof Error ? err.message : 'Failed to update status'
+  }
+}
+
 const load = async () => {
+  const seq = ++loadSeq.value
+  const modeAtStart = isPublisherMode.value
   loading.value = true
   error.value = null
 
@@ -118,7 +236,32 @@ const load = async () => {
       filters.status = selectedStatus.value
     }
 
-    const data = await listInvoices(filters)
+    const data = (await listInvoices(filters)) as InvoiceListRow[]
+
+    // Enrich invoices with lead/insured names (from daily_deal_flow) for search
+    const allDealIds = [...new Set(data.flatMap((inv) => inv.deal_ids ?? []).filter(Boolean))]
+
+    if (allDealIds.length) {
+      const { data: deals, error: dealsError } = await supabase
+        .from('daily_deal_flow')
+        .select('id,insured_name')
+        .in('id', allDealIds)
+
+      if (dealsError) throw new Error(dealsError.message)
+
+      const dealRows = (deals ?? []) as unknown as Array<{ id: string; insured_name: string | null }>
+      const nameMap = new Map(dealRows.map((r) => [String(r.id), String(r.insured_name ?? '').trim()]))
+
+      data.forEach((inv) => {
+        const dealIds = (inv.deal_ids ?? []).map(String)
+        const names = dealIds
+          .map((id: string) => nameMap.get(id) ?? '')
+          .map((s: string) => s.trim())
+          .filter(Boolean)
+
+        inv.lead_names = [...new Set(names)].join(' · ')
+      })
+    }
 
     if (isPublisherMode.value) {
       // Resolve vendor (center) names via lead_vendor_id
@@ -129,12 +272,15 @@ const load = async () => {
           .select('id,center_name,lead_vendor')
           .in('id', vendorIds)
 
+        const centerRows = (centers ?? []) as unknown as Array<{ id: string; center_name: string | null; lead_vendor: string | null }>
         const vendorMap = new Map(
-          (centers ?? []).map((c: any) => [String(c.id), String(c.center_name ?? c.lead_vendor ?? '').trim()])
+          centerRows.map((c) => [String(c.id), String(c.center_name ?? c.lead_vendor ?? '').trim()])
         )
 
-        data.forEach((inv: any) => {
-          inv.vendor_name = vendorMap.get(inv.lead_vendor_id) ?? null
+        data.forEach((inv) => {
+          inv.vendor_name = inv.lead_vendor_id !== null
+            ? (vendorMap.get(inv.lead_vendor_id) ?? null)
+            : null
         })
       }
     } else if (role === 'super_admin' || role === 'admin' || role === 'accounts') {
@@ -146,33 +292,53 @@ const load = async () => {
           .select('user_id,full_name')
           .in('user_id', lawyerIds)
 
-        const nameMap = new Map(
-          (profiles ?? []).map((p: any) => [String(p.user_id), String(p.full_name ?? '').trim()])
-        )
+        const profileRows = (profiles ?? []) as unknown as Array<{ user_id: string; full_name: string | null }>
+        const nameMap = new Map(profileRows.map((p) => [String(p.user_id), String(p.full_name ?? '').trim()]))
 
         const { data: appUsers } = await supabase
           .from('app_users')
           .select('user_id,display_name,email')
           .in('user_id', lawyerIds)
 
+        const userRows = (appUsers ?? []) as unknown as Array<{ user_id: string; display_name: string | null; email: string | null }>
         const fallbackMap = new Map(
-          (appUsers ?? []).map((u: any) => [String(u.user_id), String(u.display_name || u.email || '').trim()])
+          userRows.map((u) => [String(u.user_id), String(u.display_name || u.email || '').trim()])
         )
 
-        data.forEach((inv: any) => {
+        data.forEach((inv) => {
+          if (inv.lawyer_id === null) {
+            inv.lawyer_name = null
+            return
+          }
           inv.lawyer_name = nameMap.get(inv.lawyer_id) || fallbackMap.get(inv.lawyer_id) || null
         })
       }
     }
 
-    invoices.value = data as (InvoiceRow & { lawyer_name?: string | null; vendor_name?: string | null })[]
+    // Ignore stale loads when route mode changes quickly (prevents brief UI flash)
+    if (seq === loadSeq.value && modeAtStart === isPublisherMode.value) {
+      invoices.value = data
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Failed to load invoices'
     error.value = msg
   } finally {
-    loading.value = false
+    if (seq === loadSeq.value) {
+      loading.value = false
+    }
   }
 }
+
+watch(isPublisherMode, () => {
+  // Reset mode-specific UI state to avoid showing the wrong mode briefly
+  invoices.value = []
+  page.value = 1
+  query.value = ''
+  selectedStatus.value = 'all'
+  filterVendor.value = ''
+  filterAttorney.value = ''
+  load()
+})
 
 const openInvoicePdf = (invoice: InvoiceRow) => {
   const url = router.resolve(`/invoicing/${invoice.id}/pdf`).href
@@ -219,6 +385,10 @@ onMounted(() => {
 watch([selectedStatus], () => {
   page.value = 1
   load()
+})
+
+watch([query, filterVendor, filterAttorney, filterDateStart, filterDateEnd, filterDueDate], () => {
+  page.value = 1
 })
 
 watch(isPublisherMode, () => {
@@ -338,11 +508,63 @@ watch(pageCount, () => {
 
             <USelect
               v-model="selectedStatus"
+              :items="isPublisherMode
+                ? [
+                    { label: 'All Statuses', value: 'all' },
+                    { label: 'Billable – Awaiting to be Paid', value: 'pending' },
+                    { label: 'In Review', value: 'in_review' },
+                    { label: 'Paid', value: 'paid' },
+                    { label: 'Chargeback', value: 'chargeback' }
+                  ]
+                : [
+                    { label: 'All Statuses', value: 'all' },
+                    { label: 'Billable', value: 'pending' },
+                    { label: 'Signed – Awaiting to be Paid', value: 'signed_awaiting' },
+                    { label: 'In Preview', value: 'in_preview' },
+                    { label: 'Paid', value: 'paid' },
+                    { label: 'Chargeback', value: 'chargeback' }
+                  ]
+              "
+              class="w-56 [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
+              value-key="value"
+              label-key="label"
+            />
+
+            <UInput
+              v-if="isPublisherMode"
+              v-model="filterVendor"
+              class="w-44 [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)]"
+              placeholder="Filter by vendor..."
+            />
+
+            <UInput
+              v-if="!isPublisherMode"
+              v-model="filterAttorney"
+              class="w-44 [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)]"
+              placeholder="Filter by attorney..."
+            />
+
+            <UInput
+              v-model="filterDateStart"
+              type="date"
+              class="w-38 [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)]"
+              title="Date range start"
+            />
+
+            <UInput
+              v-model="filterDateEnd"
+              type="date"
+              class="w-38 [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)]"
+              title="Date range end"
+            />
+
+            <USelect
+              v-model="filterDueDate"
               :items="[
-                { label: 'All Statuses', value: 'all' },
-                { label: 'Pending', value: 'pending' },
-                { label: 'Paid', value: 'paid' },
-                { label: 'Chargeback', value: 'chargeback' }
+                { label: 'Due: Any', value: 'all' },
+                { label: 'Due: Today', value: 'today' },
+                { label: 'Due: Yesterday', value: 'yesterday' },
+                { label: 'Due: This Week', value: 'this_week' }
               ]"
               class="w-44 [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
               value-key="value"
@@ -411,19 +633,18 @@ watch(pageCount, () => {
 
         <!-- Kanban View -->
         <div v-else-if="viewMode === 'kanban'" class="min-h-0 flex-1 overflow-hidden">
-          <div class="flex h-full gap-3">
+          <div class="flex h-full gap-3 overflow-x-auto">
             <div
-              v-for="status in (['pending', 'paid', 'chargeback'] as InvoiceStatus[])"
+              v-for="status in kanbanStatuses"
               :key="status"
-              class="flex min-w-0 flex-1 flex-col rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)]"
+              class="flex min-w-[260px] flex-1 flex-col rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] transition-colors"
+              :class="dragInvoiceId ? 'border-dashed' : ''"
+              @dragover="handleDragOver"
+              @drop="handleDrop($event, status)"
             >
               <div class="flex items-center justify-between border-b border-[var(--ap-card-border)] px-4 py-3">
                 <div class="flex items-center gap-2">
-                  <UIcon :name="getStatusIcon(status)" class="text-sm" :class="{
-                    'text-amber-400': status === 'pending',
-                    'text-green-400': status === 'paid',
-                    'text-red-400': status === 'chargeback'
-                  }" />
+                  <UIcon :name="getStatusIcon(status)" class="text-sm" :class="getStatusColorClass(status)" />
                   <span class="text-sm font-semibold text-highlighted">{{ getStatusLabel(status) }}</span>
                 </div>
                 <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--ap-card-border)] px-1.5 text-[10px] font-bold text-muted">
@@ -435,7 +656,10 @@ watch(pageCount, () => {
                 <div
                   v-for="invoice in (invoicesByStatus.get(status) ?? [])"
                   :key="invoice.id"
+                  draggable="true"
                   class="group cursor-pointer rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-3 transition-all duration-200 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.04]"
+                  :class="dragInvoiceId === invoice.id ? 'opacity-50 scale-95' : ''"
+                  @dragstart="handleDragStart(invoice.id)"
                   @click="openInvoicePdf(invoice)"
                 >
                   <div class="flex items-start justify-between gap-2">
@@ -444,7 +668,7 @@ watch(pageCount, () => {
                         {{ invoice.invoice_number }}
                       </div>
                       <div v-if="isAdminOrSuper" class="mt-0.5 text-xs text-muted">
-                        {{ isPublisherMode ? (invoice as any).vendor_name : invoice.lawyer_name }}
+                        {{ isPublisherMode ? invoice.vendor_name : invoice.lawyer_name }}
                       </div>
                     </div>
                     <div class="shrink-0 text-sm font-bold text-highlighted">
@@ -462,7 +686,7 @@ watch(pageCount, () => {
                     </span>
                     <div class="flex items-center gap-1.5">
                       <button
-                        v-if="invoice.status === 'pending'"
+                        v-if="getDisplayStatus(invoice) === 'pending'"
                         class="rounded-lg px-2 py-1 text-[10px] font-semibold text-green-400 bg-green-500/10 opacity-0 transition-all hover:bg-green-500/20 group-hover:opacity-100"
                         title="Mark as Paid"
                         @click.stop="handleMarkAsPaid(invoice)"
@@ -470,12 +694,20 @@ watch(pageCount, () => {
                         Paid
                       </button>
                       <button
-                        v-if="invoice.status === 'paid'"
+                        v-if="getDisplayStatus(invoice) === 'paid'"
                         class="rounded-lg px-2 py-1 text-[10px] font-semibold text-red-400 bg-red-500/10 opacity-0 transition-all hover:bg-red-500/20 group-hover:opacity-100"
                         title="Request Chargeback"
                         @click.stop="handleRequestChargeback(invoice)"
                       >
                         Chargeback
+                      </button>
+                      <button
+                        v-if="isAdminOrSuper && getDisplayStatus(invoice) === 'pending'"
+                        class="rounded-lg px-2 py-1 text-[10px] font-semibold text-blue-400 bg-blue-500/10 opacity-0 transition-all hover:bg-blue-500/20 group-hover:opacity-100"
+                        title="Create Invoice"
+                        @click.stop="createInvoice()"
+                      >
+                        + Invoice
                       </button>
                       <button
                         v-if="isAdminOrSuper"
@@ -540,7 +772,7 @@ watch(pageCount, () => {
                     </span>
                   </td>
                   <td v-if="isAdminOrSuper" class="px-5 py-3.5">
-                    <span class="text-sm text-default">{{ isPublisherMode ? ((invoice as any).vendor_name ?? '—') : (invoice.lawyer_name ?? '—') }}</span>
+                    <span class="text-sm text-default">{{ isPublisherMode ? (invoice.vendor_name ?? '—') : (invoice.lawyer_name ?? '—') }}</span>
                   </td>
                   <td class="px-5 py-3.5">
                     <span class="text-sm text-default">{{ formatDate(invoice.date_range_start) }} - {{ formatDate(invoice.date_range_end) }}</span>
@@ -555,19 +787,22 @@ watch(pageCount, () => {
                     <span
                       class="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium"
                       :class="{
-                        'bg-amber-500/10 text-amber-400': invoice.status === 'pending',
-                        'bg-green-500/10 text-green-400': invoice.status === 'paid',
-                        'bg-red-500/10 text-red-400': invoice.status === 'chargeback'
+                        'bg-blue-500/10 text-blue-400': getDisplayStatus(invoice) === 'billable',
+                        'bg-amber-500/10 text-amber-400': getDisplayStatus(invoice) === 'pending',
+                        'bg-violet-500/10 text-violet-400': getDisplayStatus(invoice) === 'in_review',
+                        'bg-emerald-500/10 text-emerald-400': getDisplayStatus(invoice) === 'signed_awaiting',
+                        'bg-sky-500/10 text-sky-400': getDisplayStatus(invoice) === 'in_preview',
+                        'bg-green-500/10 text-green-400': getDisplayStatus(invoice) === 'paid',
+                        'bg-red-500/10 text-red-400': getDisplayStatus(invoice) === 'chargeback'
                       }"
                     >
-                      <UIcon :name="getStatusIcon(invoice.status)" class="text-xs" />
-                      {{ getStatusLabel(invoice.status) }}
+                      {{ getStatusLabel(getDisplayStatus(invoice)) }}
                     </span>
                   </td>
                   <td class="px-5 py-3.5">
                     <div class="flex items-center justify-center gap-1.5 whitespace-nowrap">
                       <button
-                        v-if="invoice.status === 'pending'"
+                        v-if="getDisplayStatus(invoice) === 'pending'"
                         class="inline-flex items-center gap-1 rounded-lg border border-green-500/20 bg-green-500/10 px-2.5 py-1 text-xs font-medium text-green-400 transition-all hover:bg-green-500/20"
                         @click.stop="handleMarkAsPaid(invoice)"
                       >
@@ -575,7 +810,7 @@ watch(pageCount, () => {
                         Mark Paid
                       </button>
                       <button
-                        v-if="invoice.status === 'paid'"
+                        v-if="getDisplayStatus(invoice) === 'paid'"
                         class="inline-flex items-center gap-1 rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-400 transition-all hover:bg-red-500/20"
                         @click.stop="handleRequestChargeback(invoice)"
                       >

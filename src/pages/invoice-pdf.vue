@@ -82,14 +82,22 @@ const formatDateShort = (value: string | null) => {
 }
 
 const getStatusLabel = (status: string) => {
-  if (status === 'pending') return 'PENDING'
+  if (status === 'billable') return 'BILLABLE'
+  if (status === 'pending') return 'BILLABLE'
+  if (status === 'in_review') return 'IN REVIEW'
+  if (status === 'signed_awaiting') return 'SIGNED – AWAITING PAYMENT'
+  if (status === 'in_preview') return 'IN PREVIEW'
   if (status === 'paid') return 'PAID'
   return 'CHARGEBACK'
 }
 
 const getStatusClass = (status: string) => {
+  if (status === 'billable') return 'status-billable'
   if (status === 'paid') return 'status-paid'
   if (status === 'pending') return 'status-pending'
+  if (status === 'in_review') return 'status-in-review'
+  if (status === 'signed_awaiting') return 'status-signed-awaiting'
+  if (status === 'in_preview') return 'status-in-preview'
   return 'status-chargeback'
 }
 
@@ -552,6 +560,11 @@ onMounted(async () => {
   letter-spacing: 1px;
 }
 
+.status-billable {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
 .status-paid {
   background: #e6f4ea;
   color: #1a7a3a;
@@ -560,6 +573,21 @@ onMounted(async () => {
 .status-pending {
   background: #fef3e2;
   color: #ae4010;
+}
+
+.status-in-review {
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+
+.status-signed-awaiting {
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.status-in-preview {
+  background: #e0f2fe;
+  color: #0369a1;
 }
 
 .status-chargeback {

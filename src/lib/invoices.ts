@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 
-export type InvoiceStatus = 'pending' | 'paid' | 'chargeback'
+export type InvoiceStatus = 'billable' | 'pending' | 'in_review' | 'signed_awaiting' | 'in_preview' | 'paid' | 'chargeback'
 
 export type InvoiceItem = {
   description: string

@@ -106,9 +106,12 @@ const goNext = () => { if (canNext.value) currentPage.value += 1 }
 
 // ── Summary Stats ──
 const totalSettlements = computed(() => rows.value.length)
-const pendingInbound = computed(() => rows.value.filter(r => r.inbound_payment_status === 'pending' && r.status !== PIPELINE_STAGES.PAID_TO_BPO.label).length)
-const receivedInbound = computed(() => rows.value.filter(r => r.inbound_payment_status === 'received').length)
-const paidOutbound = computed(() => rows.value.filter(r => r.outbound_payment_status === 'paid').length)
+const awaitingBillableCount = computed(() => rows.value.filter(r => r.status === PIPELINE_STAGES.RETAINER_SIGNED.label).length)
+const invoiceToAttorneyCount = computed(() => rows.value.filter(r => r.status === PIPELINE_STAGES.ATTORNEY_REVIEW.label).length)
+const attorneyPaidCount = computed(() => rows.value.filter(r => r.status === PIPELINE_STAGES.ATTORNEY_PAID.label).length)
+const reviewCount = computed(() => rows.value.filter(r => r.status === PIPELINE_STAGES.REVIEW.label).length)
+const payableToBpoCount = computed(() => rows.value.filter(r => r.status === PIPELINE_STAGES.APPROVED_PAYABLE.label).length)
+const paidToBpoCount = computed(() => rows.value.filter(r => r.status === PIPELINE_STAGES.PAID_TO_BPO.label).length)
 
 // ── Helpers ──
 const formatMoney = (n: number) => {
@@ -142,6 +145,8 @@ const getStatusStyle = (status: string) => {
       return 'bg-violet-500/10 text-violet-400 border-violet-500/20'
     case PIPELINE_STAGES.ATTORNEY_PAID.label:
       return 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+    case PIPELINE_STAGES.REVIEW.label:
+      return 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
     case PIPELINE_STAGES.APPROVED_PAYABLE.label:
       return 'bg-teal-500/10 text-teal-400 border-teal-500/20'
     case PIPELINE_STAGES.PAID_TO_BPO.label:
@@ -156,6 +161,7 @@ const getStatusIcon = (status: string) => {
     case PIPELINE_STAGES.RETAINER_SIGNED.label: return 'i-lucide-file-signature'
     case PIPELINE_STAGES.ATTORNEY_REVIEW.label: return 'i-lucide-scale'
     case PIPELINE_STAGES.ATTORNEY_PAID.label: return 'i-lucide-badge-dollar-sign'
+    case PIPELINE_STAGES.REVIEW.label: return 'i-lucide-eye'
     case PIPELINE_STAGES.APPROVED_PAYABLE.label: return 'i-lucide-check-circle'
     case PIPELINE_STAGES.PAID_TO_BPO.label: return 'i-lucide-banknote'
     default: return 'i-lucide-circle'
@@ -190,6 +196,7 @@ const toggleInbound = async (row: RetainerSettlementRow) => {
   // This keeps the pipeline aligned: Attorney Review -> Attorney Paid -> Approved – Payable -> Paid to BPO
   const shouldAdvanceStage =
     row.status !== PIPELINE_STAGES.ATTORNEY_PAID.label &&
+    row.status !== PIPELINE_STAGES.REVIEW.label &&
     row.status !== PIPELINE_STAGES.APPROVED_PAYABLE.label &&
     row.status !== PIPELINE_STAGES.PAID_TO_BPO.label
 
@@ -342,7 +349,7 @@ onMounted(load)
     <template #body>
       <div class="flex h-full min-h-0 flex-col gap-5">
         <!-- Summary Cards -->
-        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
           <div class="rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4">
             <div class="flex items-center gap-2">
               <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--ap-accent)]/10">
@@ -356,33 +363,69 @@ onMounted(load)
           </div>
           <div class="rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4">
             <div class="flex items-center gap-2">
-              <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10">
-                <UIcon name="i-lucide-clock" class="text-sm text-amber-400" />
-              </div>
-              <div>
-                <p class="text-lg font-bold text-highlighted tabular-nums">{{ pendingInbound }}</p>
-                <p class="text-[10px] font-medium uppercase tracking-wider text-muted">Awaiting Payment</p>
-              </div>
-            </div>
-          </div>
-          <div class="rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4">
-            <div class="flex items-center gap-2">
               <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10">
-                <UIcon name="i-lucide-arrow-down-left" class="text-sm text-emerald-400" />
+                <UIcon name="i-lucide-file-signature" class="text-sm text-emerald-400" />
               </div>
               <div>
-                <p class="text-lg font-bold text-highlighted tabular-nums">{{ receivedInbound }}</p>
-                <p class="text-[10px] font-medium uppercase tracking-wider text-muted">Received</p>
+                <p class="text-lg font-bold text-highlighted tabular-nums">{{ awaitingBillableCount }}</p>
+                <p class="text-[10px] font-medium uppercase tracking-wider text-muted">Awaiting Billable</p>
               </div>
             </div>
           </div>
           <div class="rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4">
             <div class="flex items-center gap-2">
-              <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10">
-                <UIcon name="i-lucide-arrow-up-right" class="text-sm text-blue-400" />
+              <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/10">
+                <UIcon name="i-lucide-scale" class="text-sm text-violet-400" />
               </div>
               <div>
-                <p class="text-lg font-bold text-highlighted tabular-nums">{{ paidOutbound }}</p>
+                <p class="text-lg font-bold text-highlighted tabular-nums">{{ invoiceToAttorneyCount }}</p>
+                <p class="text-[10px] font-medium uppercase tracking-wider text-muted">Invoice to Attorney</p>
+              </div>
+            </div>
+          </div>
+          <div class="rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4">
+            <div class="flex items-center gap-2">
+              <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10">
+                <UIcon name="i-lucide-badge-dollar-sign" class="text-sm text-amber-400" />
+              </div>
+              <div>
+                <p class="text-lg font-bold text-highlighted tabular-nums">{{ attorneyPaidCount }}</p>
+                <p class="text-[10px] font-medium uppercase tracking-wider text-muted">Attorney Paid</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4">
+            <div class="flex items-center gap-2">
+              <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/10">
+                <UIcon name="i-lucide-eye" class="text-sm text-indigo-400" />
+              </div>
+              <div>
+                <p class="text-lg font-bold text-highlighted tabular-nums">{{ reviewCount }}</p>
+                <p class="text-[10px] font-medium uppercase tracking-wider text-muted">Review</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4">
+            <div class="flex items-center gap-2">
+              <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-500/10">
+                <UIcon name="i-lucide-check-circle" class="text-sm text-teal-400" />
+              </div>
+              <div>
+                <p class="text-lg font-bold text-highlighted tabular-nums">{{ payableToBpoCount }}</p>
+                <p class="text-[10px] font-medium uppercase tracking-wider text-muted">Payable to BPO</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4">
+            <div class="flex items-center gap-2">
+              <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-fuchsia-500/10">
+                <UIcon name="i-lucide-banknote" class="text-sm text-fuchsia-400" />
+              </div>
+              <div>
+                <p class="text-lg font-bold text-highlighted tabular-nums">{{ paidToBpoCount }}</p>
                 <p class="text-[10px] font-medium uppercase tracking-wider text-muted">Paid to BPO</p>
               </div>
             </div>

@@ -5,11 +5,12 @@ import { supabase } from './supabase'
 // The daily_deal_flow.status column stores the stage label text.
 
 export const PIPELINE_STAGES = {
-  RETAINER_SIGNED: { key: 'retainer_signed', label: 'Retainer Signed', display_order: 7 },
-  ATTORNEY_REVIEW: { key: 'attorney_review', label: 'Attorney Review', display_order: 8 },
+  RETAINER_SIGNED: { key: 'retainer_signed', label: 'Awaiting Billable', display_order: 7 },
+  ATTORNEY_REVIEW: { key: 'attorney_review', label: 'Invoice to Attorney', display_order: 8 },
   ATTORNEY_PAID: { key: 'attorney_paid', label: 'Attorney Paid', display_order: 9 },
-  APPROVED_PAYABLE: { key: 'approved_payable', label: 'Approved \u2013 Payable', display_order: 10 },
-  PAID_TO_BPO: { key: 'paid_to_bpo', label: 'Paid to BPO', display_order: 11 },
+  REVIEW: { key: 'review', label: 'Review', display_order: 10 },
+  APPROVED_PAYABLE: { key: 'approved_payable', label: 'Payable to BPO', display_order: 11 },
+  PAID_TO_BPO: { key: 'paid_to_bpo', label: 'Paid to BPO', display_order: 12 },
 } as const
 
 // The status labels we filter daily_deal_flow by
@@ -17,6 +18,7 @@ export const SETTLEMENT_STAGE_LABELS = [
   PIPELINE_STAGES.RETAINER_SIGNED.label,
   PIPELINE_STAGES.ATTORNEY_REVIEW.label,
   PIPELINE_STAGES.ATTORNEY_PAID.label,
+  PIPELINE_STAGES.REVIEW.label,
   PIPELINE_STAGES.APPROVED_PAYABLE.label,
   PIPELINE_STAGES.PAID_TO_BPO.label,
 ] as const
@@ -82,7 +84,11 @@ export function derivePaymentState(status: string): {
   if (status === PIPELINE_STAGES.PAID_TO_BPO.label) {
     return { inbound: INBOUND_STATUS.RECEIVED, outbound: OUTBOUND_STATUS.PAID }
   }
-  if (status === PIPELINE_STAGES.ATTORNEY_PAID.label) {
+  if (
+    status === PIPELINE_STAGES.ATTORNEY_PAID.label ||
+    status === PIPELINE_STAGES.REVIEW.label ||
+    status === PIPELINE_STAGES.APPROVED_PAYABLE.label
+  ) {
     return { inbound: INBOUND_STATUS.RECEIVED, outbound: OUTBOUND_STATUS.LOCKED }
   }
   return { inbound: INBOUND_STATUS.PENDING, outbound: OUTBOUND_STATUS.LOCKED }
@@ -197,6 +203,15 @@ export const KANBAN_COLUMNS = [
     headerBg: 'bg-amber-50/60 dark:bg-amber-950/10',
     bodyBg: 'bg-amber-50/50 dark:bg-amber-950/15',
     badgeClass: 'bg-amber-500/10 text-amber-500',
+  },
+  {
+    key: PIPELINE_STAGES.REVIEW.key,
+    label: PIPELINE_STAGES.REVIEW.label,
+    icon: 'i-lucide-eye',
+    borderClass: 'border-t-indigo-500/50',
+    headerBg: 'bg-indigo-50/60 dark:bg-indigo-950/10',
+    bodyBg: 'bg-indigo-50/50 dark:bg-indigo-950/15',
+    badgeClass: 'bg-indigo-500/10 text-indigo-500',
   },
   {
     key: PIPELINE_STAGES.APPROVED_PAYABLE.key,
