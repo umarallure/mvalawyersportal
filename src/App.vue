@@ -99,12 +99,6 @@ const links = computed(() => [[
     defaultOpen: route.path.startsWith('/settings'),
     type: 'trigger',
     children: [
-      {
-        label: 'General',
-        to: '/settings',
-        exact: true,
-        onSelect: () => { open.value = false }
-      },
       ...(!isAccounts.value ? [{
         label: 'Attorney Profile',
         to: '/settings/attorney-profile',

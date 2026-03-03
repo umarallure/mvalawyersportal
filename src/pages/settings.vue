@@ -11,11 +11,6 @@ const attorneyProfile = useAttorneyProfile()
 const attorneyProfileData = computed(() => attorneyProfile.state.value)
 
 const links = [[{
-  label: 'General',
-  icon: 'i-lucide-user',
-  to: '/settings',
-  exact: true
-}], [{
   label: 'Attorney Profile',
   icon: 'i-lucide-briefcase',
   to: '/settings/attorney-profile',

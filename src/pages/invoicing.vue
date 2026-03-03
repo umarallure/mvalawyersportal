@@ -14,6 +14,17 @@ type InvoiceListRow = InvoiceRow & {
   lead_names?: string | null
 }
 
+type QualifiedDealRow = {
+  id: string
+  submission_id: string | null
+  insured_name: string | null
+  lead_vendor: string | null
+  assigned_attorney_id: string | null
+  invoice_id: string | null
+  publisher_invoice_id: string | null
+  created_at: string | null
+}
+
 const route = useRoute()
 const router = useRouter()
 const auth = useAuth()
@@ -46,6 +57,27 @@ const dragInvoiceId = ref<string | null>(null)
 const loadSeq = ref(0)
 
 const invoices = ref<InvoiceListRow[]>([])
+
+const qualifiedDeals = ref<QualifiedDealRow[]>([])
+const qualifiedDealCenterIdMap = ref(new Map<string, string>())
+
+const attorneyOptions = computed(() => {
+  const names = invoices.value
+    .map((i) => i.lawyer_name)
+    .filter((n): n is string => Boolean(n && String(n).trim()))
+    .map((n) => String(n).trim())
+
+  return [...new Set(names)].sort((a, b) => a.localeCompare(b))
+})
+
+const vendorOptions = computed(() => {
+  const names = invoices.value
+    .map((i) => i.vendor_name)
+    .filter((n): n is string => Boolean(n && String(n).trim()))
+    .map((n) => String(n).trim())
+
+  return [...new Set(names)].sort((a, b) => a.localeCompare(b))
+})
 
 const filteredInvoices = computed(() => {
   const q = query.value.trim().toLowerCase()
@@ -92,6 +124,29 @@ const filteredInvoices = computed(() => {
       inv.lead_names ?? '',
       itemDescriptions,
       inv.notes ?? ''
+    ].join(' ').toLowerCase()
+    return haystack.includes(q)
+  })
+})
+
+const filteredQualifiedDeals = computed(() => {
+  if (viewMode.value !== 'kanban') return []
+  if (selectedStatus.value !== 'all' && selectedStatus.value !== 'pending') return []
+
+  const q = query.value.trim().toLowerCase()
+  const vendorQ = filterVendor.value.trim().toLowerCase()
+
+  return qualifiedDeals.value.filter((d) => {
+    if (isPublisherMode.value && vendorQ) {
+      const vn = String(d.lead_vendor ?? '').toLowerCase()
+      if (!vn.includes(vendorQ)) return false
+    }
+
+    if (!q) return true
+    const haystack = [
+      d.submission_id ?? '',
+      d.insured_name ?? '',
+      d.lead_vendor ?? ''
     ].join(' ').toLowerCase()
     return haystack.includes(q)
   })
@@ -238,6 +293,48 @@ const load = async () => {
 
     const data = (await listInvoices(filters)) as InvoiceListRow[]
 
+    // Load Qualified/Payable leads for the Billable (pending) column
+    let dealsQb = supabase
+      .from('daily_deal_flow')
+      .select('id,submission_id,insured_name,lead_vendor,assigned_attorney_id,invoice_id,publisher_invoice_id,created_at')
+      .eq('status', 'Qualified/Payable')
+      .order('created_at', { ascending: false })
+
+    if (!isPublisherMode.value) {
+      // Lawyer mode: show only un-invoiced leads
+      dealsQb = dealsQb.is('invoice_id', null)
+      if (role === 'lawyer' && userId) {
+        dealsQb = dealsQb.eq('assigned_attorney_id', userId)
+      }
+    } else {
+      // Publisher mode: show only un-invoiced leads
+      dealsQb = dealsQb.is('publisher_invoice_id', null)
+    }
+
+    const { data: dealData, error: dealErr } = await dealsQb
+    if (dealErr) throw new Error(dealErr.message)
+
+    const dealRows = (dealData ?? []) as unknown as QualifiedDealRow[]
+
+    const vendorNames = [...new Set(dealRows.map((d) => String(d.lead_vendor ?? '').trim()).filter(Boolean))]
+    if (vendorNames.length) {
+      const { data: centers } = await supabase
+        .from('centers')
+        .select('id,lead_vendor')
+        .in('lead_vendor', vendorNames)
+
+      const centerRows = (centers ?? []) as unknown as Array<{ id: string; lead_vendor: string | null }>
+      qualifiedDealCenterIdMap.value = new Map(
+        centerRows
+          .filter((c) => Boolean(c.lead_vendor))
+          .map((c) => [String(c.lead_vendor), String(c.id)])
+      )
+    } else {
+      qualifiedDealCenterIdMap.value = new Map()
+    }
+
+    qualifiedDeals.value = dealRows
+
     // Enrich invoices with lead/insured names (from daily_deal_flow) for search
     const allDealIds = [...new Set(data.flatMap((inv) => inv.deal_ids ?? []).filter(Boolean))]
 
@@ -332,6 +429,8 @@ const load = async () => {
 watch(isPublisherMode, () => {
   // Reset mode-specific UI state to avoid showing the wrong mode briefly
   invoices.value = []
+  qualifiedDeals.value = []
+  qualifiedDealCenterIdMap.value = new Map()
   page.value = 1
   query.value = ''
   selectedStatus.value = 'all'
@@ -339,6 +438,21 @@ watch(isPublisherMode, () => {
   filterAttorney.value = ''
   load()
 })
+
+const openQualifiedDeal = (deal: QualifiedDealRow) => {
+  if (isPublisherMode.value) {
+    const centerId = deal.lead_vendor ? (qualifiedDealCenterIdMap.value.get(deal.lead_vendor) ?? null) : null
+    const qs = new URLSearchParams({ mode: 'publisher', deal_id: deal.id })
+    if (centerId) qs.set('center_id', centerId)
+    router.push(`/invoicing/create?${qs.toString()}`)
+    return
+  }
+
+  const lawyerId = deal.assigned_attorney_id ?? ''
+  const qs = new URLSearchParams({ mode: 'lawyer', deal_id: deal.id })
+  if (lawyerId) qs.set('lawyer_id', lawyerId)
+  router.push(`/invoicing/create?${qs.toString()}`)
+}
 
 const openInvoicePdf = (invoice: InvoiceRow) => {
   const url = router.resolve(`/invoicing/${invoice.id}/pdf`).href
@@ -530,16 +644,20 @@ watch(pageCount, () => {
               label-key="label"
             />
 
-            <UInput
+            <UInputMenu
               v-if="isPublisherMode"
               v-model="filterVendor"
+              :items="vendorOptions"
+              create-item
               class="w-44 [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)]"
               placeholder="Filter by vendor..."
             />
 
-            <UInput
+            <UInputMenu
               v-if="!isPublisherMode"
               v-model="filterAttorney"
+              :items="attorneyOptions"
+              create-item
               class="w-44 [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)]"
               placeholder="Filter by attorney..."
             />
@@ -653,6 +771,30 @@ watch(pageCount, () => {
               </div>
 
               <div class="flex-1 space-y-2 overflow-y-auto p-2 invoicing-scroll">
+                <div
+                  v-for="deal in (status === 'pending' ? filteredQualifiedDeals : [])"
+                  :key="`deal-${deal.id}`"
+                  class="group cursor-pointer rounded-xl border border-dashed border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-3 transition-all duration-200 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.04]"
+                  @click="openQualifiedDeal(deal)"
+                >
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0">
+                      <div class="truncate text-sm font-semibold text-highlighted group-hover:text-[var(--ap-accent)]">
+                        {{ deal.insured_name || '—' }}
+                      </div>
+                      <div class="mt-0.5 text-xs text-muted">
+                        {{ deal.submission_id || '—' }}
+                      </div>
+                      <div v-if="deal.lead_vendor" class="mt-0.5 text-xs text-muted">
+                        {{ deal.lead_vendor }}
+                      </div>
+                    </div>
+                    <div class="shrink-0 text-[10px] font-semibold text-amber-400 bg-amber-500/10 rounded-lg px-2 py-1">
+                      Lead
+                    </div>
+                  </div>
+                </div>
+
                 <div
                   v-for="invoice in (invoicesByStatus.get(status) ?? [])"
                   :key="invoice.id"
