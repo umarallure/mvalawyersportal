@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useAuth } from '../composables/useAuth'
-import { listInvoices, markInvoiceAsPaid, requestChargeback, updateInvoice, type InvoiceRow, type InvoiceStatus } from '../lib/invoices'
+import { deleteInvoice, listInvoices, markInvoiceAsPaid, requestChargeback, updateInvoice, type InvoiceRow, type InvoiceStatus } from '../lib/invoices'
 import { supabase } from '../lib/supabase'
 
 type ViewMode = 'kanban' | 'list'
@@ -18,6 +18,7 @@ type QualifiedDealRow = {
   id: string
   submission_id: string | null
   insured_name: string | null
+  client_phone_number: string | null
   lead_vendor: string | null
   assigned_attorney_id: string | null
   invoice_id: string | null
@@ -53,6 +54,10 @@ const filterDueDate = ref<'all' | 'today' | 'yesterday' | 'this_week'>('all')
 
 // Drag & drop
 const dragInvoiceId = ref<string | null>(null)
+
+const deleteConfirmOpen = ref(false)
+const deleteTarget = ref<InvoiceRow | null>(null)
+const deletingInvoice = ref(false)
 
 const loadSeq = ref(0)
 
@@ -160,7 +165,7 @@ const pagedRows = computed(() => {
 })
 
 const PUBLISHER_KANBAN_STATUSES: InvoiceStatus[] = ['pending', 'in_review', 'paid', 'chargeback']
-const LAWYER_KANBAN_STATUSES: InvoiceStatus[] = ['pending', 'signed_awaiting', 'in_preview', 'paid', 'chargeback']
+const LAWYER_KANBAN_STATUSES: InvoiceStatus[] = ['pending', 'in_review', 'signed_awaiting', 'in_preview', 'paid', 'chargeback']
 
 const kanbanStatuses = computed(() =>
   isPublisherMode.value ? PUBLISHER_KANBAN_STATUSES : LAWYER_KANBAN_STATUSES
@@ -296,8 +301,8 @@ const load = async () => {
     // Load Qualified/Payable leads for the Billable (pending) column
     let dealsQb = supabase
       .from('daily_deal_flow')
-      .select('id,submission_id,insured_name,lead_vendor,assigned_attorney_id,invoice_id,publisher_invoice_id,created_at')
-      .eq('status', 'Qualified/Payable')
+      .select('id,submission_id,insured_name,client_phone_number,lead_vendor,assigned_attorney_id,invoice_id,publisher_invoice_id,created_at')
+      .in('status', ['Qualified/Payable', 'qualified_payable'])
       .order('created_at', { ascending: false })
 
     if (!isPublisherMode.value) {
@@ -442,21 +447,63 @@ watch(isPublisherMode, () => {
 const openQualifiedDeal = (deal: QualifiedDealRow) => {
   if (isPublisherMode.value) {
     const centerId = deal.lead_vendor ? (qualifiedDealCenterIdMap.value.get(deal.lead_vendor) ?? null) : null
-    const qs = new URLSearchParams({ mode: 'publisher', deal_id: deal.id })
+    const qs = new URLSearchParams({ mode: 'publisher', deal_id: deal.id, quick: '1' })
     if (centerId) qs.set('center_id', centerId)
     router.push(`/invoicing/create?${qs.toString()}`)
     return
   }
 
   const lawyerId = deal.assigned_attorney_id ?? ''
-  const qs = new URLSearchParams({ mode: 'lawyer', deal_id: deal.id })
+  const qs = new URLSearchParams({ mode: 'lawyer', deal_id: deal.id, quick: '1' })
   if (lawyerId) qs.set('lawyer_id', lawyerId)
   router.push(`/invoicing/create?${qs.toString()}`)
+}
+
+function openLeadDetails(deal: QualifiedDealRow) {
+  const from = route.fullPath
+  router.push(`/retainers/${deal.id}?from=${encodeURIComponent(from)}`)
 }
 
 const openInvoicePdf = (invoice: InvoiceRow) => {
   const url = router.resolve(`/invoicing/${invoice.id}/pdf`).href
   window.open(url, '_blank')
+}
+
+const requestDeleteInvoice = (invoice: InvoiceRow) => {
+  deleteTarget.value = invoice
+  deleteConfirmOpen.value = true
+}
+
+const confirmDeleteInvoice = async () => {
+  if (!deleteTarget.value) return
+  deletingInvoice.value = true
+  error.value = null
+
+  try {
+    const invoiceId = deleteTarget.value.id
+
+    const { error: dfErr1 } = await supabase
+      .from('daily_deal_flow')
+      .update({ invoice_id: null })
+      .eq('invoice_id', invoiceId)
+    if (dfErr1) throw new Error(dfErr1.message)
+
+    const { error: dfErr2 } = await supabase
+      .from('daily_deal_flow')
+      .update({ publisher_invoice_id: null })
+      .eq('publisher_invoice_id', invoiceId)
+    if (dfErr2) throw new Error(dfErr2.message)
+
+    await deleteInvoice(invoiceId)
+
+    deleteConfirmOpen.value = false
+    deleteTarget.value = null
+    await load()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Failed to delete invoice'
+  } finally {
+    deletingInvoice.value = false
+  }
 }
 
 const editInvoice = (invoice: InvoiceRow) => {
@@ -633,6 +680,7 @@ watch(pageCount, () => {
                 : [
                     { label: 'All Statuses', value: 'all' },
                     { label: 'Billable', value: 'pending' },
+                    { label: 'In Review', value: 'in_review' },
                     { label: 'Signed – Awaiting to be Paid', value: 'signed_awaiting' },
                     { label: 'In Preview', value: 'in_preview' },
                     { label: 'Paid', value: 'paid' },
@@ -718,6 +766,42 @@ watch(pageCount, () => {
           class="rounded-xl"
         />
 
+        <UModal v-model:open="deleteConfirmOpen" title="Delete invoice" :dismissible="false">
+          <template #body>
+            <div class="space-y-4">
+              <p class="text-sm text-white/80">
+                This will permanently delete this invoice.
+              </p>
+
+              <UAlert
+                v-if="deleteTarget"
+                color="warning"
+                variant="subtle"
+                title="You are deleting"
+                :description="deleteTarget.invoice_number"
+              />
+
+              <div class="flex justify-end gap-2">
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  :disabled="deletingInvoice"
+                  @click="deleteConfirmOpen = false"
+                >
+                  Cancel
+                </UButton>
+                <UButton
+                  color="error"
+                  :loading="deletingInvoice"
+                  @click="confirmDeleteInvoice"
+                >
+                  Delete invoice
+                </UButton>
+              </div>
+            </div>
+          </template>
+        </UModal>
+
         <!-- Loading -->
         <div v-if="loading && !invoices.length" class="flex flex-1 items-center justify-center p-12">
           <div class="flex flex-col items-center gap-3">
@@ -726,8 +810,8 @@ watch(pageCount, () => {
           </div>
         </div>
 
-        <!-- Empty State -->
-        <div v-else-if="!loading && !invoices.length" class="flex flex-1 items-center justify-center p-12">
+        <!-- Empty State (List view only) -->
+        <div v-else-if="!loading && viewMode === 'list' && !invoices.length" class="flex flex-1 items-center justify-center p-12">
           <div class="flex flex-col items-center gap-4 text-center">
             <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--ap-accent)]/10">
               <UIcon name="i-lucide-receipt" class="text-3xl text-[var(--ap-accent)]/60" />
@@ -775,23 +859,33 @@ watch(pageCount, () => {
                   v-for="deal in (status === 'pending' ? filteredQualifiedDeals : [])"
                   :key="`deal-${deal.id}`"
                   class="group cursor-pointer rounded-xl border border-dashed border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-3 transition-all duration-200 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.04]"
-                  @click="openQualifiedDeal(deal)"
+                  @click="openLeadDetails(deal)"
                 >
                   <div class="flex items-start justify-between gap-2">
                     <div class="min-w-0">
                       <div class="truncate text-sm font-semibold text-highlighted group-hover:text-[var(--ap-accent)]">
                         {{ deal.insured_name || '—' }}
                       </div>
-                      <div class="mt-0.5 text-xs text-muted">
-                        {{ deal.submission_id || '—' }}
+                      <div v-if="deal.client_phone_number" class="mt-0.5 text-xs text-muted">
+                        {{ deal.client_phone_number }}
                       </div>
-                      <div v-if="deal.lead_vendor" class="mt-0.5 text-xs text-muted">
-                        {{ deal.lead_vendor }}
+                      <div v-if="deal.created_at" class="mt-0.5 text-xs text-muted">
+                        {{ formatDate(deal.created_at) }}
                       </div>
                     </div>
                     <div class="shrink-0 text-[10px] font-semibold text-amber-400 bg-amber-500/10 rounded-lg px-2 py-1">
-                      Lead
+                      Retainer
                     </div>
+                  </div>
+
+                  <div class="mt-2 flex justify-end">
+                    <button
+                      class="rounded-lg px-2 py-1 text-[10px] font-semibold text-blue-400 bg-blue-500/10 opacity-0 transition-all hover:bg-blue-500/20 group-hover:opacity-100"
+                      title="Create Invoice"
+                      @click.stop="openQualifiedDeal(deal)"
+                    >
+                      + Invoice
+                    </button>
                   </div>
                 </div>
 
@@ -858,6 +952,14 @@ watch(pageCount, () => {
                         @click.stop="editInvoice(invoice)"
                       >
                         <UIcon name="i-lucide-pencil" class="text-xs" />
+                      </button>
+                      <button
+                        v-if="isSuperAdmin"
+                        class="rounded-lg p-1 text-muted opacity-0 transition-all hover:bg-[var(--ap-card-border)] hover:text-red-300 group-hover:opacity-100"
+                        title="Delete invoice"
+                        @click.stop="requestDeleteInvoice(invoice)"
+                      >
+                        <UIcon name="i-lucide-trash" class="text-xs" />
                       </button>
                       <button
                         class="rounded-lg p-1 text-muted opacity-0 transition-all hover:bg-[var(--ap-card-border)] hover:text-highlighted group-hover:opacity-100"

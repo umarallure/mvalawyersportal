@@ -21,6 +21,7 @@ import {
   type DealFlowRow
 } from '../lib/invoices'
 import { listCenters, type CenterRow } from '../lib/centers'
+import { supabase } from '../lib/supabase'
 
 const route = useRoute()
 const router = useRouter()
@@ -29,6 +30,7 @@ const auth = useAuth()
 const isEdit = computed(() => route.path.includes('/edit/'))
 const invoiceId = computed(() => (route.params as Record<string, string>).id ?? null)
 const isPublisherMode = computed(() => route.query.mode === 'publisher')
+const isQuickFlow = computed(() => route.query.quick === '1')
 const pageTitle = computed(() => {
   if (isEdit.value) return isPublisherMode.value ? 'Edit Publisher Invoice' : 'Edit Invoice'
   return isPublisherMode.value ? 'Create Publisher Invoice' : 'Create Invoice'
@@ -119,9 +121,9 @@ const statusOptions = computed(() =>
 )
 
 watch(isPublisherMode, (isPub) => {
-  // Default newly-created lawyer invoices to the second stage
+  // Default newly-created invoices to review stage
   if (!isEdit.value) {
-    form.value.status = (isPub ? 'pending' : 'signed_awaiting') as InvoiceStatus
+    form.value.status = (isPub ? 'in_review' : 'in_review') as InvoiceStatus
   }
 })
 
@@ -140,7 +142,7 @@ const validItems = computed(() => {
         amount
       }
     })
-    .filter(i => i.description.length > 0 && i.quantity > 0 && i.unit_price > 0)
+    .filter(i => i.description.length > 0 && i.quantity > 0 && (isQuickFlow.value ? i.unit_price >= 0 : i.unit_price > 0))
 })
 
 const subtotal = computed(() =>
@@ -194,7 +196,17 @@ const recalcItem = (index: number) => {
 }
 
 const toDealUnitPrice = (deal: DealFlowRow) => {
-  const n = Number(deal.face_amount ?? 0)
+  const raw = (deal as unknown as { face_amount?: unknown }).face_amount
+  if (raw === null || raw === undefined) return 0
+  if (typeof raw === 'number') {
+    if (!Number.isFinite(raw)) return 0
+    return Math.max(0, Math.round(raw * 100) / 100)
+  }
+
+  const s = String(raw).trim()
+  if (!s) return 0
+  const normalized = s.replace(/[^0-9.-]/g, '')
+  const n = Number(normalized)
   if (!Number.isFinite(n)) return 0
   return Math.max(0, Math.round(n * 100) / 100)
 }
@@ -210,9 +222,9 @@ const syncItemsWithSelectedDeals = () => {
   const selected = deals.value.filter(d => d.selected)
   const selectedForInvoice = selected.filter(d => {
     const name = String(d.insured_name ?? '').trim()
-    return name.length > 0 && toDealUnitPrice(d) > 0
+    return name.length > 0 && (isQuickFlow.value || toDealUnitPrice(d) > 0)
   })
-  const selectedIds = new Set(selectedForInvoice.map(d => d.id))
+  const selectedIds = new Set(selected.map(d => d.id))
 
   // Keep any manually-added items (no deal_id)
   const manualItems = form.value.items.filter(i => !i.deal_id)
@@ -242,7 +254,7 @@ const canSubmit = computed(() => {
     if (!form.value.lead_vendor_id) return false
   } else {
     if (!form.value.lawyer_id) return false
-    if (!form.value.date_range_start || !form.value.date_range_end) return false
+    if (!isQuickFlow.value && (!form.value.date_range_start || !form.value.date_range_end)) return false
   }
   if (!form.value.due_date) return false
   if (validItems.value.length === 0) return false
@@ -277,6 +289,16 @@ const fetchDeals = async () => {
   }
 
   if (!form.value.lawyer_id || !form.value.date_range_start || !form.value.date_range_end) {
+    // Keep any preselected deal injected via query params (deal_id) so the
+    // auto-generated line item (face_amount) remains available even before a date range is chosen.
+    if (form.value.deal_ids.length && deals.value.some(d => form.value.deal_ids.includes(d.id))) {
+      deals.value.forEach((d) => {
+        d.selected = form.value.deal_ids.includes(d.id)
+      })
+      syncItemsWithSelectedDeals()
+      return
+    }
+
     deals.value = []
     return
   }
@@ -302,6 +324,65 @@ const fetchDeals = async () => {
   } finally {
     loadingDeals.value = false
   }
+}
+
+const ensureDealSelected = async (dealId: string) => {
+  if (!dealId) return
+
+  if (!form.value.deal_ids.includes(dealId)) {
+    form.value.deal_ids = [dealId]
+  }
+
+  const existing = deals.value.find(d => d.id === dealId)
+  if (existing) {
+    existing.selected = true
+    syncItemsWithSelectedDeals()
+    return
+  }
+
+  const { data, error } = await supabase
+    .from('daily_deal_flow')
+    .select('id,submission_id,insured_name,client_phone_number,lead_vendor,date,status,assigned_attorney_id,agent,carrier,face_amount,invoice_id,publisher_invoice_id,created_at')
+    .eq('id', dealId)
+    .maybeSingle()
+
+  if (error) throw new Error(error.message)
+  if (!data) return
+
+  const fetched = data as DealFlowRow
+  const unit = toDealUnitPrice(fetched)
+  const desc = String(fetched.insured_name ?? '').trim() || 'Unknown'
+
+  deals.value = [
+    {
+      ...fetched,
+      selected: true,
+    },
+    ...deals.value,
+  ]
+
+  if (isQuickFlow.value || unit > 0) {
+    const existing = form.value.items.find(i => i.deal_id === dealId)
+    if (existing) {
+      existing.description = desc
+      existing.quantity = 1
+      existing.unit_price = unit
+      existing.amount = unit
+    } else {
+      form.value.items = [
+        ...form.value.items,
+        {
+          deal_id: dealId,
+          description: desc,
+          quantity: 1,
+          unit_price: unit,
+          amount: unit,
+        },
+      ]
+    }
+  }
+
+  syncItemsWithSelectedDeals()
 }
 
 const toggleDeal = (dealId: string) => {
@@ -419,7 +500,7 @@ const handleSave = async () => {
       error.value = 'Please select a lawyer'
       return
     }
-    if (!form.value.date_range_start || !form.value.date_range_end) {
+    if (!isQuickFlow.value && (!form.value.date_range_start || !form.value.date_range_end)) {
       error.value = 'Please select a date range'
       return
     }
@@ -440,8 +521,8 @@ const handleSave = async () => {
 
     const today = new Date().toISOString().slice(0, 10)
     const basePayload = {
-      date_range_start: form.value.date_range_start || today,
-      date_range_end: form.value.date_range_end || today,
+      date_range_start: isQuickFlow.value ? today : (form.value.date_range_start || today),
+      date_range_end: isQuickFlow.value ? today : (form.value.date_range_end || today),
       deal_ids: form.value.deal_ids,
       items: validItems.value.map(({ description, quantity, unit_price, amount }) => ({
         description,
@@ -561,6 +642,8 @@ onMounted(async () => {
             deal.selected = true
             form.value.deal_ids = [qDealId]
             syncItemsWithSelectedDeals()
+          } else {
+            await ensureDealSelected(qDealId)
           }
         }
       } else if (!isPublisherMode.value && qLawyerId) {
@@ -569,7 +652,7 @@ onMounted(async () => {
         // Deals need a date range — we can't auto-load without one
         // but we store the deal_id so it auto-selects once dates are picked
         if (qDealId) {
-          form.value.deal_ids = [qDealId]
+          await ensureDealSelected(qDealId)
         }
       }
     }
@@ -690,7 +773,7 @@ onMounted(async () => {
                     />
                   </div>
 
-                  <div>
+                  <div v-if="!isQuickFlow">
                     <label class="mb-1.5 block text-xs font-medium text-muted">
                       Date Range Start <span v-if="!isPublisherMode" class="text-red-400">*</span>
                     </label>
@@ -701,7 +784,7 @@ onMounted(async () => {
                     />
                   </div>
 
-                  <div>
+                  <div v-if="!isQuickFlow">
                     <label class="mb-1.5 block text-xs font-medium text-muted">
                       Date Range End <span v-if="!isPublisherMode" class="text-red-400">*</span>
                     </label>
@@ -756,10 +839,15 @@ onMounted(async () => {
                 </div>
 
                 <div
-                  v-if="isPublisherMode ? !form.lead_vendor_id : (!form.lawyer_id || !form.date_range_start || !form.date_range_end)"
+                  v-if="isPublisherMode ? !form.lead_vendor_id : (!form.lawyer_id || (!isQuickFlow && (!form.date_range_start || !form.date_range_end)))"
                   class="rounded-xl border border-dashed border-[var(--ap-card-border)] px-4 py-8 text-center text-xs text-muted"
                 >
-                  {{ isPublisherMode ? 'Select a lead vendor to load their approved deals' : 'Select a lawyer and date range to load deals' }}
+                  {{ isPublisherMode
+                    ? 'Select a lead vendor to load their approved deals'
+                    : (isQuickFlow
+                      ? 'Select a lawyer to attach this retainer'
+                      : 'Select a lawyer and date range to load deals')
+                  }}
                 </div>
 
                 <div v-else-if="loadingDeals" class="flex items-center justify-center py-8">

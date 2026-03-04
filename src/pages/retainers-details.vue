@@ -66,7 +66,7 @@ const payToPublisher = async () => {
       centerId = data?.id ?? null
       centerLookupId.value = centerId
     }
-    const params = new URLSearchParams({ mode: 'publisher' })
+    const params = new URLSearchParams({ mode: 'publisher', quick: '1' })
     if (centerId) params.set('center_id', centerId)
     params.set('deal_id', row.value.id)
     router.push(`/invoicing/create?${params.toString()}`)
@@ -77,7 +77,7 @@ const payToPublisher = async () => {
 
 const getPaidByLawyer = () => {
   if (!row.value) return
-  const params = new URLSearchParams({ mode: 'lawyer' })
+  const params = new URLSearchParams({ mode: 'lawyer', quick: '1' })
   if (row.value.assigned_attorney_id) params.set('lawyer_id', row.value.assigned_attorney_id)
   params.set('deal_id', row.value.id)
   router.push(`/invoicing/create?${params.toString()}`)

@@ -247,6 +247,34 @@ const kanbanColumns = computed(() =>
 const draggedCard = ref<RetainerSettlementRow | null>(null)
 const dragOverColumn = ref<string | null>(null)
 const isDragging = ref(false)
+const kanbanBoardEl = ref<HTMLElement | null>(null)
+let lastAutoScrollAt = 0
+
+const autoScrollKanbanBoard = (e: DragEvent) => {
+  if (!isDragging.value) return
+  const el = kanbanBoardEl.value
+  if (!el) return
+
+  const now = performance.now()
+  if (now - lastAutoScrollAt < 16) return
+  lastAutoScrollAt = now
+
+  const rect = el.getBoundingClientRect()
+  const x = e.clientX
+  const threshold = 64
+  const maxSpeed = 10
+
+  const leftDist = x - rect.left
+  const rightDist = rect.right - x
+
+  if (leftDist < threshold) {
+    const intensity = Math.max(0, Math.min(1, (threshold - leftDist) / threshold))
+    el.scrollLeft -= Math.ceil(maxSpeed * intensity)
+  } else if (rightDist < threshold) {
+    const intensity = Math.max(0, Math.min(1, (threshold - rightDist) / threshold))
+    el.scrollLeft += Math.ceil(maxSpeed * intensity)
+  }
+}
 
 const onDragStart = (e: DragEvent, row: RetainerSettlementRow) => {
   isDragging.value = true
@@ -261,6 +289,13 @@ const onDragOver = (e: DragEvent, colLabel: string) => {
   e.preventDefault()
   if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
   dragOverColumn.value = colLabel
+  autoScrollKanbanBoard(e)
+}
+
+const onBoardDragOver = (e: DragEvent) => {
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  autoScrollKanbanBoard(e)
 }
 
 const onDragLeave = () => {
@@ -721,7 +756,12 @@ onMounted(load)
           </div>
 
           <!-- Kanban Columns -->
-          <div v-else class="flex flex-1 min-h-0 gap-4 overflow-x-auto pb-2 kanban-scroll">
+          <div
+            v-else
+            ref="kanbanBoardEl"
+            class="flex flex-1 min-h-0 gap-4 overflow-x-auto pb-2 kanban-scroll"
+            @dragover="onBoardDragOver"
+          >
             <div
               v-for="col in kanbanColumns"
               :key="col.key"

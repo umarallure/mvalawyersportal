@@ -23,6 +23,16 @@ export const SETTLEMENT_STAGE_LABELS = [
   PIPELINE_STAGES.PAID_TO_BPO.label,
 ] as const
 
+const STATUS_KEY_TO_LABEL: Record<string, string> = {
+  qualified_payable: PIPELINE_STAGES.RETAINER_SIGNED.label,
+  retainer_signed: PIPELINE_STAGES.RETAINER_SIGNED.label,
+  attorney_review: PIPELINE_STAGES.ATTORNEY_REVIEW.label,
+  approved_payable: PIPELINE_STAGES.APPROVED_PAYABLE.label,
+  paid_to_bpo: PIPELINE_STAGES.PAID_TO_BPO.label,
+}
+
+const LEGACY_QUALIFIED_PAYABLE_LABEL = 'Qualified/Payable'
+
 export type SettlementStageLabel = typeof SETTLEMENT_STAGE_LABELS[number]
 
 export const INBOUND_STATUS = {
@@ -100,7 +110,11 @@ export async function listSettlements(): Promise<RetainerSettlementRow[]> {
   const { data, error } = await supabase
     .from('daily_deal_flow')
     .select('id,submission_id,insured_name,client_phone_number,lead_vendor,date,status,face_amount,assigned_attorney_id,created_at')
-    .in('status', [...SETTLEMENT_STAGE_LABELS])
+    .in('status', [
+      ...SETTLEMENT_STAGE_LABELS,
+      ...Object.keys(STATUS_KEY_TO_LABEL),
+      LEGACY_QUALIFIED_PAYABLE_LABEL,
+    ])
     .order('created_at', { ascending: false })
 
   if (error) throw new Error(error.message)
@@ -133,7 +147,10 @@ export async function listSettlements(): Promise<RetainerSettlementRow[]> {
   return rows.map((r): RetainerSettlementRow => {
     const attId = r.assigned_attorney_id ? String(r.assigned_attorney_id) : null
     const attName = attId ? (attorneyMap.get(attId) || null) : null
-    const status = String(r.status ?? '')
+    const rawStatus = String(r.status ?? '')
+    const status = rawStatus === LEGACY_QUALIFIED_PAYABLE_LABEL
+      ? PIPELINE_STAGES.RETAINER_SIGNED.label
+      : (STATUS_KEY_TO_LABEL[rawStatus] ?? rawStatus)
     const payment = derivePaymentState(status)
 
     return {

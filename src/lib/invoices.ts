@@ -94,7 +94,7 @@ export async function createInvoice(input: {
       tax_rate: input.tax_rate,
       tax_amount: input.tax_amount,
       total_amount: input.total_amount,
-      status: input.status ?? 'pending',
+      status: input.status ?? 'in_review',
       notes: input.notes ?? null,
       due_date: input.due_date ?? null
     })
