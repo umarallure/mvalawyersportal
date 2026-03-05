@@ -26,6 +26,9 @@ const error = ref<string | null>(null)
 const query = ref('')
 const attorneyFilter = ref('All')
 const statusFilter = ref('All')
+const filterDateStart = ref('')
+const filterDateEnd = ref('')
+const filterSignedDate = ref<'all' | 'today' | 'yesterday' | 'this_week'>('all')
 const viewMode = ref<'table' | 'kanban'>('kanban')
 
 const pageSize = 25
@@ -67,12 +70,39 @@ const statusOptions = computed(() => [
 const filtered = computed(() => {
   let result = rows.value
 
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const todayStr = today.toISOString().slice(0, 10)
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayStr = yesterday.toISOString().slice(0, 10)
+  const weekStart = new Date(today)
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay())
+  const weekStartStr = weekStart.toISOString().slice(0, 10)
+
   if (attorneyFilter.value !== 'All') {
     result = result.filter(r => r.assigned_attorney_name === attorneyFilter.value)
   }
 
   if (statusFilter.value !== 'All') {
     result = result.filter(r => r.status === statusFilter.value)
+  }
+
+  if (filterDateStart.value) {
+    result = result.filter(r => (r.date_signed ?? '').slice(0, 10) >= filterDateStart.value)
+  }
+  if (filterDateEnd.value) {
+    result = result.filter(r => (r.date_signed ?? '').slice(0, 10) <= filterDateEnd.value)
+  }
+
+  if (filterSignedDate.value !== 'all') {
+    result = result.filter(r => {
+      const ds = (r.date_signed ?? '').slice(0, 10)
+      if (!ds) return false
+      if (filterSignedDate.value === 'today') return ds === todayStr
+      if (filterSignedDate.value === 'yesterday') return ds === yesterdayStr
+      return ds >= weekStartStr
+    })
   }
 
   const q = query.value.trim().toLowerCase()
@@ -342,7 +372,7 @@ const onCardClick = (row: RetainerSettlementRow) => {
 }
 
 // ── Watchers ──
-watch([query, attorneyFilter, statusFilter], () => {
+watch([query, attorneyFilter, statusFilter, filterDateStart, filterDateEnd, filterSignedDate], () => {
   currentPage.value = 1
 })
 
@@ -482,13 +512,45 @@ onMounted(load)
             <USelect
               v-model="attorneyFilter"
               :items="attorneyOptions"
+              placeholder="Attorney: All"
               class="w-48 [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
             />
 
             <USelect
               v-model="statusFilter"
               :items="statusOptions"
+              placeholder="Stage: All"
               class="w-48 [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
+            />
+
+            <UInput
+              v-model="filterDateStart"
+              type="date"
+              class="w-38 [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)]"
+              placeholder="Signed start"
+              title="Signed date start"
+            />
+
+            <UInput
+              v-model="filterDateEnd"
+              type="date"
+              class="w-38 [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)]"
+              placeholder="Signed end"
+              title="Signed date end"
+            />
+
+            <USelect
+              v-model="filterSignedDate"
+              :items="[
+                { label: 'Signed: Any', value: 'all' },
+                { label: 'Signed: Today', value: 'today' },
+                { label: 'Signed: Yesterday', value: 'yesterday' },
+                { label: 'Signed: This Week', value: 'this_week' },
+              ]"
+              value-key="value"
+              label-key="label"
+              placeholder="Signed: Any"
+              class="w-44 [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
             />
           </div>
 

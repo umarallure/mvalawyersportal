@@ -36,6 +36,9 @@ export interface AttorneyProfileData {
   litigation_style?: number | null
   largest_settlement_amount?: number | null
   avg_time_to_close?: string | null
+
+  case_rate_per_deal?: number | null
+  upfront_payment_percentage?: number | null
 }
 
 /**

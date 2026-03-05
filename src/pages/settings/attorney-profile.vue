@@ -73,10 +73,6 @@ onMounted(async () => {
     await attorneyProfile.loadProfile(userId.value)
   }
   hydrateFromAuth()
-
-  if (attorneyProfile.isEditing.value && !attorneyProfile.isDirty.value) {
-    attorneyProfile.cancelEditing()
-  }
 })
 
 watch(
@@ -124,6 +120,14 @@ async function onSubmit() {
     })
   } finally {
     saving.value = false
+  }
+}
+
+async function onNext() {
+  await onSubmit()
+  if (!saving.value) {
+    attorneyProfile.startEditing()
+    router.push('/settings/expertise')
   }
 }
 
@@ -210,12 +214,12 @@ onBeforeRouteLeave((to) => {
         />
         <template v-else>
           <UButton
-            form="attorney-profile"
-            label="Save changes"
-            type="submit"
+            label="Next"
+            type="button"
             icon="i-lucide-check"
             :loading="saving"
             class="rounded-lg bg-[var(--ap-accent)] text-white hover:bg-[var(--ap-accent)]/90"
+            @click="onNext"
           />
           <UButton
             label="Cancel"

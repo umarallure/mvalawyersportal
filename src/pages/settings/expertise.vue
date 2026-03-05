@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import * as z from 'zod'
 import { computed, onMounted, ref } from 'vue'
-import { onBeforeRouteLeave } from 'vue-router'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import type { FormSubmitEvent } from '@nuxt/ui'
 
 import { useAuth } from '../../composables/useAuth'
@@ -25,6 +25,7 @@ const auth = useAuth()
 const attorneyProfile = useAttorneyProfile()
 const saving = ref(false)
 const toast = useToast()
+const router = useRouter()
 
 const userId = computed(() => auth.state.value.user?.id ?? '')
 
@@ -73,14 +74,12 @@ onMounted(async () => {
   if (userId.value) {
     await attorneyProfile.loadProfile(userId.value)
   }
-
-  if (attorneyProfile.isEditing.value && !attorneyProfile.isDirty.value) {
-    attorneyProfile.cancelEditing()
-  }
 })
 
-async function onSubmit(event: FormSubmitEvent<ExpertiseSchema>) {
+async function onSubmit(_event: FormSubmitEvent<ExpertiseSchema>) {
   if (!userId.value) return
+
+  void _event
 
   saving.value = true
   try {
@@ -111,6 +110,22 @@ async function onSubmit(event: FormSubmitEvent<ExpertiseSchema>) {
     })
   } finally {
     saving.value = false
+  }
+}
+
+async function onNext() {
+  await onSubmit({} as FormSubmitEvent<ExpertiseSchema>)
+  if (!saving.value) {
+    attorneyProfile.startEditing()
+    router.push('/settings/capacity')
+  }
+}
+
+async function onBack() {
+  await onSubmit({} as FormSubmitEvent<ExpertiseSchema>)
+  if (!saving.value) {
+    attorneyProfile.startEditing()
+    router.push('/settings/attorney-profile')
   }
 }
 
@@ -196,12 +211,22 @@ onBeforeRouteLeave((to, from, next) => {
         />
         <template v-else>
           <UButton
-            form="expertise"
-            label="Save changes"
-            type="submit"
-            icon="i-lucide-check"
+            label="Back"
+            type="button"
+            icon="i-lucide-arrow-left"
+            color="neutral"
+            variant="outline"
+            :loading="saving"
+            class="rounded-lg"
+            @click="onBack"
+          />
+          <UButton
+            label="Next"
+            type="button"
+            icon="i-lucide-arrow-right"
             :loading="saving"
             class="rounded-lg bg-[var(--ap-accent)] text-white hover:bg-[var(--ap-accent)]/90"
+            @click="onNext"
           />
           <UButton
             label="Cancel"

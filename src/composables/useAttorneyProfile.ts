@@ -31,13 +31,8 @@ export interface AttorneyProfileState {
   minimumCaseValue?: number
   
   // Tab 3: Capacity & Performance
-  availabilityStatus?: 'accepting' | 'at_capacity' | 'on_leave'
-  firmSize?: 'solo' | 'small' | 'medium' | 'large'
-  caseManagementSoftware?: string
-  insuranceCarriers?: string[]
-  litigationStyle?: number
-  largestSettlement?: number
-  avgTimeToClose?: string
+  caseRatePerDeal?: number
+  upfrontPaymentPercentage?: number
 }
 
 const _useAttorneyProfile = () => {
@@ -84,18 +79,13 @@ const _useAttorneyProfile = () => {
     if ('exclusionaryCriteria' in data) out.exclusionary_criteria = data.exclusionaryCriteria ?? []
     if ('minimumCaseValue' in data) out.minimum_case_value = data.minimumCaseValue ?? null
 
-    if ('availabilityStatus' in data) out.availability_status = data.availabilityStatus ?? null
-    if ('firmSize' in data) out.firm_size = data.firmSize ?? null
-    if ('caseManagementSoftware' in data) out.case_management_software = data.caseManagementSoftware ? data.caseManagementSoftware : null
-    if ('insuranceCarriers' in data) out.insurance_carriers_handled = data.insuranceCarriers ?? []
-    if ('litigationStyle' in data) out.litigation_style = data.litigationStyle ?? null
-    if ('largestSettlement' in data) out.largest_settlement_amount = data.largestSettlement ?? null
-    if ('avgTimeToClose' in data) out.avg_time_to_close = data.avgTimeToClose ? data.avgTimeToClose : null
+    if ('caseRatePerDeal' in data) out.case_rate_per_deal = data.caseRatePerDeal ?? null
+    if ('upfrontPaymentPercentage' in data) out.upfront_payment_percentage = data.upfrontPaymentPercentage ?? null
 
     return out
   }
 
-  const mapDatabaseToState = (dbProfile: any): AttorneyProfileState => {
+  const mapDatabaseToState = (dbProfile: Partial<AttorneyProfileData>): AttorneyProfileState => {
     return {
       profilePhoto: dbProfile.profile_photo_url || '',
       fullName: dbProfile.full_name || '',
@@ -120,13 +110,8 @@ const _useAttorneyProfile = () => {
       injuryCategories: dbProfile.injury_categories || [],
       exclusionaryCriteria: dbProfile.exclusionary_criteria || [],
       minimumCaseValue: dbProfile.minimum_case_value || undefined,
-      availabilityStatus: dbProfile.availability_status || undefined,
-      firmSize: dbProfile.firm_size || undefined,
-      caseManagementSoftware: dbProfile.case_management_software || '',
-      insuranceCarriers: dbProfile.insurance_carriers_handled || [],
-      litigationStyle: dbProfile.litigation_style || 3,
-      largestSettlement: dbProfile.largest_settlement_amount || undefined,
-      avgTimeToClose: dbProfile.avg_time_to_close || ''
+      caseRatePerDeal: dbProfile.case_rate_per_deal ?? undefined,
+      upfrontPaymentPercentage: dbProfile.upfront_payment_percentage ?? undefined
     }
   }
 
@@ -187,13 +172,8 @@ const _useAttorneyProfile = () => {
         injury_categories: mergedData.injuryCategories || [],
         exclusionary_criteria: mergedData.exclusionaryCriteria || [],
         minimum_case_value: mergedData.minimumCaseValue || null,
-        availability_status: mergedData.availabilityStatus || null,
-        firm_size: mergedData.firmSize || null,
-        case_management_software: mergedData.caseManagementSoftware || null,
-        insurance_carriers_handled: mergedData.insuranceCarriers || [],
-        litigation_style: mergedData.litigationStyle || null,
-        largest_settlement_amount: mergedData.largestSettlement || null,
-        avg_time_to_close: mergedData.avgTimeToClose || null
+        case_rate_per_deal: mergedData.caseRatePerDeal || null,
+        upfront_payment_percentage: mergedData.upfrontPaymentPercentage || null
       }
 
       const profile = await saveAttorneyProfile(userId, dbData)
@@ -228,7 +208,7 @@ const _useAttorneyProfile = () => {
     const selected = fields ?? []
     const partial: Partial<AttorneyProfileState> = {}
     for (const key of selected) {
-      ;(partial as any)[key] = (draft.value as any)[key]
+      partial[key] = draft.value[key]
     }
 
     loading.value = true
@@ -274,9 +254,8 @@ const _useAttorneyProfile = () => {
     const optionalFields = [
       'bio', 'yearsExperience', 'websiteUrl', 'preferredContact',
       'assistantName', 'assistantEmail', 'countiesCovered', 'federalCourts',
-      'exclusionaryCriteria', 'minimumCaseValue', 'availabilityStatus', 'firmSize',
-      'caseManagementSoftware', 'insuranceCarriers', 'litigationStyle',
-      'largestSettlement', 'avgTimeToClose'
+      'exclusionaryCriteria', 'minimumCaseValue', 'blockedStates',
+      'caseRatePerDeal', 'upfrontPaymentPercentage'
     ]
 
     let filledRequired = 0

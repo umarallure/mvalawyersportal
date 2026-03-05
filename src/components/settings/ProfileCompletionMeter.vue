@@ -8,7 +8,7 @@ interface ProfileData {
   barNumber?: string
   bio?: string
   yearsExperience?: number | string
-  languages?: string[]
+  languages?: readonly string[]
   directPhone?: string
   officeAddress?: string
   websiteUrl?: string
@@ -17,23 +17,18 @@ interface ProfileData {
   assistantEmail?: string
   
   // Tab 2: Expertise & Jurisdiction
-  licensedStates?: string[]
+  licensedStates?: readonly string[]
   primaryCity?: string
-  countiesCovered?: string[]
+  countiesCovered?: readonly string[]
   federalCourts?: string
   primaryPracticeFocus?: string
-  injuryCategories?: string[]
-  exclusionaryCriteria?: string[]
+  injuryCategories?: readonly string[]
+  exclusionaryCriteria?: readonly string[]
   minimumCaseValue?: number | string
   
   // Tab 3: Capacity & Performance
-  availabilityStatus?: string
-  firmSize?: string
-  caseManagementSoftware?: string
-  insuranceCarriers?: string[]
-  litigationStyle?: number
-  largestSettlement?: number | string
-  avgTimeToClose?: string
+  caseRatePerDeal?: number | string
+  upfrontPaymentPercentage?: number | string
 }
 
 const props = defineProps<{
@@ -50,8 +45,7 @@ const requiredFields = [
   'licensedStates',
   'primaryCity',
   'primaryPracticeFocus',
-  'injuryCategories',
-  'availabilityStatus'
+  'injuryCategories'
 ]
 
 const optionalFields = [
@@ -65,12 +59,8 @@ const optionalFields = [
   'federalCourts',
   'exclusionaryCriteria',
   'minimumCaseValue',
-  'firmSize',
-  'caseManagementSoftware',
-  'insuranceCarriers',
-  'litigationStyle',
-  'largestSettlement',
-  'avgTimeToClose'
+  'caseRatePerDeal',
+  'upfrontPaymentPercentage'
 ]
 
 const completionPercentage = computed(() => {

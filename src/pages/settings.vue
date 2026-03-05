@@ -21,7 +21,7 @@ const links = [[{
   to: '/settings/expertise',
   exact: true
 }], [{
-  label: 'Capacity & Performance',
+  label: 'Pricing',
   icon: 'i-lucide-activity',
   to: '/settings/capacity',
   exact: true

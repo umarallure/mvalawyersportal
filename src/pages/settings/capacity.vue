@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import * as z from 'zod'
-import { computed, onMounted, ref } from 'vue'
-import { onBeforeRouteLeave } from 'vue-router'
+import { computed, onMounted, ref, type Ref } from 'vue'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import type { FormSubmitEvent } from '@nuxt/ui'
 
 import { useAuth } from '../../composables/useAuth'
@@ -9,13 +9,8 @@ import { useAttorneyProfile } from '../../composables/useAttorneyProfile'
 import UnsavedChangesModal from '../../components/settings/UnsavedChangesModal.vue'
 
 const capacitySchema = z.object({
-  availabilityStatus: z.enum(['accepting', 'at_capacity', 'on_leave']).optional(),
-  firmSize: z.enum(['solo', 'small', 'medium', 'large']).optional(),
-  caseManagementSoftware: z.string().optional(),
-  insuranceCarriers: z.array(z.string()).optional(),
-  litigationStyle: z.number().min(1).max(5).optional(),
-  largestSettlement: z.number().min(0).optional().or(z.literal('')),
-  avgTimeToClose: z.string().optional()
+  caseRatePerDeal: z.number().min(0).optional().or(z.literal('')),
+  upfrontPaymentPercentage: z.number().min(0).max(100).optional().or(z.literal(''))
 })
 
 type CapacitySchema = z.output<typeof capacitySchema>
@@ -24,75 +19,29 @@ const auth = useAuth()
 const attorneyProfile = useAttorneyProfile()
 const saving = ref(false)
 const toast = useToast()
+const router = useRouter()
 
 const userId = computed(() => auth.state.value.user?.id ?? '')
 
-const profile = attorneyProfile.draft as unknown as { value: Partial<CapacitySchema> }
-
-const firmSizeOptions = [
-  'Solo',
-  'Small (2-10)',
-  'Medium (11-50)',
-  'Large (50+)'
-]
-
-const caseManagementOptions = [
-  'Clio',
-  'MyCase',
-  'PracticePanther',
-  'Smokeball',
-  'CASEpeer',
-  'Filevine',
-  'LawRuler',
-  'Other',
-  'None'
-]
-
-const insuranceCarrierOptions = [
-  'State Farm',
-  'GEICO',
-  'Progressive',
-  'Allstate',
-  'USAA',
-  'Liberty Mutual',
-  'Farmers',
-  'Nationwide',
-  'Travelers',
-  'American Family'
-]
-
-const timeToCloseOptions = [
-  'Less than 6 months',
-  '6-12 months',
-  '12-18 months',
-  '18-24 months',
-  'Over 24 months'
-]
+const profile = attorneyProfile.draft as unknown as Ref<Partial<CapacitySchema>>
 
 onMounted(async () => {
   await auth.init()
   if (userId.value) {
     await attorneyProfile.loadProfile(userId.value)
   }
-
-  if (attorneyProfile.isEditing.value && !attorneyProfile.isDirty.value) {
-    attorneyProfile.cancelEditing()
-  }
 })
 
 async function onSubmit(event: FormSubmitEvent<CapacitySchema>) {
   if (!userId.value) return
 
+  void event
+
   saving.value = true
   try {
     await attorneyProfile.commitEditing(userId.value, [
-      'availabilityStatus',
-      'firmSize',
-      'caseManagementSoftware',
-      'insuranceCarriers',
-      'litigationStyle',
-      'largestSettlement',
-      'avgTimeToClose'
+      'caseRatePerDeal',
+      'upfrontPaymentPercentage'
     ])
     
     toast.add({
@@ -111,6 +60,18 @@ async function onSubmit(event: FormSubmitEvent<CapacitySchema>) {
     })
   } finally {
     saving.value = false
+  }
+}
+
+async function onNext() {
+  await onSubmit({} as FormSubmitEvent<CapacitySchema>)
+}
+
+async function onBack() {
+  await onSubmit({} as FormSubmitEvent<CapacitySchema>)
+  if (!saving.value) {
+    attorneyProfile.startEditing()
+    router.push('/settings/expertise')
   }
 }
 
@@ -146,7 +107,7 @@ const handleStay = () => {
   pendingNav.value = null
 }
 
-onBeforeRouteLeave((to, from, next) => {
+onBeforeRouteLeave((_to, _from, next) => {
   if (attorneyProfile.isEditing.value && attorneyProfile.isDirty.value) {
     pendingNav.value = () => next()
     confirmLeave()
@@ -181,10 +142,10 @@ onBeforeRouteLeave((to, from, next) => {
         </div>
         <div>
           <h2 class="text-base font-semibold text-highlighted">
-            Capacity & Performance
+            Pricing
           </h2>
           <p class="text-xs text-muted">
-            Manage your availability status and performance metrics.
+            Manage your rate and upfront settlement percentage.
           </p>
         </div>
       </div>
@@ -200,12 +161,22 @@ onBeforeRouteLeave((to, from, next) => {
         />
         <template v-else>
           <UButton
-            form="capacity"
-            label="Save changes"
-            type="submit"
+            label="Back"
+            type="button"
+            icon="i-lucide-arrow-left"
+            color="neutral"
+            variant="outline"
+            :loading="saving"
+            class="rounded-lg"
+            @click="onBack"
+          />
+          <UButton
+            label="Finish"
+            type="button"
             icon="i-lucide-check"
             :loading="saving"
             class="rounded-lg bg-[var(--ap-accent)] text-white hover:bg-[var(--ap-accent)]/90"
+            @click="onNext"
           />
           <UButton
             label="Cancel"
@@ -218,12 +189,12 @@ onBeforeRouteLeave((to, from, next) => {
       </div>
     </div>
 
-    <!-- Real-Time Status -->
+    <!-- Pricing -->
     <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] overflow-hidden">
       <div class="border-b border-[var(--ap-card-border)] px-5 py-3">
         <div class="flex items-center gap-2">
           <UIcon name="i-lucide-signal" class="text-sm text-muted" />
-          <span class="text-xs font-semibold uppercase tracking-wider text-muted">Real-Time Status</span>
+          <span class="text-xs font-semibold uppercase tracking-wider text-muted">Pricing</span>
         </div>
       </div>
 
@@ -231,19 +202,17 @@ onBeforeRouteLeave((to, from, next) => {
         <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
           <div class="min-w-0 flex-1">
             <label class="text-sm font-medium text-highlighted">
-              Firm Size
+              Rate Per Case
             </label>
             <p class="mt-0.5 text-xs text-muted">
-              Size of your law firm (optional)
+              Fixed amount charged per deal (optional)
             </p>
           </div>
           <div class="w-full sm:w-72">
-            <UInputMenu
-              v-model="profile.firmSize"
-              :items="firmSizeOptions"
-              searchable
-              creatable
-              placeholder="Select or type firm size"
+            <UInput
+              v-model.number="profile.caseRatePerDeal"
+              type="number"
+              placeholder="0"
               :disabled="disabled"
             />
           </div>
@@ -252,75 +221,17 @@ onBeforeRouteLeave((to, from, next) => {
         <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
           <div class="min-w-0 flex-1">
             <label class="text-sm font-medium text-highlighted">
-              Case Management Software
+              Upfront Settlement Percentage
             </label>
             <p class="mt-0.5 text-xs text-muted">
-              Software you use to manage cases (optional)
+              Percent of settlement amount to invoice upfront (lawyer mode only)
             </p>
           </div>
           <div class="w-full sm:w-72">
-            <UInputMenu
-              v-model="profile.caseManagementSoftware"
-              :items="caseManagementOptions"
-              searchable
-              creatable
-              placeholder="Select or type software"
-              :disabled="disabled"
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Performance Metrics -->
-    <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] overflow-hidden">
-      <div class="flex items-center justify-between border-b border-[var(--ap-card-border)] px-5 py-3">
-        <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-bar-chart-3" class="text-sm text-muted" />
-          <span class="text-xs font-semibold uppercase tracking-wider text-muted">Performance Metrics</span>
-        </div>
-        <span class="text-[11px] text-muted">Self-Reported</span>
-      </div>
-
-      <div class="divide-y divide-[var(--ap-card-divide)]">
-        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
-          <div class="min-w-0 flex-1">
-            <label class="text-sm font-medium text-highlighted">
-              Insurance Carriers Handled
-            </label>
-            <p class="mt-0.5 text-xs text-muted">
-              Select carriers you have experience with (optional)
-            </p>
-          </div>
-          <div class="w-full sm:w-72">
-            <UInputMenu
-              v-model="profile.insuranceCarriers"
-              :items="insuranceCarrierOptions"
-              multiple
-              searchable
-              creatable
-              placeholder="Select or type carriers"
-              :disabled="disabled"
-            />
-          </div>
-        </div>
-
-        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
-          <div class="min-w-0 flex-1">
-            <label class="text-sm font-medium text-highlighted">
-              Average Time to Close
-            </label>
-            <p class="mt-0.5 text-xs text-muted">
-              Typical duration from intake to resolution (optional)
-            </p>
-          </div>
-          <div class="w-full sm:w-72">
-            <UInputMenu
-              v-model="profile.avgTimeToClose"
-              :items="timeToCloseOptions"
-              searchable
-              creatable
-              placeholder="Select or type time"
+            <UInput
+              v-model.number="profile.upfrontPaymentPercentage"
+              type="number"
+              placeholder="0"
               :disabled="disabled"
             />
           </div>

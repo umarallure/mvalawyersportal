@@ -62,6 +62,16 @@ const form = ref({
   due_date: ''
 })
 
+const isUpfrontPayment = ref(false)
+const upfrontPercent = ref<number>(50)
+
+const upfrontMultiplier = computed(() => {
+  if (!isUpfrontPayment.value) return 1
+  const p = Number(upfrontPercent.value)
+  if (!Number.isFinite(p)) return 0
+  return Math.min(1, Math.max(0, p / 100))
+})
+
 const lawyerProfile = ref<{
   full_name: string | null
   firm_name: string | null
@@ -142,7 +152,7 @@ const validItems = computed(() => {
         amount
       }
     })
-    .filter(i => i.description.length > 0 && i.quantity > 0 && (isQuickFlow.value ? i.unit_price >= 0 : i.unit_price > 0))
+    .filter(i => i.description.length > 0 && i.quantity > 0 && i.unit_price >= 0)
 })
 
 const subtotal = computed(() =>
@@ -211,18 +221,11 @@ const toDealUnitPrice = (deal: DealFlowRow) => {
   return Math.max(0, Math.round(n * 100) / 100)
 }
 
-const normalize = (v: unknown) => String(v ?? '').trim().toLowerCase()
-
-const isSuccessfulDeal = (deal: DealFlowRow) => {
-  const s = normalize(deal.status)
-  return s === 'successfull cases'
-}
-
 const syncItemsWithSelectedDeals = () => {
   const selected = deals.value.filter(d => d.selected)
   const selectedForInvoice = selected.filter(d => {
     const name = String(d.insured_name ?? '').trim()
-    return name.length > 0 && (isQuickFlow.value || toDealUnitPrice(d) > 0)
+    return name.length > 0
   })
   const selectedIds = new Set(selected.map(d => d.id))
 
@@ -230,10 +233,17 @@ const syncItemsWithSelectedDeals = () => {
   const manualItems = form.value.items.filter(i => !i.deal_id)
 
   const dealItems = selectedForInvoice.map((d) => {
+    const baseUnit = toDealUnitPrice(d)
+    const unit = Math.round(baseUnit * upfrontMultiplier.value * 100) / 100
     const existing = form.value.items.find(i => i.deal_id === d.id)
-    if (existing) return existing
+    if (existing) {
+      existing.description = `${d.insured_name ?? 'Unknown'}`
+      existing.quantity = 1
+      existing.unit_price = unit
+      existing.amount = unit
+      return existing
+    }
 
-    const unit = toDealUnitPrice(d)
     return {
       deal_id: d.id,
       description: `${d.insured_name ?? 'Unknown'}`,
@@ -248,6 +258,30 @@ const syncItemsWithSelectedDeals = () => {
   // Also ensure deal_ids matches selected
   form.value.deal_ids = [...selectedIds]
 }
+
+watch([isUpfrontPayment, upfrontPercent], () => {
+  if (isPublisherMode.value) return
+  syncItemsWithSelectedDeals()
+})
+
+const fullSubtotal = computed(() => {
+  const manual = form.value.items
+    .filter(i => !i.deal_id)
+    .map(i => ({
+      description: String(i.description ?? '').trim(),
+      quantity: Number(i.quantity ?? 0),
+      unit_price: Number(i.unit_price ?? 0)
+    }))
+    .filter(i => i.description.length > 0 && i.quantity > 0 && i.unit_price >= 0)
+    .reduce((sum, i) => sum + (Math.round(i.quantity * i.unit_price * 100) / 100), 0)
+
+  const selectedDeals = deals.value.filter(d => d.selected)
+  const dealSum = selectedDeals.reduce((sum, d) => sum + toDealUnitPrice(d), 0)
+  return Math.round((manual + dealSum) * 100) / 100
+})
+
+const fullTaxAmount = computed(() => Math.round(fullSubtotal.value * form.value.tax_rate * 100) / 100)
+const fullTotalAmount = computed(() => fullSubtotal.value + fullTaxAmount.value)
 
 const canSubmit = computed(() => {
   if (isPublisherMode.value) {
@@ -264,6 +298,11 @@ const canSubmit = computed(() => {
 const fetchDeals = async () => {
   if (isPublisherMode.value) {
     if (!form.value.lead_vendor_id || !selectedVendor.value?.lead_vendor) {
+      deals.value = []
+      return
+    }
+
+    if (!isQuickFlow.value && (!form.value.date_range_start || !form.value.date_range_end)) {
       deals.value = []
       return
     }
@@ -289,8 +328,6 @@ const fetchDeals = async () => {
   }
 
   if (!form.value.lawyer_id || !form.value.date_range_start || !form.value.date_range_end) {
-    // Keep any preselected deal injected via query params (deal_id) so the
-    // auto-generated line item (face_amount) remains available even before a date range is chosen.
     if (form.value.deal_ids.length && deals.value.some(d => form.value.deal_ids.includes(d.id))) {
       deals.value.forEach((d) => {
         d.selected = form.value.deal_ids.includes(d.id)
@@ -312,9 +349,7 @@ const fetchDeals = async () => {
       editingInvoiceId: isEdit.value ? invoiceId.value : null
     })
 
-    const filtered = data.filter(isSuccessfulDeal)
-
-    deals.value = filtered.map((d: DealFlowRow) => ({
+    deals.value = data.map((d: DealFlowRow) => ({
       ...d,
       selected: form.value.deal_ids.includes(d.id)
     }))
@@ -342,7 +377,7 @@ const ensureDealSelected = async (dealId: string) => {
 
   const { data, error } = await supabase
     .from('daily_deal_flow')
-    .select('id,submission_id,insured_name,client_phone_number,lead_vendor,date,status,assigned_attorney_id,agent,carrier,face_amount,invoice_id,publisher_invoice_id,created_at')
+    .select('id,submission_id,insured_name,client_phone_number,lead_vendor,status,assigned_attorney_id,agent,carrier,face_amount,invoice_id,publisher_invoice_id,created_at')
     .eq('id', dealId)
     .maybeSingle()
 
@@ -389,15 +424,7 @@ const toggleDeal = (dealId: string) => {
   const deal = deals.value.find(d => d.id === dealId)
   if (!deal) return
 
-  // Prevent selecting deals that would generate empty/$0 invoice rows
-  if (!deal.selected) {
-    const name = String(deal.insured_name ?? '').trim()
-    const unit = toDealUnitPrice(deal)
-    if (!name.length || unit <= 0) {
-      error.value = 'This deal has no billable value and cannot be added to an invoice.'
-      return
-    }
-  }
+  error.value = null
 
   deal.selected = !deal.selected
 
@@ -510,7 +537,7 @@ const handleSave = async () => {
     return
   }
   if (!validItems.value.length) {
-    error.value = 'Please add at least one line item with a description and a non-zero price'
+    error.value = 'Please add at least one line item with a description'
     return
   }
 
@@ -718,16 +745,27 @@ onMounted(async () => {
             color="error"
             variant="subtle"
             title="Error"
-            :description="error"
-            class="rounded-xl"
-          />
+            class="w-full h-24 rounded-xl shrink-0"
+          >
+            <template #description>
+              <div class="max-h-14 overflow-y-auto whitespace-pre-wrap break-words">
+                {{ error }}
+              </div>
+            </template>
+          </UAlert>
           <UAlert
             v-if="success"
             color="success"
             variant="subtle"
-            :title="success"
-            class="rounded-xl"
-          />
+            title="Success"
+            class="w-full h-24 rounded-xl shrink-0"
+          >
+            <template #description>
+              <div class="max-h-14 overflow-y-auto whitespace-pre-wrap break-words">
+                {{ success }}
+              </div>
+            </template>
+          </UAlert>
 
           <div class="grid gap-6 lg:grid-cols-3">
             <!-- Left Column: Main Form -->
@@ -793,6 +831,23 @@ onMounted(async () => {
                       type="date"
                       class="w-full [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)]"
                     />
+                  </div>
+                </div>
+
+                <div v-if="!isPublisherMode" class="mt-4">
+                  <div class="flex items-center gap-3">
+                    <UCheckbox v-model="isUpfrontPayment" label="Upfront payment" />
+
+                    <div v-if="isUpfrontPayment" class="flex items-center gap-2">
+                      <span class="text-xs text-muted">%</span>
+                      <UInput
+                        v-model.number="upfrontPercent"
+                        type="number"
+                        :min="0"
+                        :max="100"
+                        class="w-24 [&_input]:rounded-lg [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)] [&_input]:text-sm"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -1119,7 +1174,17 @@ onMounted(async () => {
                   </div>
 
                   <div class="border-t border-[var(--ap-card-border)] pt-3">
-                    <div class="flex items-center justify-between">
+                    <div v-if="!isPublisherMode && isUpfrontPayment" class="space-y-2">
+                      <div class="flex items-center justify-between">
+                        <span class="text-xs text-muted">Full Total</span>
+                        <span class="text-sm font-semibold text-highlighted">{{ formatMoney(fullTotalAmount) }}</span>
+                      </div>
+                      <div class="flex items-center justify-between">
+                        <span class="text-sm font-bold text-highlighted">Upfront Total ({{ Math.round(upfrontMultiplier * 100) }}%)</span>
+                        <span class="text-lg font-bold text-[var(--ap-accent)]">{{ formatMoney(totalAmount) }}</span>
+                      </div>
+                    </div>
+                    <div v-else class="flex items-center justify-between">
                       <span class="text-sm font-bold text-highlighted">Total</span>
                       <span class="text-lg font-bold text-[var(--ap-accent)]">{{ formatMoney(totalAmount) }}</span>
                     </div>

@@ -165,7 +165,7 @@ const pagedRows = computed(() => {
 })
 
 const PUBLISHER_KANBAN_STATUSES: InvoiceStatus[] = ['pending', 'in_review', 'paid', 'chargeback']
-const LAWYER_KANBAN_STATUSES: InvoiceStatus[] = ['pending', 'in_review', 'signed_awaiting', 'in_preview', 'paid', 'chargeback']
+const LAWYER_KANBAN_STATUSES: InvoiceStatus[] = ['pending', 'signed_awaiting', 'in_review', 'paid', 'chargeback']
 
 const kanbanStatuses = computed(() =>
   isPublisherMode.value ? PUBLISHER_KANBAN_STATUSES : LAWYER_KANBAN_STATUSES
@@ -239,7 +239,8 @@ const getStatusColorClass = (status: InvoiceStatus) => {
   return 'text-red-400'
 }
 
-const handleDragStart = (invoiceId: string) => {
+const handleDragStart = (invoiceId: string, fromStatus: InvoiceStatus) => {
+  if (fromStatus === 'pending') return
   dragInvoiceId.value = invoiceId
 }
 
@@ -250,12 +251,15 @@ const handleDragOver = (e: DragEvent) => {
 const handleDrop = async (e: DragEvent, targetStatus: InvoiceStatus) => {
   e.preventDefault()
   if (!dragInvoiceId.value) return
+
+  if (targetStatus === 'pending') return
   const id = dragInvoiceId.value
   dragInvoiceId.value = null
 
   const idx = invoices.value.findIndex(i => i.id === id)
   if (idx === -1) return
   const prev = invoices.value[idx].status
+  if (prev === 'pending') return
   if (prev === targetStatus) return
 
   // Optimistic update
@@ -302,8 +306,22 @@ const load = async () => {
     let dealsQb = supabase
       .from('daily_deal_flow')
       .select('id,submission_id,insured_name,client_phone_number,lead_vendor,assigned_attorney_id,invoice_id,publisher_invoice_id,created_at')
-      .in('status', ['Qualified/Payable', 'qualified_payable'])
+      .in('status', [
+        'qualified_payable',
+        'Awaiting Billable',
+        'Qualified/Payable',
+        'approved_payable',
+        'Payable to BPO',
+        'Approved – Payable',
+      ])
       .order('created_at', { ascending: false })
+
+    if (filterDateStart.value) {
+      dealsQb = dealsQb.gte('created_at', filterDateStart.value)
+    }
+    if (filterDateEnd.value) {
+      dealsQb = dealsQb.lte('created_at', filterDateEnd.value + 'T23:59:59.999Z')
+    }
 
     if (!isPublisherMode.value) {
       // Lawyer mode: show only un-invoiced leads
@@ -682,14 +700,12 @@ watch(pageCount, () => {
                     { label: 'Billable', value: 'pending' },
                     { label: 'In Review', value: 'in_review' },
                     { label: 'Signed – Awaiting to be Paid', value: 'signed_awaiting' },
-                    { label: 'In Preview', value: 'in_preview' },
                     { label: 'Paid', value: 'paid' },
                     { label: 'Chargeback', value: 'chargeback' }
-                  ]
-              "
-              class="w-56 [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
+                  ]"
               value-key="value"
               label-key="label"
+              class="w-44 [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
             />
 
             <UInputMenu
@@ -841,7 +857,7 @@ watch(pageCount, () => {
               :key="status"
               class="flex min-w-[260px] flex-1 flex-col rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] transition-colors"
               :class="dragInvoiceId ? 'border-dashed' : ''"
-              @dragover="handleDragOver"
+              @dragover="status === 'pending' ? undefined : handleDragOver"
               @drop="handleDrop($event, status)"
             >
               <div class="flex items-center justify-between border-b border-[var(--ap-card-border)] px-4 py-3">
@@ -892,10 +908,10 @@ watch(pageCount, () => {
                 <div
                   v-for="invoice in (invoicesByStatus.get(status) ?? [])"
                   :key="invoice.id"
-                  draggable="true"
+                  :draggable="status !== 'pending'"
                   class="group cursor-pointer rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-3 transition-all duration-200 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.04]"
                   :class="dragInvoiceId === invoice.id ? 'opacity-50 scale-95' : ''"
-                  @dragstart="handleDragStart(invoice.id)"
+                  @dragstart="handleDragStart(invoice.id, status)"
                   @click="openInvoicePdf(invoice)"
                 >
                   <div class="flex items-start justify-between gap-2">
@@ -978,7 +994,7 @@ watch(pageCount, () => {
                 </div>
 
                 <div
-                  v-if="(invoicesByStatus.get(status)?.length ?? 0) === 0"
+                  v-if="(invoicesByStatus.get(status)?.length ?? 0) === 0 && !(status === 'pending' && filteredQualifiedDeals.length > 0)"
                   class="rounded-xl border border-dashed border-[var(--ap-card-border)] px-3 py-8 text-center text-xs text-muted"
                 >
                   No {{ getStatusLabel(status).toLowerCase() }} invoices

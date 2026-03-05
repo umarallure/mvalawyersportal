@@ -222,7 +222,6 @@ export type DealFlowRow = {
   insured_name: string | null
   client_phone_number: string | null
   lead_vendor: string | null
-  date: string | null
   status: string | null
   assigned_attorney_id: string | null
   agent: string | null
@@ -233,9 +232,24 @@ export type DealFlowRow = {
   created_at: string | null
 }
 
-const DEAL_FLOW_COLUMNS = 'id,submission_id,insured_name,client_phone_number,lead_vendor,date,status,assigned_attorney_id,agent,carrier,face_amount,invoice_id,publisher_invoice_id,created_at'
+const DEAL_FLOW_COLUMNS = 'id,submission_id,insured_name,client_phone_number,lead_vendor,status,assigned_attorney_id,agent,carrier,face_amount,invoice_id,publisher_invoice_id,created_at'
 
-const APPROVED_PAYABLE_STATUS = 'Approved – Payable'
+const QUALIFIED_PAYABLE_KEY = 'qualified_payable'
+const QUALIFIED_PAYABLE_LABEL = 'Awaiting Billable'
+const LEGACY_QUALIFIED_PAYABLE_LABEL = 'Qualified/Payable'
+
+const APPROVED_PAYABLE_KEY = 'approved_payable'
+const APPROVED_PAYABLE_LABEL = 'Payable to BPO'
+const LEGACY_APPROVED_PAYABLE_LABEL = 'Approved – Payable'
+
+const BILLABLE_DEAL_STATUSES = [
+  QUALIFIED_PAYABLE_KEY,
+  QUALIFIED_PAYABLE_LABEL,
+  LEGACY_QUALIFIED_PAYABLE_LABEL,
+  APPROVED_PAYABLE_KEY,
+  APPROVED_PAYABLE_LABEL,
+  LEGACY_APPROVED_PAYABLE_LABEL,
+]
 
 export async function listDealsForInvoice(input: {
   lawyerId: string
@@ -243,13 +257,21 @@ export async function listDealsForInvoice(input: {
   dateEnd: string
   editingInvoiceId?: string | null
 }): Promise<DealFlowRow[]> {
-  const qb = supabase
+  let qb = supabase
     .from('daily_deal_flow')
     .select(DEAL_FLOW_COLUMNS)
     .eq('assigned_attorney_id', input.lawyerId)
     .gte('created_at', input.dateStart)
     .lte('created_at', input.dateEnd + 'T23:59:59.999Z')
     .order('created_at', { ascending: false })
+
+  if (input.editingInvoiceId) {
+    qb = qb.or(
+      `status.in.("${QUALIFIED_PAYABLE_KEY}","${QUALIFIED_PAYABLE_LABEL}","${LEGACY_QUALIFIED_PAYABLE_LABEL}","${APPROVED_PAYABLE_KEY}","${APPROVED_PAYABLE_LABEL}","${LEGACY_APPROVED_PAYABLE_LABEL}"),invoice_id.eq.${input.editingInvoiceId}`
+    )
+  } else {
+    qb = qb.in('status', BILLABLE_DEAL_STATUSES)
+  }
 
   const { data, error } = await qb
 
@@ -275,8 +297,15 @@ export async function listDealsForPublisherInvoice(input: {
     .from('daily_deal_flow')
     .select(DEAL_FLOW_COLUMNS)
     .eq('lead_vendor', input.vendorLeadName)
-    .eq('status', APPROVED_PAYABLE_STATUS)
     .order('created_at', { ascending: false })
+
+  if (input.editingInvoiceId) {
+    qb = qb.or(
+      `status.in.("${QUALIFIED_PAYABLE_KEY}","${QUALIFIED_PAYABLE_LABEL}","${LEGACY_QUALIFIED_PAYABLE_LABEL}","${APPROVED_PAYABLE_KEY}","${APPROVED_PAYABLE_LABEL}","${LEGACY_APPROVED_PAYABLE_LABEL}"),publisher_invoice_id.eq.${input.editingInvoiceId}`
+    )
+  } else {
+    qb = qb.in('status', BILLABLE_DEAL_STATUSES)
+  }
 
   if (input.dateStart) {
     qb = qb.gte('created_at', input.dateStart)
