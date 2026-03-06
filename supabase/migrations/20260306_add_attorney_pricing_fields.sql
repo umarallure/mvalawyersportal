@@ -1,6 +1,7 @@
 ALTER TABLE public.attorney_profiles
   ADD COLUMN IF NOT EXISTS case_rate_per_deal numeric NULL,
-  ADD COLUMN IF NOT EXISTS upfront_payment_percentage numeric NULL;
+  ADD COLUMN IF NOT EXISTS upfront_payment_percentage numeric NULL,
+  ADD COLUMN IF NOT EXISTS payment_window_days integer NULL;
 
 DO $$
 BEGIN

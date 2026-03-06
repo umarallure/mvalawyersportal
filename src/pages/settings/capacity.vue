@@ -5,12 +5,13 @@ import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import type { FormSubmitEvent } from '@nuxt/ui'
 
 import { useAuth } from '../../composables/useAuth'
-import { useAttorneyProfile } from '../../composables/useAttorneyProfile'
+import { useAttorneyProfile, type AttorneyProfileState } from '../../composables/useAttorneyProfile'
 import UnsavedChangesModal from '../../components/settings/UnsavedChangesModal.vue'
 
 const capacitySchema = z.object({
   caseRatePerDeal: z.number().min(0).optional().or(z.literal('')),
-  upfrontPaymentPercentage: z.number().min(0).max(100).optional().or(z.literal(''))
+  upfrontPaymentPercentage: z.number().min(0).max(100).optional().or(z.literal('')),
+  paymentWindowDays: z.number().int().min(0).optional().or(z.literal(''))
 })
 
 type CapacitySchema = z.output<typeof capacitySchema>
@@ -41,8 +42,9 @@ async function onSubmit(event: FormSubmitEvent<CapacitySchema>) {
   try {
     await attorneyProfile.commitEditing(userId.value, [
       'caseRatePerDeal',
-      'upfrontPaymentPercentage'
-    ])
+      'upfrontPaymentPercentage',
+      'paymentWindowDays'
+    ] as Array<keyof AttorneyProfileState>)
     
     toast.add({
       title: 'Success',
@@ -230,6 +232,25 @@ onBeforeRouteLeave((_to, _from, next) => {
           <div class="w-full sm:w-72">
             <UInput
               v-model.number="profile.upfrontPaymentPercentage"
+              type="number"
+              placeholder="0"
+              :disabled="disabled"
+            />
+          </div>
+        </div>
+
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">
+              Payment Window (days)
+            </label>
+            <p class="mt-0.5 text-xs text-muted">
+              How many days you allow to receive payment (optional)
+            </p>
+          </div>
+          <div class="w-full sm:w-72">
+            <UInput
+              v-model.number="profile.paymentWindowDays"
               type="number"
               placeholder="0"
               :disabled="disabled"

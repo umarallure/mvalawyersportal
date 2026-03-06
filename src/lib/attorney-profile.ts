@@ -39,6 +39,7 @@ export interface AttorneyProfileData {
 
   case_rate_per_deal?: number | null
   upfront_payment_percentage?: number | null
+  payment_window_days?: number | null
 }
 
 /**

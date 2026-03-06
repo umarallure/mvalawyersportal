@@ -8,7 +8,6 @@ import { useAttorneyProfile } from '../../composables/useAttorneyProfile'
 import UnsavedChangesModal from '../../components/settings/UnsavedChangesModal.vue'
 
 const generalInfoSchema = z.object({
-  profilePhoto: z.string().url().optional().or(z.literal('')),
   fullName: z.string().min(2, 'Full name is required'),
   firmName: z.string().min(2, 'Firm name is required'),
   barNumber: z.string().min(3, 'Bar association number is required'),
@@ -88,7 +87,6 @@ async function onSubmit() {
   saving.value = true
   try {
     await attorneyProfile.commitEditing(userId.value, [
-      'profilePhoto',
       'fullName',
       'firmName',
       'barNumber',
@@ -242,16 +240,6 @@ onBeforeRouteLeave((to) => {
       </div>
 
       <div class="divide-y divide-[var(--ap-card-divide)]">
-        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
-          <div class="min-w-0 flex-1">
-            <label class="text-sm font-medium text-highlighted">Profile Photo</label>
-            <p class="mt-0.5 text-xs text-muted">Upload a professional headshot (optional)</p>
-          </div>
-          <div class="w-full sm:w-72">
-            <UInput v-model="profile.profilePhoto" placeholder="https://example.com/photo.jpg" autocomplete="off" :disabled="disabled" size="md" />
-          </div>
-        </div>
-
         <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
           <div class="min-w-0 flex-1">
             <label class="text-sm font-medium text-highlighted">Full Name <span class="text-red-400">*</span></label>

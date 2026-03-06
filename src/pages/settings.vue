@@ -42,7 +42,7 @@ const showCompletionMeter = computed(() => {
       </UDashboardNavbar>
 
       <UDashboardToolbar>
-        <UNavigationMenu :items="links" highlight class="-mx-1 flex-1" />
+        <UNavigationMenu :items="links" highlight class="-mx-1" />
       </UDashboardToolbar>
     </template>
 

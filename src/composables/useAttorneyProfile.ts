@@ -33,6 +33,7 @@ export interface AttorneyProfileState {
   // Tab 3: Capacity & Performance
   caseRatePerDeal?: number
   upfrontPaymentPercentage?: number
+  paymentWindowDays?: number
 }
 
 const _useAttorneyProfile = () => {
@@ -81,6 +82,7 @@ const _useAttorneyProfile = () => {
 
     if ('caseRatePerDeal' in data) out.case_rate_per_deal = data.caseRatePerDeal ?? null
     if ('upfrontPaymentPercentage' in data) out.upfront_payment_percentage = data.upfrontPaymentPercentage ?? null
+    if ('paymentWindowDays' in data) out.payment_window_days = data.paymentWindowDays ?? null
 
     return out
   }
@@ -111,7 +113,8 @@ const _useAttorneyProfile = () => {
       exclusionaryCriteria: dbProfile.exclusionary_criteria || [],
       minimumCaseValue: dbProfile.minimum_case_value || undefined,
       caseRatePerDeal: dbProfile.case_rate_per_deal ?? undefined,
-      upfrontPaymentPercentage: dbProfile.upfront_payment_percentage ?? undefined
+      upfrontPaymentPercentage: dbProfile.upfront_payment_percentage ?? undefined,
+      paymentWindowDays: dbProfile.payment_window_days ?? undefined
     }
   }
 
@@ -173,7 +176,8 @@ const _useAttorneyProfile = () => {
         exclusionary_criteria: mergedData.exclusionaryCriteria || [],
         minimum_case_value: mergedData.minimumCaseValue || null,
         case_rate_per_deal: mergedData.caseRatePerDeal || null,
-        upfront_payment_percentage: mergedData.upfrontPaymentPercentage || null
+        upfront_payment_percentage: mergedData.upfrontPaymentPercentage || null,
+        payment_window_days: mergedData.paymentWindowDays || null
       }
 
       const profile = await saveAttorneyProfile(userId, dbData)
@@ -208,7 +212,7 @@ const _useAttorneyProfile = () => {
     const selected = fields ?? []
     const partial: Partial<AttorneyProfileState> = {}
     for (const key of selected) {
-      partial[key] = draft.value[key]
+      partial[key] = draft.value[key] as AttorneyProfileState[typeof key]
     }
 
     loading.value = true
@@ -255,7 +259,7 @@ const _useAttorneyProfile = () => {
       'bio', 'yearsExperience', 'websiteUrl', 'preferredContact',
       'assistantName', 'assistantEmail', 'countiesCovered', 'federalCourts',
       'exclusionaryCriteria', 'minimumCaseValue', 'blockedStates',
-      'caseRatePerDeal', 'upfrontPaymentPercentage'
+      'caseRatePerDeal', 'upfrontPaymentPercentage', 'paymentWindowDays'
     ]
 
     let filledRequired = 0

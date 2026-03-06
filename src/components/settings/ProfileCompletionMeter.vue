@@ -29,6 +29,7 @@ interface ProfileData {
   // Tab 3: Capacity & Performance
   caseRatePerDeal?: number | string
   upfrontPaymentPercentage?: number | string
+  paymentWindowDays?: number | string
 }
 
 const props = defineProps<{
@@ -60,7 +61,8 @@ const optionalFields = [
   'exclusionaryCriteria',
   'minimumCaseValue',
   'caseRatePerDeal',
-  'upfrontPaymentPercentage'
+  'upfrontPaymentPercentage',
+  'paymentWindowDays'
 ]
 
 const completionPercentage = computed(() => {
