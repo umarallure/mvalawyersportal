@@ -160,6 +160,7 @@ const cancelEditing = () => {
               autocomplete="off"
               :disabled="disabled"
               size="md"
+              class="w-full sm:w-72"
             />
           </div>
         </div>
@@ -179,6 +180,7 @@ const cancelEditing = () => {
               autocomplete="off"
               disabled
               size="md"
+              class="w-full sm:w-72"
             />
           </div>
         </div>

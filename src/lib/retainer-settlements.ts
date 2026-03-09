@@ -1,37 +1,57 @@
 import { supabase } from './supabase'
 
-// ── Pipeline Stage Constants (submission_portal pipeline) ──
-// Only stages from "Retainer Signed" onwards are relevant for settlement tracking.
-// The daily_deal_flow.status column stores the stage label text.
-
-export const PIPELINE_STAGES = {
-  RETAINER_SIGNED: { key: 'retainer_signed', label: 'Awaiting Billable', display_order: 7 },
-  ATTORNEY_REVIEW: { key: 'attorney_review', label: 'Invoice to Attorney', display_order: 8 },
-  ATTORNEY_PAID: { key: 'attorney_paid', label: 'Attorney Paid', display_order: 9 },
-  REVIEW: { key: 'review', label: 'Review', display_order: 10 },
-  APPROVED_PAYABLE: { key: 'approved_payable', label: 'Payable to BPO', display_order: 11 },
-  PAID_TO_BPO: { key: 'paid_to_bpo', label: 'Paid to BPO', display_order: 12 },
+export const SETTLEMENT_COLUMNS = {
+  AWAITING_BILLABLE: {
+    key: 'awaiting_billable',
+    label: 'Awaiting Billable',
+    field: 'status' as const,
+    matchValues: ['qualified_payable', 'Awaiting Billable', 'Qualified/Payable', 'Qualified – Payable'],
+  },
+  INVOICE_TO_ATTORNEY: {
+    key: 'attorney_payment_in_review',
+    label: 'Invoice to Attorney',
+    field: 'payment_status' as const,
+    matchValues: ['attorney_payment_in_review'],
+  },
+  ATTORNEY_PAID: {
+    key: 'paid_by_attorney',
+    label: 'Attorney Paid',
+    field: 'payment_status' as const,
+    matchValues: ['paid_by_attorney'],
+  },
+  INVOICE_TO_PUBLISHER: {
+    key: 'publisher_payment_in_review',
+    label: 'Invoice to Publisher',
+    field: 'payment_status' as const,
+    matchValues: ['publisher_payment_in_review'],
+  },
+  PAID_TO_BPO: {
+    key: 'paid_to_bpo',
+    label: 'Paid to BPO',
+    field: 'status' as const,
+    matchValues: ['paid_to_bpo'],
+  },
 } as const
 
-// The status labels we filter daily_deal_flow by
+// Keep backward compat alias
+export const PIPELINE_STAGES = SETTLEMENT_COLUMNS
+
+// Labels for the status filter dropdown
 export const SETTLEMENT_STAGE_LABELS = [
-  PIPELINE_STAGES.RETAINER_SIGNED.label,
-  PIPELINE_STAGES.ATTORNEY_REVIEW.label,
-  PIPELINE_STAGES.ATTORNEY_PAID.label,
-  PIPELINE_STAGES.REVIEW.label,
-  PIPELINE_STAGES.APPROVED_PAYABLE.label,
-  PIPELINE_STAGES.PAID_TO_BPO.label,
+  SETTLEMENT_COLUMNS.AWAITING_BILLABLE.label,
+  SETTLEMENT_COLUMNS.INVOICE_TO_ATTORNEY.label,
+  SETTLEMENT_COLUMNS.ATTORNEY_PAID.label,
+  SETTLEMENT_COLUMNS.INVOICE_TO_PUBLISHER.label,
+  SETTLEMENT_COLUMNS.PAID_TO_BPO.label,
 ] as const
 
-const STATUS_KEY_TO_LABEL: Record<string, string> = {
-  qualified_payable: PIPELINE_STAGES.RETAINER_SIGNED.label,
-  retainer_signed: PIPELINE_STAGES.RETAINER_SIGNED.label,
-  attorney_review: PIPELINE_STAGES.ATTORNEY_REVIEW.label,
-  approved_payable: PIPELINE_STAGES.APPROVED_PAYABLE.label,
-  paid_to_bpo: PIPELINE_STAGES.PAID_TO_BPO.label,
-}
-
-const LEGACY_QUALIFIED_PAYABLE_LABEL = 'Qualified/Payable'
+// Status values that map to the Awaiting Billable column
+const BILLABLE_STATUS_VALUES = SETTLEMENT_COLUMNS.AWAITING_BILLABLE.matchValues
+const PAYMENT_STATUS_VALUES = [
+  ...SETTLEMENT_COLUMNS.INVOICE_TO_ATTORNEY.matchValues,
+  ...SETTLEMENT_COLUMNS.ATTORNEY_PAID.matchValues,
+  ...SETTLEMENT_COLUMNS.INVOICE_TO_PUBLISHER.matchValues,
+]
 
 export type SettlementStageLabel = typeof SETTLEMENT_STAGE_LABELS[number]
 
@@ -58,12 +78,15 @@ export type RetainerSettlementRow = {
   lead_vendor: string | null
   date_signed: string | null
   status: string
+  payment_status: string | null
   face_amount: number | null
   assigned_attorney_id: string | null
   assigned_attorney_name: string | null
   inbound_payment_status: InboundStatus
   outbound_payment_status: OutboundStatus
   created_at: string | null
+  // Which settlement column this deal belongs to
+  settlement_column: string
 }
 
 // ── Attorney Badge Colors ──
@@ -86,35 +109,51 @@ export function getAttorneyColor(name: string | null) {
   return ATTORNEY_COLORS[Math.abs(hash) % ATTORNEY_COLORS.length]
 }
 
-// ── Derive initial payment state from pipeline stage ──
-export function derivePaymentState(status: string): {
+// ── Derive initial payment state from settlement column ──
+export function derivePaymentState(columnKey: string): {
   inbound: InboundStatus
   outbound: OutboundStatus
 } {
-  if (status === PIPELINE_STAGES.PAID_TO_BPO.label) {
+  if (columnKey === SETTLEMENT_COLUMNS.PAID_TO_BPO.key) {
     return { inbound: INBOUND_STATUS.RECEIVED, outbound: OUTBOUND_STATUS.PAID }
   }
   if (
-    status === PIPELINE_STAGES.ATTORNEY_PAID.label ||
-    status === PIPELINE_STAGES.REVIEW.label ||
-    status === PIPELINE_STAGES.APPROVED_PAYABLE.label
+    columnKey === SETTLEMENT_COLUMNS.ATTORNEY_PAID.key ||
+    columnKey === SETTLEMENT_COLUMNS.INVOICE_TO_PUBLISHER.key
   ) {
     return { inbound: INBOUND_STATUS.RECEIVED, outbound: OUTBOUND_STATUS.LOCKED }
   }
   return { inbound: INBOUND_STATUS.PENDING, outbound: OUTBOUND_STATUS.LOCKED }
 }
 
+// ── Determine which settlement column a deal belongs to ──
+function resolveSettlementColumn(status: string, paymentStatus: string | null): string {
+  // Check payment_status first (columns 2-4) since it's more specific
+  if (paymentStatus) {
+    for (const col of [SETTLEMENT_COLUMNS.INVOICE_TO_ATTORNEY, SETTLEMENT_COLUMNS.ATTORNEY_PAID, SETTLEMENT_COLUMNS.INVOICE_TO_PUBLISHER]) {
+      if (col.matchValues.includes(paymentStatus)) return col.key
+    }
+  }
+  // Check status field (columns 1 and 5)
+  if (SETTLEMENT_COLUMNS.PAID_TO_BPO.matchValues.includes(status)) return SETTLEMENT_COLUMNS.PAID_TO_BPO.key
+  if (SETTLEMENT_COLUMNS.AWAITING_BILLABLE.matchValues.includes(status)) return SETTLEMENT_COLUMNS.AWAITING_BILLABLE.key
+  // Fallback to awaiting billable
+  return SETTLEMENT_COLUMNS.AWAITING_BILLABLE.key
+}
+
 // ── Supabase Queries ──
 
 export async function listSettlements(): Promise<RetainerSettlementRow[]> {
+  // Fetch deals that belong to any settlement column:
+  // - status in billable values OR paid_to_bpo  (columns 1 & 5)
+  // - payment_status in payment pipeline values (columns 2-4)
+  const statusValues = [...BILLABLE_STATUS_VALUES, ...SETTLEMENT_COLUMNS.PAID_TO_BPO.matchValues]
+  const paymentValues = PAYMENT_STATUS_VALUES
+
   const { data, error } = await supabase
     .from('daily_deal_flow')
-    .select('id,submission_id,insured_name,client_phone_number,lead_vendor,date,status,face_amount,assigned_attorney_id,created_at')
-    .in('status', [
-      ...SETTLEMENT_STAGE_LABELS,
-      ...Object.keys(STATUS_KEY_TO_LABEL),
-      LEGACY_QUALIFIED_PAYABLE_LABEL,
-    ])
+    .select('id,submission_id,insured_name,client_phone_number,lead_vendor,date,status,payment_status,face_amount,assigned_attorney_id,created_at')
+    .or(`status.in.(${statusValues.map(v => `"${v}"`).join(',')}),payment_status.in.(${paymentValues.map(v => `"${v}"`).join(',')})`)
     .order('created_at', { ascending: false })
 
   if (error) throw new Error(error.message)
@@ -148,10 +187,9 @@ export async function listSettlements(): Promise<RetainerSettlementRow[]> {
     const attId = r.assigned_attorney_id ? String(r.assigned_attorney_id) : null
     const attName = attId ? (attorneyMap.get(attId) || null) : null
     const rawStatus = String(r.status ?? '')
-    const status = rawStatus === LEGACY_QUALIFIED_PAYABLE_LABEL
-      ? PIPELINE_STAGES.RETAINER_SIGNED.label
-      : (STATUS_KEY_TO_LABEL[rawStatus] ?? rawStatus)
-    const payment = derivePaymentState(status)
+    const rawPaymentStatus = r.payment_status ? String(r.payment_status) : null
+    const colKey = resolveSettlementColumn(rawStatus, rawPaymentStatus)
+    const payment = derivePaymentState(colKey)
 
     return {
       id: String(r.id),
@@ -160,92 +198,113 @@ export async function listSettlements(): Promise<RetainerSettlementRow[]> {
       client_phone_number: r.client_phone_number ? String(r.client_phone_number) : null,
       lead_vendor: r.lead_vendor ? String(r.lead_vendor) : null,
       date_signed: r.date ? String(r.date) : null,
-      status,
+      status: rawStatus,
+      payment_status: rawPaymentStatus,
       face_amount: (r.face_amount === null || r.face_amount === undefined) ? null : Number(r.face_amount),
       assigned_attorney_id: attId,
       assigned_attorney_name: attName,
       inbound_payment_status: payment.inbound,
       outbound_payment_status: payment.outbound,
       created_at: r.created_at ? String(r.created_at) : null,
+      settlement_column: colKey,
     }
   })
 }
 
-// Update deal status to any settlement stage (used by kanban drag-and-drop)
-export async function updateDealStatus(dealId: string, newStatus: string): Promise<void> {
+// Update deal to a target settlement column (used by kanban drag-and-drop)
+// Determines which DB field to update based on the target column config
+export async function updateDealSettlementColumn(
+  dealId: string,
+  targetColumnKey: string
+): Promise<void> {
+  const col = Object.values(SETTLEMENT_COLUMNS).find(c => c.key === targetColumnKey)
+  if (!col) throw new Error(`Unknown settlement column: ${targetColumnKey}`)
+
+  const updatePayload: Record<string, string> = {}
+
+  if (col.field === 'payment_status') {
+    updatePayload.payment_status = col.key
+  } else {
+    // status field (paid_to_bpo)
+    updatePayload.status = col.key
+  }
+
+  const { error } = await supabase
+    .from('daily_deal_flow')
+    .update(updatePayload)
+    .eq('id', dealId)
+
+  if (error) throw new Error(error.message)
+}
+
+// Legacy aliases for backward compat
+export const updateDealStatus = async (dealId: string, newStatus: string) => {
   const { error } = await supabase
     .from('daily_deal_flow')
     .update({ status: newStatus })
     .eq('id', dealId)
-
   if (error) throw new Error(error.message)
 }
 
-// Update deal status to "Paid to BPO" (final settlement stage)
 export async function markPaidToBpo(dealId: string): Promise<void> {
-  const { error } = await supabase
-    .from('daily_deal_flow')
-    .update({ status: PIPELINE_STAGES.PAID_TO_BPO.label })
-    .eq('id', dealId)
-
-  if (error) throw new Error(error.message)
+  await updateDealSettlementColumn(dealId, SETTLEMENT_COLUMNS.PAID_TO_BPO.key)
 }
 
 // ── Kanban Column Definitions ──
-// Colors match pipeline_stages column_class from the submission_portal pipeline.
 export const KANBAN_COLUMNS = [
   {
-    key: PIPELINE_STAGES.RETAINER_SIGNED.key,
-    label: PIPELINE_STAGES.RETAINER_SIGNED.label,
+    key: SETTLEMENT_COLUMNS.AWAITING_BILLABLE.key,
+    label: SETTLEMENT_COLUMNS.AWAITING_BILLABLE.label,
+    field: SETTLEMENT_COLUMNS.AWAITING_BILLABLE.field,
     icon: 'i-lucide-file-signature',
     borderClass: 'border-t-emerald-500/50',
     headerBg: 'bg-emerald-50/60 dark:bg-emerald-950/10',
     bodyBg: 'bg-emerald-50/50 dark:bg-emerald-950/15',
     badgeClass: 'bg-emerald-500/10 text-emerald-500',
+    droppable: false,
   },
   {
-    key: PIPELINE_STAGES.ATTORNEY_REVIEW.key,
-    label: PIPELINE_STAGES.ATTORNEY_REVIEW.label,
+    key: SETTLEMENT_COLUMNS.INVOICE_TO_ATTORNEY.key,
+    label: SETTLEMENT_COLUMNS.INVOICE_TO_ATTORNEY.label,
+    field: SETTLEMENT_COLUMNS.INVOICE_TO_ATTORNEY.field,
     icon: 'i-lucide-scale',
     borderClass: 'border-t-violet-500/50',
     headerBg: 'bg-violet-50/60 dark:bg-violet-950/10',
     bodyBg: 'bg-violet-50/50 dark:bg-violet-950/15',
     badgeClass: 'bg-violet-500/10 text-violet-500',
+    droppable: true,
   },
   {
-    key: PIPELINE_STAGES.ATTORNEY_PAID.key,
-    label: PIPELINE_STAGES.ATTORNEY_PAID.label,
+    key: SETTLEMENT_COLUMNS.ATTORNEY_PAID.key,
+    label: SETTLEMENT_COLUMNS.ATTORNEY_PAID.label,
+    field: SETTLEMENT_COLUMNS.ATTORNEY_PAID.field,
     icon: 'i-lucide-badge-dollar-sign',
     borderClass: 'border-t-amber-500/50',
     headerBg: 'bg-amber-50/60 dark:bg-amber-950/10',
     bodyBg: 'bg-amber-50/50 dark:bg-amber-950/15',
     badgeClass: 'bg-amber-500/10 text-amber-500',
+    droppable: true,
   },
   {
-    key: PIPELINE_STAGES.REVIEW.key,
-    label: PIPELINE_STAGES.REVIEW.label,
-    icon: 'i-lucide-eye',
+    key: SETTLEMENT_COLUMNS.INVOICE_TO_PUBLISHER.key,
+    label: SETTLEMENT_COLUMNS.INVOICE_TO_PUBLISHER.label,
+    field: SETTLEMENT_COLUMNS.INVOICE_TO_PUBLISHER.field,
+    icon: 'i-lucide-send',
     borderClass: 'border-t-indigo-500/50',
     headerBg: 'bg-indigo-50/60 dark:bg-indigo-950/10',
     bodyBg: 'bg-indigo-50/50 dark:bg-indigo-950/15',
     badgeClass: 'bg-indigo-500/10 text-indigo-500',
+    droppable: true,
   },
   {
-    key: PIPELINE_STAGES.APPROVED_PAYABLE.key,
-    label: PIPELINE_STAGES.APPROVED_PAYABLE.label,
-    icon: 'i-lucide-check-circle',
-    borderClass: 'border-t-teal-500/50',
-    headerBg: 'bg-teal-50/60 dark:bg-teal-950/10',
-    bodyBg: 'bg-teal-50/50 dark:bg-teal-950/15',
-    badgeClass: 'bg-teal-500/10 text-teal-500',
-  },
-  {
-    key: PIPELINE_STAGES.PAID_TO_BPO.key,
-    label: PIPELINE_STAGES.PAID_TO_BPO.label,
+    key: SETTLEMENT_COLUMNS.PAID_TO_BPO.key,
+    label: SETTLEMENT_COLUMNS.PAID_TO_BPO.label,
+    field: SETTLEMENT_COLUMNS.PAID_TO_BPO.field,
     icon: 'i-lucide-banknote',
     borderClass: 'border-t-fuchsia-500/50',
     headerBg: 'bg-fuchsia-50/60 dark:bg-fuchsia-950/10',
     bodyBg: 'bg-fuchsia-50/50 dark:bg-fuchsia-950/15',
     badgeClass: 'bg-fuchsia-500/10 text-fuchsia-500',
+    droppable: true,
   },
 ] as const

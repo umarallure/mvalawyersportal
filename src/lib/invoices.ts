@@ -11,6 +11,13 @@ export type InvoiceItem = {
 
 export type InvoiceType = 'lawyer' | 'publisher'
 
+export type DealPaymentStatus =
+  | 'attorney_payment_in_review'
+  | 'paid_by_attorney'
+  | 'attorney_chargeback'
+  | 'publisher_payment_in_review'
+  | 'publisher_chargeback'
+
 export type InvoiceRow = {
   id: string
   invoice_number: string
@@ -205,10 +212,12 @@ export async function getLawyerProfile(lawyerId: string): Promise<{
   primary_email: string | null
   direct_phone: string | null
   bar_association_number: string | null
+  case_rate_per_deal: number | null
+  payment_window_days: number | null
 } | null> {
   const { data, error } = await supabase
     .from('attorney_profiles')
-    .select('full_name,firm_name,office_address,primary_email,direct_phone,bar_association_number')
+    .select('full_name,firm_name,office_address,primary_email,direct_phone,bar_association_number,case_rate_per_deal,payment_window_days')
     .eq('user_id', lawyerId)
     .maybeSingle()
 
@@ -223,6 +232,7 @@ export type DealFlowRow = {
   client_phone_number: string | null
   lead_vendor: string | null
   status: string | null
+  payment_status?: DealPaymentStatus | null
   assigned_attorney_id: string | null
   agent: string | null
   carrier: string | null
@@ -232,7 +242,7 @@ export type DealFlowRow = {
   created_at: string | null
 }
 
-const DEAL_FLOW_COLUMNS = 'id,submission_id,insured_name,client_phone_number,lead_vendor,status,assigned_attorney_id,agent,carrier,face_amount,invoice_id,publisher_invoice_id,created_at'
+const DEAL_FLOW_COLUMNS = 'id,submission_id,insured_name,client_phone_number,lead_vendor,status,payment_status,assigned_attorney_id,agent,carrier,face_amount,invoice_id,publisher_invoice_id,created_at'
 
 const QUALIFIED_PAYABLE_KEY = 'qualified_payable'
 const QUALIFIED_PAYABLE_LABEL = 'Awaiting Billable'
@@ -304,7 +314,8 @@ export async function listDealsForPublisherInvoice(input: {
       `status.in.("${QUALIFIED_PAYABLE_KEY}","${QUALIFIED_PAYABLE_LABEL}","${LEGACY_QUALIFIED_PAYABLE_LABEL}","${APPROVED_PAYABLE_KEY}","${APPROVED_PAYABLE_LABEL}","${LEGACY_APPROVED_PAYABLE_LABEL}"),publisher_invoice_id.eq.${input.editingInvoiceId}`
     )
   } else {
-    qb = qb.in('status', BILLABLE_DEAL_STATUSES)
+    // Publisher billable deals are only those that were paid by attorney.
+    qb = qb.eq('payment_status', 'paid_by_attorney')
   }
 
   if (input.dateStart) {
@@ -337,14 +348,28 @@ export async function markInvoiceAsPaid(invoiceId: string): Promise<InvoiceRow> 
   if (error) throw new Error(error.message)
   const inv = data as InvoiceRow
 
-  // For publisher invoices, advance all linked deals to "Paid to BPO"
-  if (inv.invoice_type === 'publisher' && inv.deal_ids?.length) {
-    const { error: dealErr } = await supabase
-      .from('daily_deal_flow')
-      .update({ status: 'Paid to BPO' })
-      .in('id', inv.deal_ids)
+  if (inv.deal_ids?.length) {
+    // Lawyer invoice paid -> make leads billable for publisher
+    if (inv.invoice_type === 'lawyer') {
+      const { error: dealErr } = await supabase
+        .from('daily_deal_flow')
+        .update({ payment_status: 'paid_by_attorney' satisfies DealPaymentStatus })
+        .in('id', inv.deal_ids)
 
-    if (dealErr) console.error('markInvoiceAsPaid: failed to update deal statuses', dealErr.message)
+      if (dealErr) console.error('markInvoiceAsPaid: failed to update deal payment_status', dealErr.message)
+    }
+
+    // Publisher invoice paid -> final settlement
+    if (inv.invoice_type === 'publisher') {
+      const { error: dealErr } = await supabase
+        .from('daily_deal_flow')
+        .update({
+          status: 'paid_to_bpo',
+        })
+        .in('id', inv.deal_ids)
+
+      if (dealErr) console.error('markInvoiceAsPaid: failed to update deal payment_status/status', dealErr.message)
+    }
   }
 
   return inv
@@ -366,7 +391,10 @@ export async function linkDealsToInvoice(dealIds: string[], invoiceId: string): 
   if (!dealIds.length) return
   const { data, error } = await supabase
     .from('daily_deal_flow')
-    .update({ invoice_id: invoiceId })
+    .update({
+      invoice_id: invoiceId,
+      payment_status: 'attorney_payment_in_review' satisfies DealPaymentStatus,
+    })
     .in('id', dealIds)
     .select('id')
 
@@ -382,7 +410,7 @@ export async function linkDealsToInvoice(dealIds: string[], invoiceId: string): 
 export async function unlinkDealsFromInvoice(invoiceId: string): Promise<void> {
   const { error } = await supabase
     .from('daily_deal_flow')
-    .update({ invoice_id: null })
+    .update({ invoice_id: null, payment_status: null })
     .eq('invoice_id', invoiceId)
     .select('id')
 
@@ -393,7 +421,10 @@ export async function linkDealsToPublisherInvoice(dealIds: string[], invoiceId: 
   if (!dealIds.length) return
   const { data, error } = await supabase
     .from('daily_deal_flow')
-    .update({ publisher_invoice_id: invoiceId })
+    .update({
+      publisher_invoice_id: invoiceId,
+      payment_status: 'publisher_payment_in_review' satisfies DealPaymentStatus,
+    })
     .in('id', dealIds)
     .select('id')
 
@@ -409,7 +440,7 @@ export async function linkDealsToPublisherInvoice(dealIds: string[], invoiceId: 
 export async function unlinkDealsFromPublisherInvoice(invoiceId: string): Promise<void> {
   const { error } = await supabase
     .from('daily_deal_flow')
-    .update({ publisher_invoice_id: null })
+    .update({ publisher_invoice_id: null, payment_status: 'paid_by_attorney' satisfies DealPaymentStatus })
     .eq('publisher_invoice_id', invoiceId)
     .select('id')
 

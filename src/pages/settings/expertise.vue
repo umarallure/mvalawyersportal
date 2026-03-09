@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import * as z from 'zod'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, type Ref } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import type { FormSubmitEvent } from '@nuxt/ui'
 
@@ -11,15 +11,26 @@ import UnsavedChangesModal from '../../components/settings/UnsavedChangesModal.v
 const expertiseSchema = z.object({
   licensedStates: z.array(z.string()).min(1, 'At least one state is required'),
   primaryCity: z.string().min(2, 'Primary physical location is required'),
-  countiesCovered: z.array(z.string()).optional(),
+  countiesCovered: z.string().optional(),
   federalCourts: z.string().optional(),
   primaryPracticeFocus: z.string().min(1, 'Practice focus is required'),
   injuryCategories: z.array(z.string()).min(1, 'At least one injury category is required'),
-  exclusionaryCriteria: z.array(z.string()).optional(),
+  exclusionaryCriteria: z.string().optional(),
   minimumCaseValue: z.number().min(0).optional().or(z.literal(''))
 })
 
 type ExpertiseSchema = z.output<typeof expertiseSchema>
+
+type ExpertiseFormState = {
+  licensedStates?: string[]
+  primaryCity?: string
+  countiesCovered?: string
+  federalCourts?: string
+  primaryPracticeFocus?: string
+  injuryCategories?: string[]
+  exclusionaryCriteria?: string
+  minimumCaseValue?: number | ''
+}
 
 const auth = useAuth()
 const attorneyProfile = useAttorneyProfile()
@@ -29,7 +40,7 @@ const router = useRouter()
 
 const userId = computed(() => auth.state.value.user?.id ?? '')
 
-const profile = attorneyProfile.draft as unknown as { value: Partial<ExpertiseSchema> }
+const profile = attorneyProfile.draft as unknown as Ref<ExpertiseFormState>
 
 const stateOptions = [
   'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
@@ -73,6 +84,12 @@ onMounted(async () => {
   await auth.init()
   if (userId.value) {
     await attorneyProfile.loadProfile(userId.value)
+    if (Array.isArray(attorneyProfile.draft.value.countiesCovered)) {
+      profile.value.countiesCovered = attorneyProfile.draft.value.countiesCovered.join(', ')
+    }
+    if (Array.isArray(attorneyProfile.draft.value.exclusionaryCriteria)) {
+      profile.value.exclusionaryCriteria = attorneyProfile.draft.value.exclusionaryCriteria.join(', ')
+    }
   }
 })
 
@@ -80,6 +97,16 @@ async function onSubmit(_event: FormSubmitEvent<ExpertiseSchema>) {
   if (!userId.value) return
 
   void _event
+
+  attorneyProfile.draft.value.countiesCovered = (profile.value.countiesCovered ?? '')
+    .split(',')
+    .map(v => v.trim())
+    .filter(Boolean)
+
+  attorneyProfile.draft.value.exclusionaryCriteria = (profile.value.exclusionaryCriteria ?? '')
+    .split(',')
+    .map(v => v.trim())
+    .filter(Boolean)
 
   saving.value = true
   try {
@@ -161,7 +188,7 @@ const handleStay = () => {
   pendingNav.value = null
 }
 
-onBeforeRouteLeave((to, from, next) => {
+onBeforeRouteLeave((_to, _from, next) => {
   if (attorneyProfile.isEditing.value && attorneyProfile.isDirty.value) {
     pendingNav.value = () => next()
     confirmLeave()
@@ -255,7 +282,16 @@ onBeforeRouteLeave((to, from, next) => {
             <p class="mt-0.5 text-xs text-muted">Select all states where you are licensed to practice</p>
           </div>
           <div class="w-full sm:w-72">
-            <UInputMenu v-model="profile.licensedStates" :items="stateOptions" multiple searchable creatable placeholder="Select or type states" :disabled="disabled" />
+            <UInputMenu
+              v-model="profile.licensedStates"
+              :items="stateOptions"
+              multiple
+              searchable
+              creatable
+              placeholder="Select or type states"
+              :disabled="disabled"
+              class="w-full sm:w-72"
+            />
           </div>
         </div>
 
@@ -265,7 +301,14 @@ onBeforeRouteLeave((to, from, next) => {
             <p class="mt-0.5 text-xs text-muted">Your main office location</p>
           </div>
           <div class="w-full sm:w-72">
-            <UInput v-model="profile.primaryCity" placeholder="Los Angeles, CA" autocomplete="off" :disabled="disabled" size="md" />
+            <UInput
+              v-model="profile.primaryCity"
+              placeholder="Los Angeles, CA"
+              autocomplete="off"
+              :disabled="disabled"
+              size="md"
+              class="w-full sm:w-72"
+            />
           </div>
         </div>
 
@@ -275,7 +318,14 @@ onBeforeRouteLeave((to, from, next) => {
             <p class="mt-0.5 text-xs text-muted">Specific counties or regions (leave empty for statewide)</p>
           </div>
           <div class="w-full sm:w-72">
-            <UInput v-model="profile.countiesCovered" placeholder="Enter counties separated by commas" autocomplete="off" :disabled="disabled" size="md" />
+            <UInput
+              v-model="profile.countiesCovered"
+              placeholder="Enter counties separated by commas"
+              autocomplete="off"
+              :disabled="disabled"
+              size="md"
+              class="w-full sm:w-72"
+            />
           </div>
         </div>
 
@@ -285,7 +335,14 @@ onBeforeRouteLeave((to, from, next) => {
             <p class="mt-0.5 text-xs text-muted">List any federal court admissions (optional)</p>
           </div>
           <div class="w-full sm:w-72">
-            <UTextarea v-model="profile.federalCourts" :rows="3" placeholder="e.g., Central District of California, 9th Circuit Court of Appeals" autocomplete="off" :disabled="disabled" />
+            <UTextarea
+              v-model="profile.federalCourts"
+              :rows="3"
+              placeholder="e.g., Central District of California, 9th Circuit Court of Appeals"
+              autocomplete="off"
+              :disabled="disabled"
+              class="w-full sm:w-72"
+            />
           </div>
         </div>
       </div>
@@ -307,7 +364,15 @@ onBeforeRouteLeave((to, from, next) => {
             <p class="mt-0.5 text-xs text-muted">Your main area of legal practice</p>
           </div>
           <div class="w-full sm:w-72">
-            <UInputMenu v-model="profile.primaryPracticeFocus" :items="practiceFocusOptions" searchable creatable placeholder="Select or type practice focus" :disabled="disabled" />
+            <UInputMenu
+              v-model="profile.primaryPracticeFocus"
+              :items="practiceFocusOptions"
+              searchable
+              creatable
+              placeholder="Select or type practice focus"
+              :disabled="disabled"
+              class="w-full sm:w-72"
+            />
           </div>
         </div>
 
@@ -317,7 +382,16 @@ onBeforeRouteLeave((to, from, next) => {
             <p class="mt-0.5 text-xs text-muted">Select all types of cases you handle</p>
           </div>
           <div class="w-full sm:w-72">
-            <UInputMenu v-model="profile.injuryCategories" :items="injuryCategoryOptions" multiple searchable creatable placeholder="Select or type categories" :disabled="disabled" />
+            <UInputMenu
+              v-model="profile.injuryCategories"
+              :items="injuryCategoryOptions"
+              multiple
+              searchable
+              creatable
+              placeholder="Select or type categories"
+              :disabled="disabled"
+              class="w-full sm:w-72"
+            />
           </div>
         </div>
 
@@ -327,7 +401,14 @@ onBeforeRouteLeave((to, from, next) => {
             <p class="mt-0.5 text-xs text-muted">Case types you do NOT handle (optional)</p>
           </div>
           <div class="w-full sm:w-72">
-            <UInput v-model="profile.exclusionaryCriteria" placeholder="e.g., Medical Malpractice, Class Actions" autocomplete="off" :disabled="disabled" size="md" />
+            <UInput
+              v-model="profile.exclusionaryCriteria"
+              placeholder="e.g., Medical Malpractice, Class Actions"
+              autocomplete="off"
+              :disabled="disabled"
+              size="md"
+              class="w-full sm:w-72"
+            />
           </div>
         </div>
       </div>

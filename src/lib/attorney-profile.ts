@@ -1,5 +1,48 @@
 import { supabase } from './supabase'
 
+// Pricing Tier Constants
+export const PRICING_TIERS = {
+  TIER_1: {
+    key: 'tier_1',
+    name: 'Tier 1',
+    price: 2500,
+    description: '18-24 Months Ago',
+    color: 'red',
+    colorClass: 'text-red-400 bg-red-500/10 border-red-500/20'
+  },
+  TIER_2: {
+    key: 'tier_2',
+    name: 'Tier 2',
+    price: 3500,
+    description: '12-18 Months Ago',
+    color: 'amber',
+    colorClass: 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+  },
+  TIER_3: {
+    key: 'tier_3',
+    name: 'Tier 3',
+    price: 6500,
+    description: '6-12 Months Ago',
+    color: 'emerald',
+    colorClass: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+  },
+  TIER_4: {
+    key: 'tier_4',
+    name: 'Tier 4',
+    price: 6000,
+    description: '0-6 Months Ago',
+    color: 'green',
+    colorClass: 'text-green-400 bg-green-500/10 border-green-500/20'
+  }
+} as const
+
+export type PricingTierKey = typeof PRICING_TIERS[keyof typeof PRICING_TIERS]['key']
+
+export const PRICING_TIER_OPTIONS = Object.values(PRICING_TIERS).map(tier => ({
+  label: `${tier.name} - $${tier.price.toLocaleString()}`,
+  value: tier.key
+}))
+
 export interface AttorneyProfileData {
   // Tab 1: General Information
   profile_photo_url?: string | null
@@ -40,6 +83,7 @@ export interface AttorneyProfileData {
   case_rate_per_deal?: number | null
   upfront_payment_percentage?: number | null
   payment_window_days?: number | null
+  pricing_tier?: PricingTierKey | null
 }
 
 /**

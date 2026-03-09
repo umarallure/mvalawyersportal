@@ -8,10 +8,18 @@ import { useAuth } from '../../composables/useAuth'
 import { useAttorneyProfile, type AttorneyProfileState } from '../../composables/useAttorneyProfile'
 import UnsavedChangesModal from '../../components/settings/UnsavedChangesModal.vue'
 
+const pricingTierOptions = [
+  { label: 'Tier 1 - $2,500', value: 'tier_1' },
+  { label: 'Tier 2 - $3,500', value: 'tier_2' },
+  { label: 'Tier 3 - $6,500', value: 'tier_3' },
+  { label: 'Tier 4 - $6,000', value: 'tier_4' }
+]
+
 const capacitySchema = z.object({
   caseRatePerDeal: z.number().min(0).optional().or(z.literal('')),
   upfrontPaymentPercentage: z.number().min(0).max(100).optional().or(z.literal('')),
-  paymentWindowDays: z.number().int().min(0).optional().or(z.literal(''))
+  paymentWindowDays: z.number().int().min(0).optional().or(z.literal('')),
+  pricingTier: z.string().optional().or(z.literal(''))
 })
 
 type CapacitySchema = z.output<typeof capacitySchema>
@@ -43,7 +51,8 @@ async function onSubmit(event: FormSubmitEvent<CapacitySchema>) {
     await attorneyProfile.commitEditing(userId.value, [
       'caseRatePerDeal',
       'upfrontPaymentPercentage',
-      'paymentWindowDays'
+      'paymentWindowDays',
+      'pricingTier'
     ] as Array<keyof AttorneyProfileState>)
     
     toast.add({
@@ -216,6 +225,7 @@ onBeforeRouteLeave((_to, _from, next) => {
               type="number"
               placeholder="0"
               :disabled="disabled"
+              class="w-full sm:w-72"
             />
           </div>
         </div>
@@ -226,7 +236,7 @@ onBeforeRouteLeave((_to, _from, next) => {
               Upfront Settlement Percentage
             </label>
             <p class="mt-0.5 text-xs text-muted">
-              Percent of settlement amount to invoice upfront (lawyer mode only)
+              Percent of settlement amount to invoice upfront
             </p>
           </div>
           <div class="w-full sm:w-72">
@@ -235,6 +245,7 @@ onBeforeRouteLeave((_to, _from, next) => {
               type="number"
               placeholder="0"
               :disabled="disabled"
+              class="w-full sm:w-72"
             />
           </div>
         </div>
@@ -245,7 +256,7 @@ onBeforeRouteLeave((_to, _from, next) => {
               Payment Window (days)
             </label>
             <p class="mt-0.5 text-xs text-muted">
-              How many days you allow to receive payment (optional)
+              How many days you take to process payment for cases
             </p>
           </div>
           <div class="w-full sm:w-72">
@@ -254,6 +265,29 @@ onBeforeRouteLeave((_to, _from, next) => {
               type="number"
               placeholder="0"
               :disabled="disabled"
+              class="w-full sm:w-72"
+            />
+          </div>
+        </div>
+
+        <div class="flex max-sm:flex-col items-start justify-between gap-4 px-5 py-4">
+          <div class="min-w-0 flex-1">
+            <label class="text-sm font-medium text-highlighted">
+              Pricing Tier
+            </label>
+            <p class="mt-0.5 text-xs text-muted">
+              Select your case pricing tier based on accident recency and liability
+            </p>
+          </div>
+          <div class="w-full sm:w-72">
+            <USelect
+              v-model="profile.pricingTier"
+              :items="pricingTierOptions"
+              placeholder="Select a tier"
+              :disabled="disabled"
+              value-key="value"
+              label-key="label"
+              class="w-full sm:w-72"
             />
           </div>
         </div>

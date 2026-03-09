@@ -221,7 +221,7 @@ onMounted(async () => {
       <!-- Action Buttons (hidden on print) -->
       <div class="print-actions no-print">
         <button
-          v-if="invoice.status === 'pending'"
+          v-if="invoice.status === 'in_review'"
           class="mark-paid-btn"
           :disabled="markingPaid"
           @click="handleMarkAsPaid"

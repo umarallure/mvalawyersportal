@@ -1,6 +1,6 @@
 import { ref, readonly, computed, watch } from 'vue'
 import { createSharedComposable } from '@vueuse/core'
-import { getAttorneyProfile, patchAttorneyProfile, saveAttorneyProfile, type AttorneyProfileData } from '../lib/attorney-profile'
+import { getAttorneyProfile, patchAttorneyProfile, saveAttorneyProfile, type AttorneyProfileData, type PricingTierKey } from '../lib/attorney-profile'
 
 export interface AttorneyProfileState {
   // Tab 1: General Information
@@ -34,6 +34,7 @@ export interface AttorneyProfileState {
   caseRatePerDeal?: number
   upfrontPaymentPercentage?: number
   paymentWindowDays?: number
+  pricingTier?: PricingTierKey
 }
 
 const _useAttorneyProfile = () => {
@@ -83,6 +84,7 @@ const _useAttorneyProfile = () => {
     if ('caseRatePerDeal' in data) out.case_rate_per_deal = data.caseRatePerDeal ?? null
     if ('upfrontPaymentPercentage' in data) out.upfront_payment_percentage = data.upfrontPaymentPercentage ?? null
     if ('paymentWindowDays' in data) out.payment_window_days = data.paymentWindowDays ?? null
+    if ('pricingTier' in data) out.pricing_tier = (data.pricingTier ?? null) as AttorneyProfileData['pricing_tier']
 
     return out
   }
@@ -114,7 +116,8 @@ const _useAttorneyProfile = () => {
       minimumCaseValue: dbProfile.minimum_case_value || undefined,
       caseRatePerDeal: dbProfile.case_rate_per_deal ?? undefined,
       upfrontPaymentPercentage: dbProfile.upfront_payment_percentage ?? undefined,
-      paymentWindowDays: dbProfile.payment_window_days ?? undefined
+      paymentWindowDays: dbProfile.payment_window_days ?? undefined,
+      pricingTier: dbProfile.pricing_tier || undefined
     }
   }
 
@@ -177,7 +180,8 @@ const _useAttorneyProfile = () => {
         minimum_case_value: mergedData.minimumCaseValue || null,
         case_rate_per_deal: mergedData.caseRatePerDeal || null,
         upfront_payment_percentage: mergedData.upfrontPaymentPercentage || null,
-        payment_window_days: mergedData.paymentWindowDays || null
+        payment_window_days: mergedData.paymentWindowDays || null,
+        pricing_tier: (mergedData.pricingTier || null) as AttorneyProfileData['pricing_tier']
       }
 
       const profile = await saveAttorneyProfile(userId, dbData)
@@ -210,9 +214,9 @@ const _useAttorneyProfile = () => {
 
   const commitEditing = async (userId: string, fields?: Array<keyof AttorneyProfileState>) => {
     const selected = fields ?? []
-    const partial: Partial<AttorneyProfileState> = {}
+    const partial = {} as Partial<AttorneyProfileState>
     for (const key of selected) {
-      partial[key] = draft.value[key] as AttorneyProfileState[typeof key]
+      ;(partial as Record<string, unknown>)[key] = draft.value[key]
     }
 
     loading.value = true
@@ -259,7 +263,7 @@ const _useAttorneyProfile = () => {
       'bio', 'yearsExperience', 'websiteUrl', 'preferredContact',
       'assistantName', 'assistantEmail', 'countiesCovered', 'federalCourts',
       'exclusionaryCriteria', 'minimumCaseValue', 'blockedStates',
-      'caseRatePerDeal', 'upfrontPaymentPercentage', 'paymentWindowDays'
+      'caseRatePerDeal', 'upfrontPaymentPercentage', 'paymentWindowDays', 'pricingTier'
     ]
 
     let filledRequired = 0

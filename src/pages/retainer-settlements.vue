@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 
 import { useAuth } from '../composables/useAuth'
 import {
-  PIPELINE_STAGES,
+  SETTLEMENT_COLUMNS,
   SETTLEMENT_STAGE_LABELS,
   INBOUND_STATUS,
   OUTBOUND_STATUS,
@@ -12,7 +12,7 @@ import {
   getAttorneyColor,
   listSettlements,
   markPaidToBpo,
-  updateDealStatus,
+  updateDealSettlementColumn,
   derivePaymentState,
   type RetainerSettlementRow,
 } from '../lib/retainer-settlements'
@@ -27,8 +27,6 @@ const query = ref('')
 const attorneyFilter = ref('All')
 const statusFilter = ref('All')
 const filterDateStart = ref('')
-const filterDateEnd = ref('')
-const filterSignedDate = ref<'all' | 'today' | 'yesterday' | 'this_week'>('all')
 const viewMode = ref<'table' | 'kanban'>('kanban')
 
 const pageSize = 25
@@ -70,39 +68,18 @@ const statusOptions = computed(() => [
 const filtered = computed(() => {
   let result = rows.value
 
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const todayStr = today.toISOString().slice(0, 10)
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
-  const yesterdayStr = yesterday.toISOString().slice(0, 10)
-  const weekStart = new Date(today)
-  weekStart.setDate(weekStart.getDate() - weekStart.getDay())
-  const weekStartStr = weekStart.toISOString().slice(0, 10)
-
   if (attorneyFilter.value !== 'All') {
     result = result.filter(r => r.assigned_attorney_name === attorneyFilter.value)
   }
 
   if (statusFilter.value !== 'All') {
-    result = result.filter(r => r.status === statusFilter.value)
+    // Match by column label
+    const col = KANBAN_COLUMNS.find(c => c.label === statusFilter.value)
+    if (col) result = result.filter(r => r.settlement_column === col.key)
   }
 
   if (filterDateStart.value) {
-    result = result.filter(r => (r.date_signed ?? '').slice(0, 10) >= filterDateStart.value)
-  }
-  if (filterDateEnd.value) {
-    result = result.filter(r => (r.date_signed ?? '').slice(0, 10) <= filterDateEnd.value)
-  }
-
-  if (filterSignedDate.value !== 'all') {
-    result = result.filter(r => {
-      const ds = (r.date_signed ?? '').slice(0, 10)
-      if (!ds) return false
-      if (filterSignedDate.value === 'today') return ds === todayStr
-      if (filterSignedDate.value === 'yesterday') return ds === yesterdayStr
-      return ds >= weekStartStr
-    })
+    result = result.filter(r => (r.created_at ?? '').slice(0, 10) >= filterDateStart.value)
   }
 
   const q = query.value.trim().toLowerCase()
@@ -136,12 +113,11 @@ const goNext = () => { if (canNext.value) currentPage.value += 1 }
 
 // ── Summary Stats ──
 const totalSettlements = computed(() => rows.value.length)
-const awaitingBillableCount = computed(() => rows.value.filter(r => r.status === PIPELINE_STAGES.RETAINER_SIGNED.label).length)
-const invoiceToAttorneyCount = computed(() => rows.value.filter(r => r.status === PIPELINE_STAGES.ATTORNEY_REVIEW.label).length)
-const attorneyPaidCount = computed(() => rows.value.filter(r => r.status === PIPELINE_STAGES.ATTORNEY_PAID.label).length)
-const reviewCount = computed(() => rows.value.filter(r => r.status === PIPELINE_STAGES.REVIEW.label).length)
-const payableToBpoCount = computed(() => rows.value.filter(r => r.status === PIPELINE_STAGES.APPROVED_PAYABLE.label).length)
-const paidToBpoCount = computed(() => rows.value.filter(r => r.status === PIPELINE_STAGES.PAID_TO_BPO.label).length)
+const awaitingBillableCount = computed(() => rows.value.filter(r => r.settlement_column === SETTLEMENT_COLUMNS.AWAITING_BILLABLE.key).length)
+const invoiceToAttorneyCount = computed(() => rows.value.filter(r => r.settlement_column === SETTLEMENT_COLUMNS.INVOICE_TO_ATTORNEY.key).length)
+const attorneyPaidCount = computed(() => rows.value.filter(r => r.settlement_column === SETTLEMENT_COLUMNS.ATTORNEY_PAID.key).length)
+const invoiceToPublisherCount = computed(() => rows.value.filter(r => r.settlement_column === SETTLEMENT_COLUMNS.INVOICE_TO_PUBLISHER.key).length)
+const paidToBpoCount = computed(() => rows.value.filter(r => r.settlement_column === SETTLEMENT_COLUMNS.PAID_TO_BPO.key).length)
 
 // ── Helpers ──
 const formatMoney = (n: number) => {
@@ -167,38 +143,40 @@ const getInitials = (name: string | null) => {
   return name.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
 }
 
-const getStatusStyle = (status: string) => {
-  switch (status) {
-    case PIPELINE_STAGES.RETAINER_SIGNED.label:
+const getStatusStyle = (colKey: string) => {
+  switch (colKey) {
+    case SETTLEMENT_COLUMNS.AWAITING_BILLABLE.key:
       return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-    case PIPELINE_STAGES.ATTORNEY_REVIEW.label:
+    case SETTLEMENT_COLUMNS.INVOICE_TO_ATTORNEY.key:
       return 'bg-violet-500/10 text-violet-400 border-violet-500/20'
-    case PIPELINE_STAGES.ATTORNEY_PAID.label:
+    case SETTLEMENT_COLUMNS.ATTORNEY_PAID.key:
       return 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-    case PIPELINE_STAGES.REVIEW.label:
+    case SETTLEMENT_COLUMNS.INVOICE_TO_PUBLISHER.key:
       return 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
-    case PIPELINE_STAGES.APPROVED_PAYABLE.label:
-      return 'bg-teal-500/10 text-teal-400 border-teal-500/20'
-    case PIPELINE_STAGES.PAID_TO_BPO.label:
+    case SETTLEMENT_COLUMNS.PAID_TO_BPO.key:
       return 'bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20'
     default:
       return 'bg-[var(--ap-card-divide)] text-muted border-[var(--ap-card-border)]'
   }
 }
 
-const getStatusIcon = (status: string) => {
-  switch (status) {
-    case PIPELINE_STAGES.RETAINER_SIGNED.label: return 'i-lucide-file-signature'
-    case PIPELINE_STAGES.ATTORNEY_REVIEW.label: return 'i-lucide-scale'
-    case PIPELINE_STAGES.ATTORNEY_PAID.label: return 'i-lucide-badge-dollar-sign'
-    case PIPELINE_STAGES.REVIEW.label: return 'i-lucide-eye'
-    case PIPELINE_STAGES.APPROVED_PAYABLE.label: return 'i-lucide-check-circle'
-    case PIPELINE_STAGES.PAID_TO_BPO.label: return 'i-lucide-banknote'
+const getStatusIcon = (colKey: string) => {
+  switch (colKey) {
+    case SETTLEMENT_COLUMNS.AWAITING_BILLABLE.key: return 'i-lucide-file-signature'
+    case SETTLEMENT_COLUMNS.INVOICE_TO_ATTORNEY.key: return 'i-lucide-scale'
+    case SETTLEMENT_COLUMNS.ATTORNEY_PAID.key: return 'i-lucide-badge-dollar-sign'
+    case SETTLEMENT_COLUMNS.INVOICE_TO_PUBLISHER.key: return 'i-lucide-send'
+    case SETTLEMENT_COLUMNS.PAID_TO_BPO.key: return 'i-lucide-banknote'
     default: return 'i-lucide-circle'
   }
 }
 
-const isPaidToBpo = (row: RetainerSettlementRow) => row.status === PIPELINE_STAGES.PAID_TO_BPO.label
+const getColumnLabel = (colKey: string) => {
+  const col = KANBAN_COLUMNS.find(c => c.key === colKey)
+  return col?.label ?? colKey
+}
+
+const isPaidToBpo = (row: RetainerSettlementRow) => row.settlement_column === SETTLEMENT_COLUMNS.PAID_TO_BPO.key
 
 // Safety Lock: Can't pay outbound until inbound is received
 const canPayOutbound = (row: RetainerSettlementRow) => {
@@ -217,33 +195,30 @@ const toggleInbound = async (row: RetainerSettlementRow) => {
   if (!canMarkInbound(row)) return
 
   const oldInbound = row.inbound_payment_status
-  const oldStatus = row.status
+  const oldColumn = row.settlement_column
 
   // Optimistic UI
   row.inbound_payment_status = INBOUND_STATUS.RECEIVED
 
-  // If this lead isn't already beyond Attorney Paid, advance it to the new stage.
-  // This keeps the pipeline aligned: Attorney Review -> Attorney Paid -> Approved – Payable -> Paid to BPO
-  const shouldAdvanceStage =
-    row.status !== PIPELINE_STAGES.ATTORNEY_PAID.label &&
-    row.status !== PIPELINE_STAGES.REVIEW.label &&
-    row.status !== PIPELINE_STAGES.APPROVED_PAYABLE.label &&
-    row.status !== PIPELINE_STAGES.PAID_TO_BPO.label
+  // If this lead is still in awaiting billable or invoice to attorney, advance to attorney paid
+  const shouldAdvance =
+    row.settlement_column === SETTLEMENT_COLUMNS.AWAITING_BILLABLE.key ||
+    row.settlement_column === SETTLEMENT_COLUMNS.INVOICE_TO_ATTORNEY.key
 
-  if (shouldAdvanceStage) {
-    row.status = PIPELINE_STAGES.ATTORNEY_PAID.label
+  if (shouldAdvance) {
+    row.settlement_column = SETTLEMENT_COLUMNS.ATTORNEY_PAID.key
     row.outbound_payment_status = OUTBOUND_STATUS.LOCKED
   }
 
   try {
-    if (shouldAdvanceStage) {
-      await updateDealStatus(row.id, PIPELINE_STAGES.ATTORNEY_PAID.label)
+    if (shouldAdvance) {
+      await updateDealSettlementColumn(row.id, SETTLEMENT_COLUMNS.ATTORNEY_PAID.key)
     }
   } catch (e) {
     // Revert
     row.inbound_payment_status = oldInbound
-    row.status = oldStatus
-    const payment = derivePaymentState(oldStatus)
+    row.settlement_column = oldColumn
+    const payment = derivePaymentState(oldColumn)
     row.outbound_payment_status = payment.outbound
     error.value = e instanceof Error ? e.message : 'Failed to update inbound payment'
   }
@@ -251,11 +226,13 @@ const toggleInbound = async (row: RetainerSettlementRow) => {
 
 const toggleOutbound = async (row: RetainerSettlementRow) => {
   if (!canPayOutbound(row)) return
+  const oldColumn = row.settlement_column
   try {
     await markPaidToBpo(row.id)
     row.outbound_payment_status = OUTBOUND_STATUS.PAID
-    row.status = PIPELINE_STAGES.PAID_TO_BPO.label
+    row.settlement_column = SETTLEMENT_COLUMNS.PAID_TO_BPO.key
   } catch (e) {
+    row.settlement_column = oldColumn
     error.value = e instanceof Error ? e.message : 'Failed to mark as paid to BPO'
   }
 }
@@ -263,7 +240,7 @@ const toggleOutbound = async (row: RetainerSettlementRow) => {
 // ── Kanban ──
 const kanbanColumns = computed(() =>
   KANBAN_COLUMNS.map(col => {
-    const cards = filtered.value.filter(r => r.status === col.label)
+    const cards = filtered.value.filter(r => r.settlement_column === col.key)
     const totalValue = cards.reduce((sum, c) => sum + Number(c.face_amount ?? 0), 0)
     return {
       ...col,
@@ -315,10 +292,10 @@ const onDragStart = (e: DragEvent, row: RetainerSettlementRow) => {
   }
 }
 
-const onDragOver = (e: DragEvent, colLabel: string) => {
+const onDragOver = (e: DragEvent, colKey: string) => {
   e.preventDefault()
   if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
-  dragOverColumn.value = colLabel
+  dragOverColumn.value = colKey
   autoScrollKanbanBoard(e)
 }
 
@@ -332,26 +309,30 @@ const onDragLeave = () => {
   dragOverColumn.value = null
 }
 
-const onDrop = async (e: DragEvent, colLabel: string) => {
+const onDrop = async (e: DragEvent, colKey: string) => {
   e.preventDefault()
   dragOverColumn.value = null
   const card = draggedCard.value
   draggedCard.value = null
-  if (!card || card.status === colLabel) return
+  if (!card || card.settlement_column === colKey) return
 
-  const oldStatus = card.status
+  // Don't allow drops on non-droppable columns
+  const col = KANBAN_COLUMNS.find(c => c.key === colKey)
+  if (!col || !col.droppable) return
+
+  const oldColumn = card.settlement_column
   // Optimistic update
-  card.status = colLabel
-  const payment = derivePaymentState(colLabel)
+  card.settlement_column = colKey
+  const payment = derivePaymentState(colKey)
   card.inbound_payment_status = payment.inbound
   card.outbound_payment_status = payment.outbound
 
   try {
-    await updateDealStatus(card.id, colLabel)
+    await updateDealSettlementColumn(card.id, colKey)
   } catch (err) {
     // Revert on failure
-    card.status = oldStatus
-    const revert = derivePaymentState(oldStatus)
+    card.settlement_column = oldColumn
+    const revert = derivePaymentState(oldColumn)
     card.inbound_payment_status = revert.inbound
     card.outbound_payment_status = revert.outbound
     error.value = err instanceof Error ? err.message : 'Failed to update status'
@@ -372,7 +353,7 @@ const onCardClick = (row: RetainerSettlementRow) => {
 }
 
 // ── Watchers ──
-watch([query, attorneyFilter, statusFilter, filterDateStart, filterDateEnd, filterSignedDate], () => {
+watch([query, attorneyFilter, statusFilter, filterDateStart], () => {
   currentPage.value = 1
 })
 
@@ -414,7 +395,7 @@ onMounted(load)
     <template #body>
       <div class="flex h-full min-h-0 flex-col gap-5">
         <!-- Summary Cards -->
-        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <div class="rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4">
             <div class="flex items-center gap-2">
               <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--ap-accent)]/10">
@@ -463,23 +444,11 @@ onMounted(load)
           <div class="rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4">
             <div class="flex items-center gap-2">
               <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/10">
-                <UIcon name="i-lucide-eye" class="text-sm text-indigo-400" />
+                <UIcon name="i-lucide-send" class="text-sm text-indigo-400" />
               </div>
               <div>
-                <p class="text-lg font-bold text-highlighted tabular-nums">{{ reviewCount }}</p>
-                <p class="text-[10px] font-medium uppercase tracking-wider text-muted">Review</p>
-              </div>
-            </div>
-          </div>
-
-          <div class="rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4">
-            <div class="flex items-center gap-2">
-              <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-500/10">
-                <UIcon name="i-lucide-check-circle" class="text-sm text-teal-400" />
-              </div>
-              <div>
-                <p class="text-lg font-bold text-highlighted tabular-nums">{{ payableToBpoCount }}</p>
-                <p class="text-[10px] font-medium uppercase tracking-wider text-muted">Payable to BPO</p>
+                <p class="text-lg font-bold text-highlighted tabular-nums">{{ invoiceToPublisherCount }}</p>
+                <p class="text-[10px] font-medium uppercase tracking-wider text-muted">Invoice to Publisher</p>
               </div>
             </div>
           </div>
@@ -527,30 +496,8 @@ onMounted(load)
               v-model="filterDateStart"
               type="date"
               class="w-38 [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)]"
-              placeholder="Signed start"
-              title="Signed date start"
-            />
-
-            <UInput
-              v-model="filterDateEnd"
-              type="date"
-              class="w-38 [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)]"
-              placeholder="Signed end"
-              title="Signed date end"
-            />
-
-            <USelect
-              v-model="filterSignedDate"
-              :items="[
-                { label: 'Signed: Any', value: 'all' },
-                { label: 'Signed: Today', value: 'today' },
-                { label: 'Signed: Yesterday', value: 'yesterday' },
-                { label: 'Signed: This Week', value: 'this_week' },
-              ]"
-              value-key="value"
-              label-key="label"
-              placeholder="Signed: Any"
-              class="w-44 [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
+              placeholder="Created start"
+              title="Created date start"
             />
           </div>
 
@@ -698,10 +645,10 @@ onMounted(load)
                   <td class="px-4 py-3.5">
                     <span
                       class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold"
-                      :class="getStatusStyle(row.status)"
+                      :class="getStatusStyle(row.settlement_column)"
                     >
-                      <UIcon :name="getStatusIcon(row.status)" class="text-[11px]" />
-                      {{ row.status }}
+                      <UIcon :name="getStatusIcon(row.settlement_column)" class="text-[11px]" />
+                      {{ getColumnLabel(row.settlement_column) }}
                     </span>
                   </td>
 
@@ -830,11 +777,11 @@ onMounted(load)
               class="flex w-72 shrink-0 flex-col rounded-2xl border border-t-[3px] border-[var(--ap-card-border)] transition-all duration-200"
               :class="[
                 col.borderClass,
-                dragOverColumn === col.label ? 'ring-2 ring-[var(--ap-accent)]/30 bg-[var(--ap-accent)]/[0.02]' : 'bg-[var(--ap-card-bg)]',
+                dragOverColumn === col.key ? 'ring-2 ring-[var(--ap-accent)]/30 bg-[var(--ap-accent)]/[0.02]' : 'bg-[var(--ap-card-bg)]',
               ]"
-              @dragover="onDragOver($event, col.label)"
+              @dragover="onDragOver($event, col.key)"
               @dragleave="onDragLeave"
-              @drop="onDrop($event, col.label)"
+              @drop="onDrop($event, col.key)"
             >
               <!-- Column Header -->
               <div class="flex items-center justify-between px-4 py-3">

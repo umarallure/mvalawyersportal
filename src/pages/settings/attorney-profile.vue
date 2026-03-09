@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import * as z from 'zod'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch, type Ref } from 'vue'
 import { onBeforeRouteLeave, useRouter, type RouteLocationRaw } from 'vue-router'
 
 import { useAuth } from '../../composables/useAuth'
-import { useAttorneyProfile } from '../../composables/useAttorneyProfile'
+import { useAttorneyProfile, type AttorneyProfileState } from '../../composables/useAttorneyProfile'
 import UnsavedChangesModal from '../../components/settings/UnsavedChangesModal.vue'
 
 const generalInfoSchema = z.object({
@@ -22,8 +22,6 @@ const generalInfoSchema = z.object({
   assistantName: z.string().optional(),
   assistantEmail: z.string().email().optional().or(z.literal(''))
 })
-
-type GeneralInfoSchema = z.output<typeof generalInfoSchema>
 
 const auth = useAuth()
 const attorneyProfile = useAttorneyProfile()
@@ -51,7 +49,7 @@ const contactMethodOptions = [
 
 const userId = computed(() => auth.state.value.user?.id ?? '')
 
-const profile = attorneyProfile.draft as unknown as { value: Partial<GeneralInfoSchema> }
+const profile = attorneyProfile.draft as unknown as Ref<AttorneyProfileState>
 
 const router = useRouter()
 
@@ -246,7 +244,14 @@ onBeforeRouteLeave((to) => {
             <p class="mt-0.5 text-xs text-muted">Your complete legal name</p>
           </div>
           <div class="w-full sm:w-72">
-            <UInput v-model="profile.fullName" placeholder="John Doe" autocomplete="off" :disabled="disabled" size="md" />
+            <UInput
+              v-model="profile.fullName"
+              placeholder="John Doe"
+              autocomplete="off"
+              :disabled="disabled"
+              size="md"
+              class="w-full sm:w-72"
+            />
           </div>
         </div>
 
@@ -256,7 +261,14 @@ onBeforeRouteLeave((to) => {
             <p class="mt-0.5 text-xs text-muted">Name of your law firm or practice</p>
           </div>
           <div class="w-full sm:w-72">
-            <UInput v-model="profile.firmName" placeholder="Doe & Associates Law Firm" autocomplete="off" :disabled="disabled" size="md" />
+            <UInput
+              v-model="profile.firmName"
+              placeholder="Doe & Associates Law Firm"
+              autocomplete="off"
+              :disabled="disabled"
+              size="md"
+              class="w-full sm:w-72"
+            />
           </div>
         </div>
 
@@ -266,7 +278,14 @@ onBeforeRouteLeave((to) => {
             <p class="mt-0.5 text-xs text-muted">Your state bar registration number</p>
           </div>
           <div class="w-full sm:w-72">
-            <UInput v-model="profile.barNumber" placeholder="BAR123456" autocomplete="off" :disabled="disabled" size="md" />
+            <UInput
+              v-model="profile.barNumber"
+              placeholder="BAR123456"
+              autocomplete="off"
+              :disabled="disabled"
+              size="md"
+              class="w-full sm:w-72"
+            />
           </div>
         </div>
 
@@ -276,7 +295,14 @@ onBeforeRouteLeave((to) => {
             <p class="mt-0.5 text-xs text-muted">Brief description of your practice and experience (optional)</p>
           </div>
           <div class="w-full sm:w-72">
-            <UTextarea v-model="profile.bio" :rows="4" placeholder="Experienced attorney specializing in..." autocomplete="off" :disabled="disabled" />
+            <UTextarea
+              v-model="profile.bio"
+              :rows="4"
+              placeholder="Experienced attorney specializing in..."
+              autocomplete="off"
+              :disabled="disabled"
+              class="w-full sm:w-72"
+            />
           </div>
         </div>
 
@@ -286,7 +312,16 @@ onBeforeRouteLeave((to) => {
             <p class="mt-0.5 text-xs text-muted">Total years practicing law (optional)</p>
           </div>
           <div class="w-full sm:w-72">
-            <UInput v-model.number="profile.yearsExperience" type="number" min="0" placeholder="10" autocomplete="off" :disabled="disabled" size="md" />
+            <UInput
+              v-model.number="profile.yearsExperience"
+              type="number"
+              min="0"
+              placeholder="10"
+              autocomplete="off"
+              :disabled="disabled"
+              size="md"
+              class="w-full sm:w-72"
+            />
           </div>
         </div>
 
@@ -296,7 +331,16 @@ onBeforeRouteLeave((to) => {
             <p class="mt-0.5 text-xs text-muted">Select all languages you can communicate in</p>
           </div>
           <div class="w-full sm:w-72">
-            <UInputMenu v-model="profile.languages" :items="languageOptions" multiple searchable creatable placeholder="Select or type languages" :disabled="disabled" />
+            <UInputMenu
+              v-model="profile.languages"
+              :items="languageOptions"
+              multiple
+              searchable
+              creatable
+              placeholder="Select or type languages"
+              :disabled="disabled"
+              class="w-full sm:w-72"
+            />
           </div>
         </div>
       </div>
@@ -318,7 +362,14 @@ onBeforeRouteLeave((to) => {
             <p class="mt-0.5 text-xs text-muted">Used for client communications and notifications</p>
           </div>
           <div class="w-full sm:w-72">
-            <UInput v-model="profile.primaryEmail" type="email" autocomplete="off" disabled size="md" />
+            <UInput
+              v-model="profile.primaryEmail"
+              type="email"
+              autocomplete="off"
+              disabled
+              size="md"
+              class="w-full sm:w-72"
+            />
           </div>
         </div>
 
@@ -328,7 +379,15 @@ onBeforeRouteLeave((to) => {
             <p class="mt-0.5 text-xs text-muted">Your direct contact number</p>
           </div>
           <div class="w-full sm:w-72">
-            <UInput v-model="profile.directPhone" type="tel" placeholder="+1 (555) 123-4567" autocomplete="off" :disabled="disabled" size="md" />
+            <UInput
+              v-model="profile.directPhone"
+              type="tel"
+              placeholder="+1 (555) 123-4567"
+              autocomplete="off"
+              :disabled="disabled"
+              size="md"
+              class="w-full sm:w-72"
+            />
           </div>
         </div>
 
@@ -338,7 +397,14 @@ onBeforeRouteLeave((to) => {
             <p class="mt-0.5 text-xs text-muted">Your main office address where you practice law</p>
           </div>
           <div class="w-full sm:w-72">
-            <UTextarea v-model="profile.officeAddress" :rows="3" placeholder="123 Main Street, Suite 100, City, State, ZIP" autocomplete="off" :disabled="disabled" />
+            <UTextarea
+              v-model="profile.officeAddress"
+              :rows="3"
+              placeholder="123 Main Street, Suite 100, City, State, ZIP"
+              autocomplete="off"
+              :disabled="disabled"
+              class="w-full sm:w-72"
+            />
           </div>
         </div>
 
@@ -348,7 +414,15 @@ onBeforeRouteLeave((to) => {
             <p class="mt-0.5 text-xs text-muted">Your firm's website (optional)</p>
           </div>
           <div class="w-full sm:w-72">
-            <UInput v-model="profile.websiteUrl" type="url" placeholder="https://www.yourfirm.com" autocomplete="off" :disabled="disabled" size="md" />
+            <UInput
+              v-model="profile.websiteUrl"
+              type="url"
+              placeholder="https://www.yourfirm.com"
+              autocomplete="off"
+              :disabled="disabled"
+              size="md"
+              class="w-full sm:w-72"
+            />
           </div>
         </div>
 
@@ -358,7 +432,12 @@ onBeforeRouteLeave((to) => {
             <p class="mt-0.5 text-xs text-muted">How you prefer to be contacted (optional)</p>
           </div>
           <div class="w-full sm:w-72">
-            <URadioGroup v-model="profile.preferredContact" :options="contactMethodOptions" :disabled="disabled" />
+            <URadioGroup
+              v-model="profile.preferredContact"
+              :options="contactMethodOptions"
+              :disabled="disabled"
+              class="w-full sm:w-72"
+            />
           </div>
         </div>
       </div>
@@ -380,7 +459,14 @@ onBeforeRouteLeave((to) => {
             <p class="mt-0.5 text-xs text-muted">Name of your assistant or paralegal (optional)</p>
           </div>
           <div class="w-full sm:w-72">
-            <UInput v-model="profile.assistantName" placeholder="Jane Smith" autocomplete="off" :disabled="disabled" size="md" />
+            <UInput
+              v-model="profile.assistantName"
+              placeholder="Jane Smith"
+              autocomplete="off"
+              :disabled="disabled"
+              size="md"
+              class="w-full sm:w-72"
+            />
           </div>
         </div>
 
@@ -390,7 +476,15 @@ onBeforeRouteLeave((to) => {
             <p class="mt-0.5 text-xs text-muted">Email address for your assistant (optional)</p>
           </div>
           <div class="w-full sm:w-72">
-            <UInput v-model="profile.assistantEmail" type="email" placeholder="assistant@yourfirm.com" autocomplete="off" :disabled="disabled" size="md" />
+            <UInput
+              v-model="profile.assistantEmail"
+              type="email"
+              placeholder="assistant@yourfirm.com"
+              autocomplete="off"
+              :disabled="disabled"
+              size="md"
+              class="w-full sm:w-72"
+            />
           </div>
         </div>
       </div>

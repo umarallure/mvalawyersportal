@@ -57,7 +57,7 @@ const form = ref({
   deal_ids: [] as string[],
   items: [] as Array<InvoiceItem & { deal_id?: string }>,
   tax_rate: 0,
-  status: 'pending' as InvoiceStatus,
+  status: 'in_review' as InvoiceStatus,
   notes: '',
   due_date: ''
 })
@@ -79,7 +79,22 @@ const lawyerProfile = ref<{
   primary_email: string | null
   direct_phone: string | null
   bar_association_number: string | null
+  case_rate_per_deal: number | null
+  payment_window_days: number | null
 } | null>(null)
+
+const caseRatePerDeal = computed(() => {
+  const n = Number(lawyerProfile.value?.case_rate_per_deal ?? 0)
+  if (!Number.isFinite(n)) return 0
+  return Math.max(0, Math.round(n * 100) / 100)
+})
+
+const paymentWindowDays = computed(() => {
+  const n = Number(lawyerProfile.value?.payment_window_days ?? 0)
+  if (!Number.isFinite(n)) return null
+  if (n <= 0) return null
+  return Math.floor(n)
+})
 
 const selectedLawyerLabel = computed(() => {
   if (!form.value.lawyer_id) return ''
@@ -113,22 +128,11 @@ const recipientValue = computed({
   }
 })
 
-const statusOptions = computed(() =>
-  isPublisherMode.value
-    ? [
-        { label: 'Billable – Awaiting to be Paid', value: 'pending' },
-        { label: 'In Review', value: 'in_review' },
-        { label: 'Paid', value: 'paid' },
-        { label: 'Chargeback', value: 'chargeback' }
-      ]
-    : [
-        { label: 'Billable', value: 'pending' },
-        { label: 'Signed – Awaiting to be Paid', value: 'signed_awaiting' },
-        { label: 'In Preview', value: 'in_preview' },
-        { label: 'Paid', value: 'paid' },
-        { label: 'Chargeback', value: 'chargeback' }
-      ]
-)
+const statusOptions = [
+  { label: 'In Review', value: 'in_review' },
+  { label: 'Paid', value: 'paid' },
+  { label: 'Chargeback', value: 'chargeback' }
+]
 
 watch(isPublisherMode, (isPub) => {
   // Default newly-created invoices to review stage
@@ -186,11 +190,12 @@ const formatDate = (value: string | null) => {
 }
 
 const addItem = () => {
+  const unit = isPublisherMode.value ? 0 : caseRatePerDeal.value
   form.value.items.push({
     description: '',
     quantity: 1,
-    unit_price: 0,
-    amount: 0
+    unit_price: unit,
+    amount: unit
   })
 }
 
@@ -233,7 +238,7 @@ const syncItemsWithSelectedDeals = () => {
   const manualItems = form.value.items.filter(i => !i.deal_id)
 
   const dealItems = selectedForInvoice.map((d) => {
-    const baseUnit = toDealUnitPrice(d)
+    const baseUnit = isPublisherMode.value ? toDealUnitPrice(d) : caseRatePerDeal.value
     const unit = Math.round(baseUnit * upfrontMultiplier.value * 100) / 100
     const existing = form.value.items.find(i => i.deal_id === d.id)
     if (existing) {
@@ -276,7 +281,10 @@ const fullSubtotal = computed(() => {
     .reduce((sum, i) => sum + (Math.round(i.quantity * i.unit_price * 100) / 100), 0)
 
   const selectedDeals = deals.value.filter(d => d.selected)
-  const dealSum = selectedDeals.reduce((sum, d) => sum + toDealUnitPrice(d), 0)
+  const dealSum = selectedDeals.reduce((sum, d) => {
+    const unit = isPublisherMode.value ? toDealUnitPrice(d) : caseRatePerDeal.value
+    return sum + unit
+  }, 0)
   return Math.round((manual + dealSum) * 100) / 100
 })
 
@@ -385,7 +393,8 @@ const ensureDealSelected = async (dealId: string) => {
   if (!data) return
 
   const fetched = data as DealFlowRow
-  const unit = toDealUnitPrice(fetched)
+  const baseUnit = isPublisherMode.value ? toDealUnitPrice(fetched) : caseRatePerDeal.value
+  const unit = Math.round(baseUnit * upfrontMultiplier.value * 100) / 100
   const desc = String(fetched.insured_name ?? '').trim() || 'Unknown'
 
   deals.value = [
@@ -941,7 +950,7 @@ onMounted(async () => {
                     </div>
                     <div class="shrink-0 text-right">
                       <div class="text-sm font-semibold text-[var(--ap-accent)]">
-                        {{ formatMoney(Number(deal.face_amount ?? 0)) }}
+                        {{ formatMoney(isPublisherMode ? Number(deal.face_amount ?? 0) : (caseRatePerDeal || Number(deal.face_amount ?? 0))) }}
                       </div>
                       <div class="text-xs text-muted">
                         {{ formatDate(deal.created_at) }}
@@ -1099,12 +1108,20 @@ onMounted(async () => {
                       <div class="text-sm font-medium text-highlighted">{{ lawyerProfile.full_name ?? '—' }}</div>
                     </div>
                     <div>
-                      <div class="text-xs text-muted">Firm</div>
-                      <div class="text-sm text-default">{{ lawyerProfile.firm_name ?? '—' }}</div>
-                    </div>
-                    <div>
                       <div class="text-xs text-muted">Email</div>
                       <div class="text-sm text-default">{{ lawyerProfile.primary_email ?? '—' }}</div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-muted">Case per price</div>
+                      <div class="text-sm text-default">{{ formatMoney(caseRatePerDeal) }}</div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-muted">Payment window days</div>
+                      <div class="text-sm text-default">{{ paymentWindowDays ?? '—' }}</div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-muted">Firm</div>
+                      <div class="text-sm text-default">{{ lawyerProfile.firm_name ?? '—' }}</div>
                     </div>
                     <div>
                       <div class="text-xs text-muted">Phone</div>
@@ -1113,10 +1130,6 @@ onMounted(async () => {
                     <div>
                       <div class="text-xs text-muted">Address</div>
                       <div class="text-sm text-default">{{ lawyerProfile.office_address ?? '—' }}</div>
-                    </div>
-                    <div>
-                      <div class="text-xs text-muted">Bar #</div>
-                      <div class="text-sm text-default">{{ lawyerProfile.bar_association_number ?? '—' }}</div>
                     </div>
                   </div>
                   <div v-else class="text-xs text-muted">

@@ -20,6 +20,7 @@ type QualifiedDealRow = {
   insured_name: string | null
   client_phone_number: string | null
   lead_vendor: string | null
+  payment_status: string | null
   assigned_attorney_id: string | null
   invoice_id: string | null
   publisher_invoice_id: string | null
@@ -49,7 +50,6 @@ const selectedStatus = ref<'all' | InvoiceStatus>('all')
 const filterVendor = ref('')
 const filterAttorney = ref('')
 const filterDateStart = ref('')
-const filterDateEnd = ref('')
 const filterDueDate = ref<'all' | 'today' | 'yesterday' | 'this_week'>('all')
 
 // Drag & drop
@@ -65,6 +65,8 @@ const invoices = ref<InvoiceListRow[]>([])
 
 const qualifiedDeals = ref<QualifiedDealRow[]>([])
 const qualifiedDealCenterIdMap = ref(new Map<string, string>())
+const qualifiedDealVendorNameMap = ref(new Map<string, string>())
+const qualifiedDealLawyerNameMap = ref(new Map<string, string>())
 
 const attorneyOptions = computed(() => {
   const names = invoices.value
@@ -101,8 +103,10 @@ const filteredInvoices = computed(() => {
     if (selectedStatus.value !== 'all' && ds !== selectedStatus.value) return false
 
     if (filterVendor.value && isPublisherMode.value) {
+      const vendorQ = filterVendor.value.trim().toLowerCase()
       const vn = (inv.vendor_name ?? '').toLowerCase()
-      if (!vn.includes(filterVendor.value.toLowerCase())) return false
+      const vid = (inv.lead_vendor_id ?? '').toLowerCase()
+      if (!vn.includes(vendorQ) && !vid.includes(vendorQ)) return false
     }
 
     if (filterAttorney.value && !isPublisherMode.value) {
@@ -110,8 +114,11 @@ const filteredInvoices = computed(() => {
       if (!an.includes(filterAttorney.value.toLowerCase())) return false
     }
 
-    if (filterDateStart.value && inv.date_range_start < filterDateStart.value) return false
-    if (filterDateEnd.value && inv.date_range_end > filterDateEnd.value) return false
+    if (filterDateStart.value) {
+      const created = (inv.created_at ?? '').slice(0, 10)
+      if (!created) return false
+      if (created < filterDateStart.value) return false
+    }
 
     if (filterDueDate.value !== 'all' && inv.due_date) {
       const dd = inv.due_date.slice(0, 10)
@@ -140,11 +147,17 @@ const filteredQualifiedDeals = computed(() => {
 
   const q = query.value.trim().toLowerCase()
   const vendorQ = filterVendor.value.trim().toLowerCase()
+  const attorneyQ = filterAttorney.value.trim().toLowerCase()
 
   return qualifiedDeals.value.filter((d) => {
     if (isPublisherMode.value && vendorQ) {
       const vn = String(d.lead_vendor ?? '').toLowerCase()
       if (!vn.includes(vendorQ)) return false
+    }
+
+    if (!isPublisherMode.value && attorneyQ) {
+      const attorneyName = String(qualifiedDealLawyerNameMap.value.get(String(d.assigned_attorney_id ?? '')) ?? '').toLowerCase()
+      if (!attorneyName.includes(attorneyQ)) return false
     }
 
     if (!q) return true
@@ -165,7 +178,7 @@ const pagedRows = computed(() => {
 })
 
 const PUBLISHER_KANBAN_STATUSES: InvoiceStatus[] = ['pending', 'in_review', 'paid', 'chargeback']
-const LAWYER_KANBAN_STATUSES: InvoiceStatus[] = ['pending', 'signed_awaiting', 'in_review', 'paid', 'chargeback']
+const LAWYER_KANBAN_STATUSES: InvoiceStatus[] = ['pending', 'in_review', 'paid', 'chargeback']
 
 const kanbanStatuses = computed(() =>
   isPublisherMode.value ? PUBLISHER_KANBAN_STATUSES : LAWYER_KANBAN_STATUSES
@@ -173,6 +186,7 @@ const kanbanStatuses = computed(() =>
 
 const getDisplayStatus = (invoice: InvoiceRow): InvoiceStatus => {
   if (isPublisherMode.value && invoice.status === 'billable') return 'pending'
+  if (!isPublisherMode.value && invoice.status === 'signed_awaiting') return 'in_review'
   return invoice.status
 }
 
@@ -239,9 +253,12 @@ const getStatusColorClass = (status: InvoiceStatus) => {
   return 'text-red-400'
 }
 
-const handleDragStart = (invoiceId: string, fromStatus: InvoiceStatus) => {
-  if (fromStatus === 'pending') return
+const handleDragStart = (invoiceId: string) => {
   dragInvoiceId.value = invoiceId
+}
+
+const handleDragEnd = () => {
+  dragInvoiceId.value = null
 }
 
 const handleDragOver = (e: DragEvent) => {
@@ -252,14 +269,13 @@ const handleDrop = async (e: DragEvent, targetStatus: InvoiceStatus) => {
   e.preventDefault()
   if (!dragInvoiceId.value) return
 
-  if (targetStatus === 'pending') return
   const id = dragInvoiceId.value
   dragInvoiceId.value = null
 
   const idx = invoices.value.findIndex(i => i.id === id)
   if (idx === -1) return
-  const prev = invoices.value[idx].status
-  if (prev === 'pending') return
+  const invoice = invoices.value[idx]
+  const prev = invoice.status
   if (prev === targetStatus) return
 
   // Optimistic update
@@ -267,6 +283,40 @@ const handleDrop = async (e: DragEvent, targetStatus: InvoiceStatus) => {
 
   try {
     await updateInvoice(id, { status: targetStatus })
+
+    // Update payment_status of linked deals based on invoice status
+    if (invoice.deal_ids?.length) {
+      const dealUpdates: { payment_status?: string } = {}
+      
+      if (targetStatus === 'in_review') {
+        dealUpdates.payment_status = invoice.invoice_type === 'lawyer' 
+          ? 'attorney_payment_in_review' 
+          : 'publisher_payment_in_review'
+      } else if (targetStatus === 'paid') {
+        dealUpdates.payment_status = invoice.invoice_type === 'lawyer'
+          ? 'paid_by_attorney'
+          : undefined // Publisher paid is handled by status field
+        
+        // For publisher invoices, also update status to paid_to_bpo
+        if (invoice.invoice_type === 'publisher') {
+          await supabase
+            .from('daily_deal_flow')
+            .update({ status: 'paid_to_bpo' })
+            .in('id', invoice.deal_ids)
+        }
+      } else if (targetStatus === 'chargeback') {
+        dealUpdates.payment_status = invoice.invoice_type === 'lawyer'
+          ? 'attorney_chargeback'
+          : 'publisher_chargeback'
+      }
+
+      if (dealUpdates.payment_status) {
+        await supabase
+          .from('daily_deal_flow')
+          .update(dealUpdates)
+          .in('id', invoice.deal_ids)
+      }
+    }
   } catch (err) {
     // Revert on error
     invoices.value[idx] = { ...invoices.value[idx], status: prev }
@@ -297,7 +347,11 @@ const load = async () => {
     }
 
     if (selectedStatus.value !== 'all') {
-      filters.status = selectedStatus.value
+      // In lawyer mode, we show any legacy `signed_awaiting` invoices under `in_review`.
+      // So for `in_review`, don't apply a strict server-side filter.
+      if (!(selectedStatus.value === 'in_review' && !isPublisherMode.value)) {
+        filters.status = selectedStatus.value
+      }
     }
 
     const data = (await listInvoices(filters)) as InvoiceListRow[]
@@ -305,33 +359,27 @@ const load = async () => {
     // Load Qualified/Payable leads for the Billable (pending) column
     let dealsQb = supabase
       .from('daily_deal_flow')
-      .select('id,submission_id,insured_name,client_phone_number,lead_vendor,assigned_attorney_id,invoice_id,publisher_invoice_id,created_at')
-      .in('status', [
-        'qualified_payable',
-        'Awaiting Billable',
-        'Qualified/Payable',
-        'approved_payable',
-        'Payable to BPO',
-        'Approved – Payable',
-      ])
+      .select('id,submission_id,insured_name,client_phone_number,lead_vendor,payment_status,assigned_attorney_id,invoice_id,publisher_invoice_id,created_at')
       .order('created_at', { ascending: false })
 
     if (filterDateStart.value) {
       dealsQb = dealsQb.gte('created_at', filterDateStart.value)
     }
-    if (filterDateEnd.value) {
-      dealsQb = dealsQb.lte('created_at', filterDateEnd.value + 'T23:59:59.999Z')
-    }
 
     if (!isPublisherMode.value) {
       // Lawyer mode: show only un-invoiced leads
-      dealsQb = dealsQb.is('invoice_id', null)
+      dealsQb = dealsQb
+        .is('invoice_id', null)
+        .in('status', [
+          'qualified_payable',
+        ])
       if (role === 'lawyer' && userId) {
         dealsQb = dealsQb.eq('assigned_attorney_id', userId)
       }
     } else {
-      // Publisher mode: show only un-invoiced leads
-      dealsQb = dealsQb.is('publisher_invoice_id', null)
+      dealsQb = dealsQb
+        .is('publisher_invoice_id', null)
+        .eq('payment_status', 'paid_by_attorney')
     }
 
     const { data: dealData, error: dealErr } = await dealsQb
@@ -343,17 +391,58 @@ const load = async () => {
     if (vendorNames.length) {
       const { data: centers } = await supabase
         .from('centers')
-        .select('id,lead_vendor')
+        .select('id,lead_vendor,center_name')
         .in('lead_vendor', vendorNames)
 
-      const centerRows = (centers ?? []) as unknown as Array<{ id: string; lead_vendor: string | null }>
+      const centerRows = (centers ?? []) as unknown as Array<{ id: string; lead_vendor: string | null; center_name: string | null }>
       qualifiedDealCenterIdMap.value = new Map(
         centerRows
           .filter((c) => Boolean(c.lead_vendor))
           .map((c) => [String(c.lead_vendor), String(c.id)])
       )
+
+      qualifiedDealVendorNameMap.value = new Map(
+        centerRows
+          .filter((c) => Boolean(c.lead_vendor))
+          .map((c) => [String(c.lead_vendor), String(c.center_name ?? c.lead_vendor ?? '').trim()])
+      )
     } else {
       qualifiedDealCenterIdMap.value = new Map()
+      qualifiedDealVendorNameMap.value = new Map()
+    }
+
+    if (!isPublisherMode.value) {
+      const lawyerIds = [...new Set(dealRows.map((d) => d.assigned_attorney_id).filter(Boolean))] as string[]
+      if (lawyerIds.length) {
+        const { data: profiles } = await supabase
+          .from('attorney_profiles')
+          .select('user_id,full_name')
+          .in('user_id', lawyerIds)
+
+        const profileRows = (profiles ?? []) as unknown as Array<{ user_id: string; full_name: string | null }>
+        const nameMap = new Map(profileRows.map((p) => [String(p.user_id), String(p.full_name ?? '').trim()]))
+
+        const { data: appUsers } = await supabase
+          .from('app_users')
+          .select('user_id,display_name,email')
+          .in('user_id', lawyerIds)
+
+        const userRows = (appUsers ?? []) as unknown as Array<{ user_id: string; display_name: string | null; email: string | null }>
+        const fallbackMap = new Map(
+          userRows.map((u) => [String(u.user_id), String(u.display_name || u.email || '').trim()])
+        )
+
+        qualifiedDealLawyerNameMap.value = new Map(
+          lawyerIds.map((id) => [
+            String(id),
+            nameMap.get(id) || fallbackMap.get(id) || ''
+          ])
+        )
+      } else {
+        qualifiedDealLawyerNameMap.value = new Map()
+      }
+    } else {
+      qualifiedDealLawyerNameMap.value = new Map()
     }
 
     qualifiedDeals.value = dealRows
@@ -454,6 +543,8 @@ watch(isPublisherMode, () => {
   invoices.value = []
   qualifiedDeals.value = []
   qualifiedDealCenterIdMap.value = new Map()
+  qualifiedDealVendorNameMap.value = new Map()
+  qualifiedDealLawyerNameMap.value = new Map()
   page.value = 1
   query.value = ''
   selectedStatus.value = 'all'
@@ -566,7 +657,7 @@ watch([selectedStatus], () => {
   load()
 })
 
-watch([query, filterVendor, filterAttorney, filterDateStart, filterDateEnd, filterDueDate], () => {
+watch([query, filterVendor, filterAttorney, filterDateStart, filterDueDate], () => {
   page.value = 1
 })
 
@@ -699,7 +790,6 @@ watch(pageCount, () => {
                     { label: 'All Statuses', value: 'all' },
                     { label: 'Billable', value: 'pending' },
                     { label: 'In Review', value: 'in_review' },
-                    { label: 'Signed – Awaiting to be Paid', value: 'signed_awaiting' },
                     { label: 'Paid', value: 'paid' },
                     { label: 'Chargeback', value: 'chargeback' }
                   ]"
@@ -717,6 +807,17 @@ watch(pageCount, () => {
               placeholder="Filter by vendor..."
             />
 
+            <UButton
+              v-if="isPublisherMode && filterVendor"
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-x"
+              size="sm"
+              class="rounded-xl"
+              title="Clear vendor filter"
+              @click="filterVendor = ''"
+            />
+
             <UInputMenu
               v-if="!isPublisherMode"
               v-model="filterAttorney"
@@ -730,14 +831,7 @@ watch(pageCount, () => {
               v-model="filterDateStart"
               type="date"
               class="w-38 [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)]"
-              title="Date range start"
-            />
-
-            <UInput
-              v-model="filterDateEnd"
-              type="date"
-              class="w-38 [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)]"
-              title="Date range end"
+              title="Created date start"
             />
 
             <USelect
@@ -857,8 +951,8 @@ watch(pageCount, () => {
               :key="status"
               class="flex min-w-[260px] flex-1 flex-col rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] transition-colors"
               :class="dragInvoiceId ? 'border-dashed' : ''"
-              @dragover="status === 'pending' ? undefined : handleDragOver"
-              @drop="handleDrop($event, status)"
+              @dragover="handleDragOver"
+              @drop="status === 'pending' ? undefined : handleDrop($event, status)"
             >
               <div class="flex items-center justify-between border-b border-[var(--ap-card-border)] px-4 py-3">
                 <div class="flex items-center gap-2">
@@ -881,6 +975,15 @@ watch(pageCount, () => {
                     <div class="min-w-0">
                       <div class="truncate text-sm font-semibold text-highlighted group-hover:text-[var(--ap-accent)]">
                         {{ deal.insured_name || '—' }}
+                      </div>
+                      <div v-if="isAdminOrSuper && isPublisherMode" class="mt-0.5 text-xs text-muted">
+                        {{ qualifiedDealVendorNameMap.get(String(deal.lead_vendor ?? '')) ?? deal.lead_vendor ?? '—' }}
+                      </div>
+                      <div v-if="!isPublisherMode" class="mt-0.5 text-xs text-muted">
+                        {{ deal.lead_vendor || '—' }}
+                      </div>
+                      <div v-if="!isPublisherMode" class="mt-0.5 text-xs text-muted">
+                        Attorney: {{ qualifiedDealLawyerNameMap.get(String(deal.assigned_attorney_id ?? '')) || 'Unassigned' }}
                       </div>
                       <div v-if="deal.client_phone_number" class="mt-0.5 text-xs text-muted">
                         {{ deal.client_phone_number }}
@@ -908,10 +1011,11 @@ watch(pageCount, () => {
                 <div
                   v-for="invoice in (invoicesByStatus.get(status) ?? [])"
                   :key="invoice.id"
-                  :draggable="status !== 'pending'"
+                  draggable="true"
                   class="group cursor-pointer rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-3 transition-all duration-200 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.04]"
                   :class="dragInvoiceId === invoice.id ? 'opacity-50 scale-95' : ''"
-                  @dragstart="handleDragStart(invoice.id, status)"
+                  @dragstart="handleDragStart(invoice.id)"
+                  @dragend="handleDragEnd"
                   @click="openInvoicePdf(invoice)"
                 >
                   <div class="flex items-start justify-between gap-2">
@@ -938,7 +1042,7 @@ watch(pageCount, () => {
                     </span>
                     <div class="flex items-center gap-1.5">
                       <button
-                        v-if="getDisplayStatus(invoice) === 'pending'"
+                        v-if="getDisplayStatus(invoice) === 'in_review'"
                         class="rounded-lg px-2 py-1 text-[10px] font-semibold text-green-400 bg-green-500/10 opacity-0 transition-all hover:bg-green-500/20 group-hover:opacity-100"
                         title="Mark as Paid"
                         @click.stop="handleMarkAsPaid(invoice)"
@@ -952,14 +1056,6 @@ watch(pageCount, () => {
                         @click.stop="handleRequestChargeback(invoice)"
                       >
                         Chargeback
-                      </button>
-                      <button
-                        v-if="isAdminOrSuper && getDisplayStatus(invoice) === 'pending'"
-                        class="rounded-lg px-2 py-1 text-[10px] font-semibold text-blue-400 bg-blue-500/10 opacity-0 transition-all hover:bg-blue-500/20 group-hover:opacity-100"
-                        title="Create Invoice"
-                        @click.stop="createInvoice()"
-                      >
-                        + Invoice
                       </button>
                       <button
                         v-if="isAdminOrSuper"
@@ -1062,7 +1158,7 @@ watch(pageCount, () => {
                   <td class="px-5 py-3.5">
                     <div class="flex items-center justify-center gap-1.5 whitespace-nowrap">
                       <button
-                        v-if="getDisplayStatus(invoice) === 'pending'"
+                        v-if="getDisplayStatus(invoice) === 'in_review'"
                         class="inline-flex items-center gap-1 rounded-lg border border-green-500/20 bg-green-500/10 px-2.5 py-1 text-xs font-medium text-green-400 transition-all hover:bg-green-500/20"
                         @click.stop="handleMarkAsPaid(invoice)"
                       >
