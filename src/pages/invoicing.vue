@@ -35,8 +35,11 @@ const isSuperAdmin = computed(() => auth.state.value.profile?.role === 'super_ad
 const isAdmin = computed(() => auth.state.value.profile?.role === 'admin')
 const isAccounts = computed(() => auth.state.value.profile?.role === 'accounts')
 const isAdminOrSuper = computed(() => isSuperAdmin.value || isAdmin.value || isAccounts.value)
-
 const isPublisherMode = computed(() => route.path === '/invoicing/publisher')
+
+const canFilterByAttorney = computed(() => !isPublisherMode.value && (isSuperAdmin.value || isAdmin.value))
+const canFilterByVendor = computed(() => isPublisherMode.value && (isSuperAdmin.value || isAdmin.value))
+
 const pageTitle = computed(() => isPublisherMode.value ? 'Publisher Invoicing' : 'Lawyer Invoicing')
 const createRoute = computed(() => isPublisherMode.value ? '/invoicing/create?mode=publisher' : '/invoicing/create?mode=lawyer')
 
@@ -661,6 +664,10 @@ watch([query, filterVendor, filterAttorney, filterDateStart, filterDueDate], () 
   page.value = 1
 })
 
+watch(canFilterByVendor, (allowed) => {
+  if (!allowed && filterVendor.value) filterVendor.value = ''
+})
+
 watch(isPublisherMode, () => {
   page.value = 1
   load()
@@ -799,7 +806,7 @@ watch(pageCount, () => {
             />
 
             <UInputMenu
-              v-if="isPublisherMode"
+              v-if="canFilterByVendor"
               v-model="filterVendor"
               :items="vendorOptions"
               create-item
@@ -808,7 +815,7 @@ watch(pageCount, () => {
             />
 
             <UButton
-              v-if="isPublisherMode && filterVendor"
+              v-if="canFilterByVendor && filterVendor"
               color="neutral"
               variant="ghost"
               icon="i-lucide-x"
@@ -819,7 +826,7 @@ watch(pageCount, () => {
             />
 
             <UInputMenu
-              v-if="!isPublisherMode"
+              v-if="canFilterByAttorney"
               v-model="filterAttorney"
               :items="attorneyOptions"
               create-item
