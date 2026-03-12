@@ -48,6 +48,11 @@ const stateByCode = computed(() => {
 
 const totalOpenOrders = computed(() => states.value.reduce((sum, s) => sum + s.openOrders, 0))
 
+const isAccountInactive = computed(() => {
+  const status = auth.state.value.profile?.account_status ?? null
+  return status === 'inactive'
+})
+
 const COLOR_NEUTRAL = '#d1d5db'
 const COLOR_GREEN = '#22c55e'
 const COLOR_YELLOW = '#eab308'
@@ -786,7 +791,20 @@ watch(myClosedOrders, () => {
         </template>
 
         <template #right>
+          <UTooltip v-if="isAccountInactive" text="Locked until Onboarding is Completed">
+            <span class="inline-flex opacity-50 cursor-not-allowed">
+              <UButton
+                color="neutral"
+                :variant="blockMode ? 'solid' : 'outline'"
+                :icon="blockMode ? 'i-lucide-check' : 'i-lucide-ban'"
+                disabled
+              >
+                {{ blockMode ? 'Done blocking' : 'Block states' }}
+              </UButton>
+            </span>
+          </UTooltip>
           <UButton
+            v-else
             color="neutral"
             :variant="blockMode ? 'solid' : 'outline'"
             :icon="blockMode ? 'i-lucide-check' : 'i-lucide-ban'"
@@ -795,7 +813,20 @@ watch(myClosedOrders, () => {
             {{ blockMode ? 'Done blocking' : 'Block states' }}
           </UButton>
 
+          <UTooltip v-if="isAccountInactive" text="Locked until Onboarding is Completed">
+            <span class="inline-flex opacity-50 cursor-not-allowed">
+              <UButton
+                color="primary"
+                variant="solid"
+                icon="i-lucide-plus"
+                disabled
+              >
+                Create Order
+              </UButton>
+            </span>
+          </UTooltip>
           <UButton
+            v-else
             color="primary"
             variant="solid"
             icon="i-lucide-plus"
@@ -804,7 +835,21 @@ watch(myClosedOrders, () => {
             Create Order
           </UButton>
 
+          <UTooltip v-if="isAccountInactive" text="Locked until Onboarding is Completed">
+            <span class="inline-flex opacity-50 cursor-not-allowed">
+              <UButton
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-refresh-cw"
+                :loading="loading"
+                disabled
+              >
+                Refresh
+              </UButton>
+            </span>
+          </UTooltip>
           <UButton
+            v-else
             color="neutral"
             variant="outline"
             icon="i-lucide-refresh-cw"
@@ -818,7 +863,26 @@ watch(myClosedOrders, () => {
     </template>
 
     <template #body>
-      <div class="flex flex-col gap-5">
+      <div class="relative flex flex-col gap-5">
+        <!-- Locked Overlay for Inactive Accounts -->
+        <div
+          v-if="isAccountInactive"
+          class="absolute inset-0 z-50 flex items-center justify-center backdrop-blur-md bg-white/30 dark:bg-black/30"
+        >
+          <div class="rounded-2xl border border-[var(--ap-card-border)] bg-white dark:bg-[#1a1a1a] p-8 shadow-2xl max-w-md mx-4">
+            <div class="flex flex-col items-center gap-4 text-center">
+              <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/10">
+                <UIcon name="i-lucide-lock" class="text-3xl text-amber-500" />
+              </div>
+              <div>
+                <p class="text-lg font-semibold text-highlighted">Locked until Onboarding is Completed</p>
+                <p class="mt-2 text-sm text-muted">
+                  This page is currently locked. Please complete your onboarding process to access the Intake Map.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
         <UAlert
           v-if="blockMode"
           color="neutral"
