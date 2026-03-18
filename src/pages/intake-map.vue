@@ -879,6 +879,22 @@ watch(myClosedOrders, () => {
                 <p class="mt-2 text-sm text-muted">
                   This page is currently locked. Please complete your onboarding process to access the Intake Map.
                 </p>
+                <p class="mt-4 text-sm text-muted">
+                  Schedule a meeting with your account manager to complete onboarding:
+                </p>
+                <div class="mt-3 flex justify-center">
+                  <UButton
+                    as="a"
+                    href="https://calendly.com/monicagonzalez03/onboarding"
+                    target="_blank"
+                    rel="noreferrer"
+                    color="primary"
+                    variant="solid"
+                    icon="i-lucide-calendar"
+                  >
+                    Schedule Onboarding
+                  </UButton>
+                </div>
               </div>
             </div>
           </div>
