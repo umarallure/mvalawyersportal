@@ -8,7 +8,7 @@ import { useAuth } from '../composables/useAuth'
 type CustomerStageKey = 'new_customers_for_review' | '24_hour_approval' | 'customer_approved' | 'customer_rejected'
 
 const STAGES: { key: CustomerStageKey, label: string }[] = [
-  { key: 'new_customers_for_review', label: 'New Customers for Review' },
+  { key: 'new_customers_for_review', label: 'My Cases' },
   { key: '24_hour_approval', label: '24 Hour Approval' },
   { key: 'customer_approved', label: 'Customer Approved' },
   { key: 'customer_rejected', label: 'Customer Rejected' }
@@ -38,6 +38,7 @@ type DailyDealFlow = {
   state: string | null
   date: string | null
   status: string | null
+  submitted_attorney_status?: string | null
   assigned_attorney_id?: string | null
   assigned_attorney_name?: string | null
   agent: string | null
@@ -47,8 +48,6 @@ type DailyDealFlow = {
 }
 
 type LeadRow = Record<string, unknown>
-
-const PENDING_APPROVAL = 'Pending Approval'
 
 const router = useRouter()
 const auth = useAuth()
@@ -85,11 +84,11 @@ const normalize = (v: unknown) => String(v ?? '').trim().toLowerCase()
 const toStage = (row: DailyDealFlow): CustomerStageKey => {
   const s = normalize(row.status)
 
-  if (s.includes('approved') || s.includes('accepted')) return 'customer_approved'
-  if (s.includes('rejected') || s.includes('dropped') || s.includes('declined')) return 'customer_rejected'
-  if (s.includes('24') || s.includes('hour') || s.includes('review_pending')) return '24_hour_approval'
+  if (s === 'attorney_review') return '24_hour_approval'
+  if (s === 'qualified_payable') return 'customer_approved'
+  if (s === 'attorney_rejected') return 'customer_rejected'
 
-  // Default: Pending Approval and everything else goes to "New Customers for Review"
+  // Default: everything else goes to "My Cases"
   return 'new_customers_for_review'
 }
 
@@ -169,9 +168,9 @@ const load = async () => {
 
     let queryBuilder = supabase
       .from('daily_deal_flow')
-      .select('id,submission_id,insured_name,client_phone_number,lead_vendor,state,date,status,assigned_attorney_id,agent,carrier,created_at')
+      .select('id,submission_id,insured_name,client_phone_number,lead_vendor,state,date,status,submitted_attorney_status,assigned_attorney_id,agent,carrier,created_at')
 
-    queryBuilder = queryBuilder.eq('status', PENDING_APPROVAL)
+    queryBuilder = queryBuilder.ilike('submitted_attorney_status', '%submitted%')
 
     if (userRole === 'lawyer' && userId) {
       queryBuilder = queryBuilder.eq('assigned_attorney_id', userId)
@@ -237,14 +236,19 @@ const load = async () => {
           lead_vendor: (row.lead_vendor ? String(row.lead_vendor) : null),
           state: (row.state ? String(row.state) : null),
           date,
-          status: (row.status ? String(row.status) : PENDING_APPROVAL),
+          status: (row.status ? String(row.status) : null),
+          submitted_attorney_status: (row.submitted_attorney_status ? String(row.submitted_attorney_status) : null),
           assigned_attorney_id: (row.assigned_attorney_id ? String(row.assigned_attorney_id) : null),
           agent: null,
           carrier: null,
           created_at: createdAt,
           source: 'leads'
         }
-      }).filter((r) => Boolean(r.id) && Boolean(r.submission_id))
+      }).filter((r) => {
+        if (!r.id || !r.submission_id) return false
+        const s = String(r.submitted_attorney_status ?? '').toLowerCase()
+        return s.includes('submitted')
+      })
 
       dealFlows = mapped
     }
@@ -372,7 +376,6 @@ const leadsByStage = computed(() => {
   return grouped
 })
 
-const totalCount = computed(() => leads.value.length)
 const newReviewCount = computed(() => (leadsByStage.value.get('new_customers_for_review') ?? []).length)
 const approvalCount = computed(() => (leadsByStage.value.get('24_hour_approval') ?? []).length)
 const approvedCount = computed(() => (leadsByStage.value.get('customer_approved') ?? []).length)
@@ -454,21 +457,38 @@ const confirmMove = async () => {
 
   const prevStage = leads.value[idx].stage
   const prevStatus = leads.value[idx].status
-  const stageLabel = STAGES.find(s => s.key === targetStage)?.label ?? targetStage
+
+  const targetDbStatus: string | null | undefined = (() => {
+    if (targetStage === 'new_customers_for_review') return undefined
+    if (targetStage === '24_hour_approval') return 'attorney_review'
+    if (targetStage === 'customer_approved') return 'qualified_payable'
+    if (targetStage === 'customer_rejected') return 'attorney_rejected'
+    return targetStage
+  })()
 
   leads.value[idx] = {
     ...leads.value[idx],
     stage: targetStage,
-    status: stageLabel
+    status: targetDbStatus === undefined ? prevStatus : (targetDbStatus ?? '')
   }
 
   try {
-    const { error } = await supabase
-      .from('daily_deal_flow')
-      .update({ status: targetStage })
-      .eq('id', leadId)
+    if (targetDbStatus !== undefined) {
+      const { error } = await supabase
+        .from('daily_deal_flow')
+        .update({ status: targetDbStatus })
+        .eq('id', leadId)
 
-    if (error) throw error
+      if (error) throw error
+
+      const toLabel = STAGES.find(s => s.key === targetStage)?.label ?? targetStage
+      toast.add({
+        title: 'Updated',
+        description: `Moved to ${toLabel}.`,
+        icon: 'i-lucide-check-circle',
+        color: 'success'
+      })
+    }
 
     moveConfirmOpen.value = false
     pendingMoveLeadId.value = null
@@ -512,15 +532,6 @@ const stageBgClass = (key: CustomerStageKey) => {
 }
 
 const stageIconClass = (key: CustomerStageKey) => {
-  switch (key) {
-    case 'new_customers_for_review': return 'text-blue-400'
-    case '24_hour_approval': return 'text-amber-400'
-    case 'customer_approved': return 'text-green-400'
-    case 'customer_rejected': return 'text-red-400'
-  }
-}
-
-const stageCountColor = (key: CustomerStageKey) => {
   switch (key) {
     case 'new_customers_for_review': return 'text-blue-400'
     case '24_hour_approval': return 'text-amber-400'
