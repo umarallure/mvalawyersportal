@@ -37,7 +37,13 @@ const router = createRouter({
       children: [
         { path: '', redirect: '/settings/attorney-profile' },
         { path: 'attorney-profile', component: () => import('./pages/settings/attorney-profile.vue') },
-        { path: 'expertise', component: () => import('./pages/settings/expertise.vue') }
+        {
+          path: 'team-profile',
+          component: () => import('./pages/settings/team-profile.vue'),
+          meta: { requiresTeamProfileAccess: true }
+        },
+        { path: 'expertise', component: () => import('./pages/settings/expertise.vue') },
+        { path: 'retainer-contract-document', component: () => import('./pages/settings/retainer-contract-document.vue') }
         // TODO: re-enable with pricing redesign
         // { path: 'capacity', component: () => import('./pages/settings/capacity.vue') }
       ]
@@ -57,6 +63,7 @@ router.beforeEach(async (to, from) => {
   const isLoggedIn = Boolean(auth.state.value.user)
   const requiresSuperAdmin = Boolean(to.meta.requiresSuperAdmin)
   const requiresAdmin = Boolean(to.meta.requiresAdmin)
+  const requiresTeamProfileAccess = Boolean(to.meta.requiresTeamProfileAccess)
   const isSuperAdmin = auth.state.value.profile?.role === 'super_admin'
   const role = auth.state.value.profile?.role
   const isRoleAllowed = role === 'super_admin' || role === 'admin' || role === 'lawyer' || role === 'accounts'
@@ -109,6 +116,18 @@ router.beforeEach(async (to, from) => {
     }
 
     if (!isSuperAdmin && role !== 'admin' && role !== 'accounts') {
+      return { path: '/dashboard' }
+    }
+
+    return true
+  }
+
+  if (requiresTeamProfileAccess) {
+    if (!isLoggedIn) {
+      return { path: '/login', query: { redirect: to.fullPath } }
+    }
+
+    if (!isSuperAdmin && role !== 'admin' && role !== 'lawyer') {
       return { path: '/dashboard' }
     }
 
