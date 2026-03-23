@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import LeadDocumentsTab from '../components/LeadDocumentsTab.vue'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../composables/useAuth'
 
@@ -42,6 +43,7 @@ const activeTab = ref('basic')
 const tabs = [
   { label: 'Basic Information', icon: 'i-lucide-user', value: 'basic' },
   { label: 'Accident Details', icon: 'i-lucide-car', value: 'accident' },
+  { label: 'Documents', icon: 'i-lucide-folder-open', value: 'documents' },
 ]
 
 const headerTitle = computed(() => {
@@ -376,6 +378,20 @@ const accidentDetailsFields = computed(() => {
                   </div>
                 </div>
               </div>
+            </UCard>
+
+            <UCard v-else-if="item.value === 'documents'">
+              <LeadDocumentsTab
+                v-if="row.submission_id"
+                :submission-id="String(row.submission_id || '')"
+              />
+              <UAlert
+                v-else
+                color="neutral"
+                variant="subtle"
+                title="No submission ID"
+                description="No submission ID available to load documents."
+              />
             </UCard>
           </template>
         </UTabs>
