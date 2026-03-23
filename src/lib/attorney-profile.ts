@@ -84,6 +84,8 @@ export interface AttorneyProfileData {
   upfront_payment_percentage?: number | null
   payment_window_days?: number | null
   pricing_tier?: PricingTierKey | null
+
+  order_limit?: number | null
 }
 
 /**

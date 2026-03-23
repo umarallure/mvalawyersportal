@@ -29,6 +29,9 @@ const states = ref<StateOrders[]>([])
 const myOpenOrders = ref<OrderRow[]>([])
 const myClosedOrders = ref<OrderRow[]>([])
 
+const DEFAULT_MAX_ORDER_STATES = 5
+const maxOrderStates = ref<number>(DEFAULT_MAX_ORDER_STATES)
+
 const myOrderByStateCode = computed(() => {
   const map = new Map<string, OrderRow>()
   myOpenOrders.value.forEach((o) => {
@@ -46,8 +49,6 @@ const stateByCode = computed(() => {
   states.value.forEach(s => map.set(s.code, s))
   return map
 })
-
-const totalOpenOrders = computed(() => states.value.reduce((sum, s) => sum + s.openOrders, 0))
 
 const isAccountInactive = computed(() => {
   const status = auth.state.value.profile?.account_status ?? null
@@ -264,6 +265,7 @@ const loadBlockedStates = async () => {
   const userId = auth.state.value.user?.id ?? null
   if (!userId) {
     blockedStateCodes.value = []
+    maxOrderStates.value = DEFAULT_MAX_ORDER_STATES
     return
   }
 
@@ -274,13 +276,23 @@ const loadBlockedStates = async () => {
     if (codes) {
       blockedStateCodes.value = codes
       saveBlockedStatesToLocalStorage(codes)
-      return
     }
+
+    const rawLimit = (profile as unknown as Record<string, unknown>)?.order_limit
+    const n = Number(rawLimit)
+    if (Number.isFinite(n) && n >= 1) {
+      maxOrderStates.value = Math.floor(n)
+    } else {
+      maxOrderStates.value = DEFAULT_MAX_ORDER_STATES
+    }
+
+    if (codes) return
   } catch {
     // ignore
   }
 
   blockedStateCodes.value = loadBlockedStatesFromLocalStorage()
+  maxOrderStates.value = DEFAULT_MAX_ORDER_STATES
 }
 
 let persistBlockedStatesTimer: number | null = null
@@ -456,7 +468,7 @@ const maxOrderStatesError = computed(() => {
   const stateCode = String(orderForm.value.stateCode || '').trim().toUpperCase()
   if (!stateCode) return null
   if (!canOrderInState(stateCode)) {
-    return `You already have active orders in ${MAX_ORDER_STATES} states (the maximum allowed). To place orders in a new state, please close or wait for existing orders to expire, or contact your account manager.`
+    return `You already have active orders in ${MAX_ORDER_STATES.value} states (the maximum allowed). To place orders in a new state, please close or wait for existing orders to expire, or contact your account manager.`
   }
   return null
 })
@@ -587,7 +599,7 @@ const openOrderCountByStateCode = computed(() => {
 
 // ═══ 5-STATE ORDERING LIMIT ═══
 // Attorney can have open orders in at most 5 distinct states at a time.
-const MAX_ORDER_STATES = 5
+const MAX_ORDER_STATES = computed(() => maxOrderStates.value)
 
 // Distinct state codes that currently have at least one open order
 const activeOrderStateCodes = computed(() => {
@@ -602,7 +614,7 @@ const activeOrderStateCodes = computed(() => {
 })
 
 const activeOrderStateCount = computed(() => activeOrderStateCodes.value.size)
-const isAtMaxOrderStates = computed(() => activeOrderStateCount.value >= MAX_ORDER_STATES)
+const isAtMaxOrderStates = computed(() => activeOrderStateCount.value >= MAX_ORDER_STATES.value)
 
 // Whether the attorney can place an order in this specific state
 // They can if: the state already has orders (not a new state) OR they haven't hit the 5-state cap
@@ -932,9 +944,9 @@ const handleStateClick = (evt: Event) => {
     return
   }
 
-  // If state has 1 order — navigate to it (user can use Create Order for 2nd)
+  // If state has 1 order — open create order modal for placing the 2nd order in this state
   if (stateOrders.length === 1) {
-    router.push(`/orders/${stateOrders[0].id}?state=${normalizedCode}`)
+    openCreateOrderForState(state.code)
     return
   }
 
