@@ -5,12 +5,37 @@ import { useRouter } from 'vue-router'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../composables/useAuth'
 
+type CustomerStageKey = 'new_customers_for_review' | '24_hour_approval' | 'customer_approved' | 'customer_rejected'
+
+const STAGES: { key: CustomerStageKey, label: string }[] = [
+  { key: 'new_customers_for_review', label: 'New Customers for Review' },
+  { key: '24_hour_approval', label: '24 Hour Approval' },
+  { key: 'customer_approved', label: 'Customer Approved' },
+  { key: 'customer_rejected', label: 'Customer Rejected' }
+]
+
+type CustomerCard = {
+  id: string
+  submissionId: string
+  clientName: string
+  phone: string
+  date: string
+  rawDate: string | null
+  state: string
+  status: string
+  stage: CustomerStageKey
+  leadVendor: string
+  assignedAttorneyName: string
+  source: 'daily_deal_flow' | 'leads'
+}
+
 type DailyDealFlow = {
   id: string
   submission_id: string
   insured_name: string | null
   client_phone_number: string | null
   lead_vendor: string | null
+  state: string | null
   date: string | null
   status: string | null
   assigned_attorney_id?: string | null
@@ -23,78 +48,50 @@ type DailyDealFlow = {
 
 type LeadRow = Record<string, unknown>
 
+const PENDING_APPROVAL = 'Pending Approval'
+
 const router = useRouter()
 const auth = useAuth()
+const toast = useToast()
 
 const isSuperAdmin = computed(() => auth.state.value.profile?.role === 'super_admin')
 const isAdmin = computed(() => auth.state.value.profile?.role === 'admin')
 const canSeeAssignments = computed(() => isSuperAdmin.value || isAdmin.value)
-const canSeeStatusFilter = computed(() => isSuperAdmin.value || isAdmin.value)
-
-const PENDING_APPROVAL = 'Pending Approval'
 
 const loading = ref(false)
-const error = ref<string | null>(null)
 const query = ref('')
+const selectedStage = ref<'all' | CustomerStageKey>('all')
+const selectedState = ref('all')
+const selectedDateRange = ref('all')
+const customDate = ref('')
 
-const leadVendorFilter = ref('All')
-const statusFilter = ref(PENDING_APPROVAL)
-
-const pageSize = 25
-const currentPage = ref(1)
-
-const totalCount = ref(0)
-const availableLeadVendors = ref<string[]>([])
-const availableStatuses = ref<string[]>([])
+type DateRangeOption = { label: string; value: string }
+const DATE_RANGE_OPTIONS: DateRangeOption[] = [
+  { label: 'All Dates', value: 'all' },
+  { label: 'Today', value: 'today' },
+  { label: 'Yesterday', value: 'yesterday' },
+  { label: 'This Week', value: 'this_week' },
+  { label: 'Custom Date', value: 'custom' }
+]
 
 const rows = ref<DailyDealFlow[]>([])
+const leads = ref<CustomerCard[]>([])
 
-const leadVendorOptions = computed(() => {
-  return ['All', ...availableLeadVendors.value]
-})
+const dragLeadId = ref<string | null>(null)
+const dragFromStage = ref<CustomerStageKey | null>(null)
 
-const statusOptions = computed(() => {
-  return [PENDING_APPROVAL]
-})
+const normalize = (v: unknown) => String(v ?? '').trim().toLowerCase()
 
-const pageCount = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize)))
+const toStage = (row: DailyDealFlow): CustomerStageKey => {
+  const s = normalize(row.status)
 
-const displayPage = computed(() => Math.min(Math.max(1, currentPage.value), pageCount.value))
+  if (s.includes('approved') || s.includes('accepted')) return 'customer_approved'
+  if (s.includes('rejected') || s.includes('dropped') || s.includes('declined')) return 'customer_rejected'
+  if (s.includes('24') || s.includes('hour') || s.includes('review_pending')) return '24_hour_approval'
 
-const pagedRows = computed(() => rows.value)
-
-const canPrev = computed(() => currentPage.value > 1)
-const canNext = computed(() => currentPage.value < pageCount.value)
-
-const visibleColumnCount = computed(() => {
-  let count = 4
-  if (isSuperAdmin.value) count += 1
-  if (canSeeAssignments.value) count += 1
-  return count
-})
-
-const colWidth = computed(() => `${100 / visibleColumnCount.value}%`)
-
-const goPrev = () => {
-  if (!canPrev.value) return
-  currentPage.value -= 1
+  // Default: Pending Approval and everything else goes to "New Customers for Review"
+  return 'new_customers_for_review'
 }
-
-const goNext = () => {
-  if (!canNext.value) return
-  currentPage.value += 1
-}
-
-const resetPagination = () => {
-  currentPage.value = 1
-}
-
-const normalizeFilterValue = (value: string | null | undefined) => {
-  const v = String(value ?? '').trim()
-  return v.length ? v : '—'
-}
-
-// Table columns are rendered manually in the template for full design control
 
 const formatDate = (value: string | null) => {
   if (!value) return '—'
@@ -104,11 +101,6 @@ const formatDate = (value: string | null) => {
   } catch {
     return value.length >= 10 ? value.slice(0, 10) : value
   }
-}
-
-const getInitials = (name: string | null) => {
-  if (!name) return '?'
-  return name.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
 }
 
 const formatPhone = (phone: string | null) => {
@@ -123,9 +115,51 @@ const formatPhone = (phone: string | null) => {
   return phone
 }
 
+const getInitials = (name: string | null) => {
+  if (!name) return '?'
+  return name.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
+}
+
+const normalizeState = (v: string | null): string => {
+  if (!v) return '—'
+  const s = v.trim().toUpperCase()
+  if (s.length === 2) return s
+  // Common full-name mappings
+  const map: Record<string, string> = {
+    ALABAMA: 'AL', ALASKA: 'AK', ARIZONA: 'AZ', ARKANSAS: 'AR', CALIFORNIA: 'CA',
+    COLORADO: 'CO', CONNECTICUT: 'CT', DELAWARE: 'DE', FLORIDA: 'FL', GEORGIA: 'GA',
+    HAWAII: 'HI', IDAHO: 'ID', ILLINOIS: 'IL', INDIANA: 'IN', IOWA: 'IA',
+    KANSAS: 'KS', KENTUCKY: 'KY', LOUISIANA: 'LA', MAINE: 'ME', MARYLAND: 'MD',
+    MASSACHUSETTS: 'MA', MICHIGAN: 'MI', MINNESOTA: 'MN', MISSISSIPPI: 'MS', MISSOURI: 'MO',
+    MONTANA: 'MT', NEBRASKA: 'NE', NEVADA: 'NV', 'NEW HAMPSHIRE': 'NH', 'NEW JERSEY': 'NJ',
+    'NEW MEXICO': 'NM', 'NEW YORK': 'NY', 'NORTH CAROLINA': 'NC', 'NORTH DAKOTA': 'ND',
+    OHIO: 'OH', OKLAHOMA: 'OK', OREGON: 'OR', PENNSYLVANIA: 'PA', 'RHODE ISLAND': 'RI',
+    'SOUTH CAROLINA': 'SC', 'SOUTH DAKOTA': 'SD', TENNESSEE: 'TN', TEXAS: 'TX', UTAH: 'UT',
+    VERMONT: 'VT', VIRGINIA: 'VA', WASHINGTON: 'WA', 'WEST VIRGINIA': 'WV',
+    WISCONSIN: 'WI', WYOMING: 'WY', 'DISTRICT OF COLUMBIA': 'DC'
+  }
+  return map[s] ?? v.trim()
+}
+
+const coerceCard = (row: DailyDealFlow): CustomerCard => {
+  return {
+    id: row.id,
+    submissionId: row.submission_id,
+    clientName: row.insured_name ?? 'Unknown Client',
+    phone: row.client_phone_number ?? '—',
+    date: formatDate(row.date ?? row.created_at),
+    rawDate: row.date ?? row.created_at ?? null,
+    state: normalizeState(row.state),
+    status: row.status ?? '—',
+    stage: toStage(row),
+    leadVendor: row.lead_vendor ?? '—',
+    assignedAttorneyName: row.assigned_attorney_name ?? '—',
+    source: row.source ?? 'daily_deal_flow'
+  }
+}
+
 const load = async () => {
   loading.value = true
-  error.value = null
 
   try {
     await auth.init()
@@ -133,13 +167,9 @@ const load = async () => {
     const userId = auth.state.value.user?.id ?? null
     const userRole = auth.state.value.profile?.role ?? null
 
-    const q = query.value.trim()
-    const from = (displayPage.value - 1) * pageSize
-    const to = from + pageSize - 1
-
     let queryBuilder = supabase
       .from('daily_deal_flow')
-      .select('id,submission_id,insured_name,client_phone_number,lead_vendor,date,status,assigned_attorney_id,agent,carrier,created_at', { count: 'exact' })
+      .select('id,submission_id,insured_name,client_phone_number,lead_vendor,state,date,status,assigned_attorney_id,agent,carrier,created_at')
 
     queryBuilder = queryBuilder.eq('status', PENDING_APPROVAL)
 
@@ -163,41 +193,19 @@ const load = async () => {
           queryBuilder = queryBuilder.eq('lead_vendor', centerData.lead_vendor)
         } else {
           rows.value = []
-          totalCount.value = 0
+          leads.value = []
           return
         }
       } else {
         rows.value = []
-        totalCount.value = 0
+        leads.value = []
         return
       }
     }
 
-    if (isSuperAdmin.value && leadVendorFilter.value !== 'All') {
-      const v = normalizeFilterValue(leadVendorFilter.value)
-      queryBuilder = v === '—'
-        ? queryBuilder.is('lead_vendor', null)
-        : queryBuilder.eq('lead_vendor', v)
-    }
-
-    statusFilter.value = PENDING_APPROVAL
-
-    if (q) {
-      const pattern = `%${q.replace(/%/g, '\\%').replace(/_/g, '\\_')}%`
-      queryBuilder = queryBuilder.or([
-        `submission_id.ilike.${pattern}`,
-        `insured_name.ilike.${pattern}`,
-        `client_phone_number.ilike.${pattern}`,
-        `lead_vendor.ilike.${pattern}`,
-        `status.ilike.${pattern}`,
-        `agent.ilike.${pattern}`,
-        `carrier.ilike.${pattern}`
-      ].join(','))
-    }
-
-    const { data, count, error: supaError } = await queryBuilder
+    const { data, error: supaError } = await queryBuilder
       .order('created_at', { ascending: false })
-      .range(from, to)
+      .limit(1000)
 
     if (supaError) throw supaError
 
@@ -206,26 +214,14 @@ const load = async () => {
       r.source = 'daily_deal_flow'
     })
 
-    const effectiveCount = count ?? 0
-
-    if (userRole === 'lawyer' && userId && effectiveCount === 0) {
-      let leadsQb = supabase
+    // Fallback to leads table for lawyers with no daily_deal_flow data
+    if (userRole === 'lawyer' && userId && dealFlows.length === 0) {
+      const { data: leadsData, error: leadsErr } = await supabase
         .from('leads')
-        .select('*', { count: 'exact' })
+        .select('*')
         .eq('assigned_attorney_id', userId)
-
-      if (q) {
-        const pattern = `%${q.replace(/%/g, '\\%').replace(/_/g, '\\_')}%`
-        leadsQb = leadsQb.or([
-          `submission_id.ilike.${pattern}`,
-          `customer_full_name.ilike.${pattern}`,
-          `phone_number.ilike.${pattern}`
-        ].join(','))
-      }
-
-      const { data: leadsData, count: leadsCount, error: leadsErr } = await leadsQb
         .order('created_at', { ascending: false })
-        .range(from, to)
+        .limit(1000)
 
       if (leadsErr) throw leadsErr
 
@@ -239,6 +235,7 @@ const load = async () => {
           insured_name: (row.customer_full_name ? String(row.customer_full_name) : null),
           client_phone_number: (row.phone_number ? String(row.phone_number) : null),
           lead_vendor: (row.lead_vendor ? String(row.lead_vendor) : null),
+          state: (row.state ? String(row.state) : null),
           date,
           status: (row.status ? String(row.status) : PENDING_APPROVAL),
           assigned_attorney_id: (row.assigned_attorney_id ? String(row.assigned_attorney_id) : null),
@@ -249,11 +246,10 @@ const load = async () => {
         }
       }).filter((r) => Boolean(r.id) && Boolean(r.submission_id))
 
-      rows.value = mapped
-      totalCount.value = leadsCount ?? 0
-      return
+      dealFlows = mapped
     }
 
+    // Resolve attorney names for admin+
     if (canSeeAssignments.value) {
       const attorneyIds = [...new Set(dealFlows
         .map(d => d.assigned_attorney_id)
@@ -266,177 +262,270 @@ const load = async () => {
           .select('user_id,full_name')
           .in('user_id', attorneyIds)
 
-        if (attorneysError) throw attorneysError
+        if (!attorneysError && attorneys) {
+          const attorneyNameByUserId = new Map(
+            (attorneys ?? []).map((a: unknown) => {
+              const row = (a ?? {}) as Record<string, unknown>
+              return [String(row.user_id ?? ''), String(row.full_name ?? '').trim()]
+            })
+          )
 
-        const attorneyNameByUserId = new Map(
-          (attorneys ?? []).map((a: unknown) => {
-            const row = (a ?? {}) as Record<string, unknown>
-            return [String(row.user_id ?? ''), String(row.full_name ?? '').trim()]
+          dealFlows.forEach((flow) => {
+            const id = flow.assigned_attorney_id ?? null
+            if (!id) return
+            const name = attorneyNameByUserId.get(id) ?? ''
+            flow.assigned_attorney_name = name.length ? name : null
           })
-        )
-
-        dealFlows.forEach((flow) => {
-          const id = flow.assigned_attorney_id ?? null
-          if (!id) return
-          const name = attorneyNameByUserId.get(id) ?? ''
-          flow.assigned_attorney_name = name.length ? name : null
-        })
+        }
       }
     }
 
     rows.value = dealFlows
-    totalCount.value = effectiveCount
+    leads.value = dealFlows.map(coerceCard)
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Failed to load retainers'
-    error.value = msg
+    const msg = e instanceof Error ? e.message : 'Failed to load customers'
+    toast.add({
+      title: 'Error',
+      description: msg,
+      icon: 'i-lucide-x',
+      color: 'error'
+    })
   } finally {
     loading.value = false
   }
 }
 
-const loadFilterOptions = async () => {
-  try {
-    await auth.init()
-    const userId = auth.state.value.user?.id ?? null
-    const userRole = auth.state.value.profile?.role ?? null
-
-    if (userRole !== 'super_admin') {
-      availableLeadVendors.value = []
-      leadVendorFilter.value = 'All'
-    }
-
-    availableStatuses.value = [PENDING_APPROVAL]
-    statusFilter.value = PENDING_APPROVAL
-
-    let qb = supabase
-      .from('daily_deal_flow')
-      .select('lead_vendor,status')
-      .order('created_at', { ascending: false })
-      .limit(1000)
-
-    qb = qb.eq('status', PENDING_APPROVAL)
-
-    if (userRole === 'lawyer' && userId) {
-      qb = qb.eq('assigned_attorney_id', userId)
-    } else if (!userRole && userId) {
-      const { data: userData } = await supabase
-        .from('app_users')
-        .select('center_id')
-        .eq('user_id', userId)
-        .maybeSingle()
-
-      if (userData?.center_id) {
-        const { data: centerData } = await supabase
-          .from('centers')
-          .select('lead_vendor')
-          .eq('id', userData.center_id)
-          .maybeSingle()
-
-        if (centerData?.lead_vendor) {
-          qb = qb.eq('lead_vendor', centerData.lead_vendor)
-        } else {
-          availableLeadVendors.value = ['—']
-          availableStatuses.value = ['—']
-          return
-        }
-      } else {
-        availableLeadVendors.value = ['—']
-        availableStatuses.value = ['—']
-        return
-      }
-    }
-
-    const { data, error: optErr } = await qb
-    if (optErr) throw optErr
-
-    const vendorSet = new Set<string>()
-    const statusSet = new Set<string>()
-    for (const r of (data ?? []) as Array<{ lead_vendor: string | null; status: string | null }>) {
-      vendorSet.add(normalizeFilterValue(r.lead_vendor))
-      statusSet.add(normalizeFilterValue(r.status))
-    }
-
-    const vendors = Array.from(vendorSet)
-    const statuses = Array.from(statusSet)
-    vendors.sort((a, b) => a.localeCompare(b))
-    statuses.sort((a, b) => a.localeCompare(b))
-
-    if (userRole === 'super_admin') {
-      availableLeadVendors.value = vendors
-    }
-    availableStatuses.value = [PENDING_APPROVAL]
-  } catch {
-    return
-  }
-}
-
-onMounted(async () => {
-  await loadFilterOptions()
-  await load()
+onMounted(() => {
+  load().catch(() => {})
 })
 
-watch([query, leadVendorFilter, statusFilter], () => {
-  if (currentPage.value !== 1) {
-    resetPagination()
-    return
+watch(query, () => {
+  // query filtering is done client-side via filteredLeads
+})
+
+const availableStates = computed(() => {
+  const states = new Set<string>()
+  leads.value.forEach(l => {
+    if (l.state && l.state !== '—') states.add(l.state)
+  })
+  return [...states].sort()
+})
+
+const getStartOfDay = (d: Date) => {
+  const start = new Date(d)
+  start.setHours(0, 0, 0, 0)
+  return start
+}
+
+const matchesDateFilter = (rawDate: string | null): boolean => {
+  const range = selectedDateRange.value
+  if (range === 'all') return true
+  if (!rawDate) return false
+
+  const leadDate = getStartOfDay(new Date(rawDate))
+  const now = new Date()
+  const today = getStartOfDay(now)
+
+  if (range === 'today') {
+    return leadDate.getTime() === today.getTime()
   }
-  load().catch(() => {
+  if (range === 'yesterday') {
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+    return leadDate.getTime() === yesterday.getTime()
+  }
+  if (range === 'this_week') {
+    const weekStart = new Date(today)
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay())
+    return leadDate.getTime() >= weekStart.getTime() && leadDate.getTime() <= today.getTime()
+  }
+  if (range === 'custom' && customDate.value) {
+    const target = getStartOfDay(new Date(customDate.value))
+    return leadDate.getTime() === target.getTime()
+  }
+  return true
+}
+
+const filteredLeads = computed(() => {
+  const q = query.value.trim().toLowerCase()
+  const stageFilter = selectedStage.value
+  const stateFilter = selectedState.value
+
+  return leads.value.filter((l) => {
+    if (stageFilter !== 'all' && l.stage !== stageFilter) return false
+    if (stateFilter !== 'all' && l.state !== stateFilter) return false
+    if (!matchesDateFilter(l.rawDate)) return false
+    if (!q) return true
+    return [l.clientName, l.phone, l.submissionId, l.status, l.leadVendor, l.assignedAttorneyName, l.state]
+      .some(v => String(v ?? '').toLowerCase().includes(q))
   })
 })
 
-watch(currentPage, () => {
-  load().catch(() => {
+const leadsByStage = computed(() => {
+  const grouped = new Map<CustomerStageKey, CustomerCard[]>()
+  STAGES.forEach((s) => grouped.set(s.key, []))
+  filteredLeads.value.forEach((l) => {
+    const arr = grouped.get(l.stage) ?? []
+    arr.push(l)
+    grouped.set(l.stage, arr)
   })
+  return grouped
 })
 
-watch(pageCount, () => {
-  if (currentPage.value > pageCount.value) currentPage.value = pageCount.value
+const totalCount = computed(() => leads.value.length)
+const newReviewCount = computed(() => (leadsByStage.value.get('new_customers_for_review') ?? []).length)
+const approvalCount = computed(() => (leadsByStage.value.get('24_hour_approval') ?? []).length)
+const approvedCount = computed(() => (leadsByStage.value.get('customer_approved') ?? []).length)
+const rejectedCount = computed(() => (leadsByStage.value.get('customer_rejected') ?? []).length)
+
+const openLead = (lead: CustomerCard) => {
+  router.push(`/retainers/${lead.id}`)
+}
+
+const onDragStartLead = (lead: CustomerCard) => {
+  dragLeadId.value = lead.id
+  dragFromStage.value = lead.stage
+}
+
+const onDragEndLead = () => {
+  dragLeadId.value = null
+  dragFromStage.value = null
+}
+
+// Confirmation modal state
+const moveConfirmOpen = ref(false)
+const moveConfirmBusy = ref(false)
+const pendingMoveLeadId = ref<string | null>(null)
+const pendingMoveFromStage = ref<CustomerStageKey | null>(null)
+const pendingMoveToStage = ref<CustomerStageKey | null>(null)
+
+const pendingMoveLeadName = computed(() => {
+  if (!pendingMoveLeadId.value) return ''
+  return leads.value.find(l => l.id === pendingMoveLeadId.value)?.clientName ?? ''
 })
 
-const openRow = (row: DailyDealFlow) => {
-  router.push(`/retainers/${row.id}`)
+const pendingMoveFromLabel = computed(() => {
+  if (!pendingMoveFromStage.value) return ''
+  return STAGES.find(s => s.key === pendingMoveFromStage.value)?.label ?? ''
+})
+
+const pendingMoveToLabel = computed(() => {
+  if (!pendingMoveToStage.value) return ''
+  return STAGES.find(s => s.key === pendingMoveToStage.value)?.label ?? ''
+})
+
+const onDropToStage = (targetStage: CustomerStageKey) => {
+  const leadId = dragLeadId.value
+  const fromStage = dragFromStage.value
+  onDragEndLead()
+
+  if (!leadId || !fromStage) return
+  if (fromStage === targetStage) return
+
+  const idx = leads.value.findIndex(l => l.id === leadId)
+  if (idx < 0) return
+
+  pendingMoveLeadId.value = leadId
+  pendingMoveFromStage.value = fromStage
+  pendingMoveToStage.value = targetStage
+  moveConfirmOpen.value = true
 }
 
-const dropOpen = ref(false)
-const dropTarget = ref<DailyDealFlow | null>(null)
-const dropBusy = ref(false)
-
-const openDrop = (row: DailyDealFlow) => {
-  if (row.source === 'leads') return
-  dropTarget.value = row
-  dropOpen.value = true
-}
-
-const handleDropOpenUpdate = (v: boolean) => {
-  dropOpen.value = v
+const handleMoveConfirmUpdate = (v: boolean) => {
+  moveConfirmOpen.value = v
   if (!v) {
-    dropTarget.value = null
-    dropBusy.value = false
+    pendingMoveLeadId.value = null
+    pendingMoveFromStage.value = null
+    pendingMoveToStage.value = null
+    moveConfirmBusy.value = false
   }
 }
 
-const confirmDrop = async () => {
-  const target = dropTarget.value
-  if (!target?.id) return
-  if (target.source === 'leads') return
+const confirmMove = async () => {
+  const leadId = pendingMoveLeadId.value
+  const fromStage = pendingMoveFromStage.value
+  const targetStage = pendingMoveToStage.value
+  if (!leadId || !fromStage || !targetStage) return
 
-  dropBusy.value = true
+  const idx = leads.value.findIndex(l => l.id === leadId)
+  if (idx < 0) return
+
+  moveConfirmBusy.value = true
+
+  const prevStage = leads.value[idx].stage
+  const prevStatus = leads.value[idx].status
+  const stageLabel = STAGES.find(s => s.key === targetStage)?.label ?? targetStage
+
+  leads.value[idx] = {
+    ...leads.value[idx],
+    stage: targetStage,
+    status: stageLabel
+  }
+
   try {
-    const { error: updateErr } = await supabase
+    const { error } = await supabase
       .from('daily_deal_flow')
-      .update({ status: 'Dropped' })
-      .eq('id', target.id)
+      .update({ status: targetStage })
+      .eq('id', leadId)
 
-    if (updateErr) throw updateErr
+    if (error) throw error
 
-    await load()
-    dropOpen.value = false
-    dropTarget.value = null
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Failed to drop retainer'
-    error.value = msg
+    moveConfirmOpen.value = false
+    pendingMoveLeadId.value = null
+    pendingMoveFromStage.value = null
+    pendingMoveToStage.value = null
+  } catch (err) {
+    leads.value[idx] = {
+      ...leads.value[idx],
+      stage: prevStage,
+      status: prevStatus
+    }
+
+    const msg = err instanceof Error ? err.message : 'Unable to update stage'
+    toast.add({
+      title: 'Error',
+      description: msg,
+      icon: 'i-lucide-x',
+      color: 'error'
+    })
   } finally {
-    dropBusy.value = false
+    moveConfirmBusy.value = false
+  }
+}
+
+const stageIcon = (key: CustomerStageKey) => {
+  switch (key) {
+    case 'new_customers_for_review': return 'i-lucide-user-plus'
+    case '24_hour_approval': return 'i-lucide-clock'
+    case 'customer_approved': return 'i-lucide-check-circle'
+    case 'customer_rejected': return 'i-lucide-x-circle'
+  }
+}
+
+const stageBgClass = (key: CustomerStageKey) => {
+  switch (key) {
+    case 'new_customers_for_review': return 'bg-blue-500/10'
+    case '24_hour_approval': return 'bg-amber-500/10'
+    case 'customer_approved': return 'bg-green-500/10'
+    case 'customer_rejected': return 'bg-red-500/10'
+  }
+}
+
+const stageIconClass = (key: CustomerStageKey) => {
+  switch (key) {
+    case 'new_customers_for_review': return 'text-blue-400'
+    case '24_hour_approval': return 'text-amber-400'
+    case 'customer_approved': return 'text-green-400'
+    case 'customer_rejected': return 'text-red-400'
+  }
+}
+
+const stageCountColor = (key: CustomerStageKey) => {
+  switch (key) {
+    case 'new_customers_for_review': return 'text-blue-400'
+    case '24_hour_approval': return 'text-amber-400'
+    case 'customer_approved': return 'text-green-400'
+    case 'customer_rejected': return 'text-red-400'
   }
 }
 </script>
@@ -444,69 +533,49 @@ const confirmDrop = async () => {
 <template>
   <UDashboardPanel id="retainers">
     <template #header>
-      <UDashboardNavbar title="Retainers">
+      <UDashboardNavbar title="My Customers">
         <template #leading>
           <UDashboardSidebarCollapse />
         </template>
 
         <template #right>
-          <div class="flex items-center gap-2">
-            <div class="hidden items-center gap-1.5 rounded-full border border-[var(--ap-accent)]/20 bg-[var(--ap-accent)]/8 px-3 py-1 sm:flex">
-              <span class="h-1.5 w-1.5 rounded-full bg-[var(--ap-accent)] animate-pulse" />
-              <span class="text-xs font-medium text-[var(--ap-accent)]">{{ totalCount }} total</span>
-            </div>
-            <UButton
-              color="neutral"
-              variant="ghost"
-              icon="i-lucide-refresh-cw"
-              size="sm"
-              :loading="loading"
-              class="rounded-lg"
-              @click="load"
-            />
-          </div>
+          <UButton
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-refresh-cw"
+            :loading="loading"
+            @click="load"
+          >
+            Refresh
+          </UButton>
         </template>
       </UDashboardNavbar>
     </template>
 
     <template #body>
       <div class="flex h-full min-h-0 flex-col gap-5">
-        <!-- Drop Retainer Modal -->
+        <!-- Move Confirmation Modal -->
         <UModal
-          :open="dropOpen"
-          title="Drop retainer"
+          :open="moveConfirmOpen"
+          title="Move Customer"
           :dismissible="false"
-          @update:open="handleDropOpenUpdate"
+          @update:open="handleMoveConfirmUpdate"
         >
           <template #body="{ close }">
             <div class="space-y-5">
               <div class="flex items-start gap-3">
-                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-500/10">
-                  <UIcon name="i-lucide-alert-triangle" class="text-lg text-red-400" />
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--ap-accent)]/10">
+                  <UIcon name="i-lucide-arrow-right-left" class="text-lg text-[var(--ap-accent)]" />
                 </div>
                 <div>
                   <p class="text-sm font-medium text-highlighted">
                     Are you sure?
                   </p>
                   <p class="mt-0.5 text-sm text-muted">
-                    This will permanently mark the retainer as dropped.
+                    You are moving <span class="font-semibold text-highlighted">{{ pendingMoveLeadName }}</span> from
+                    <span class="font-semibold text-highlighted">{{ pendingMoveFromLabel }}</span> to
+                    <span class="font-semibold text-highlighted">{{ pendingMoveToLabel }}</span>.
                   </p>
-                </div>
-              </div>
-
-              <div class="rounded-xl border border-default bg-elevated/40 p-4">
-                <div class="flex items-center gap-3">
-                  <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--ap-accent)]/15 text-xs font-bold text-[var(--ap-accent)]">
-                    {{ getInitials(dropTarget?.insured_name ?? null) }}
-                  </div>
-                  <div>
-                    <div class="text-sm font-semibold text-highlighted">
-                      {{ dropTarget?.insured_name ?? '—' }}
-                    </div>
-                    <div class="text-xs text-muted">
-                      {{ formatPhone(dropTarget?.client_phone_number ?? null) }}
-                    </div>
-                  </div>
                 </div>
               </div>
 
@@ -514,227 +583,198 @@ const confirmDrop = async () => {
                 <UButton
                   color="neutral"
                   variant="ghost"
-                  :disabled="dropBusy"
+                  :disabled="moveConfirmBusy"
                   class="rounded-lg"
                   @click="() => { close() }"
                 >
                   Cancel
                 </UButton>
                 <UButton
-                  color="error"
+                  color="primary"
                   variant="solid"
-                  :loading="dropBusy"
-                  icon="i-lucide-trash-2"
+                  :loading="moveConfirmBusy"
+                  icon="i-lucide-check"
                   class="rounded-lg"
-                  @click="confirmDrop"
+                  @click="confirmMove"
                 >
-                  Drop retainer
+                  Confirm
                 </UButton>
               </div>
             </div>
           </template>
         </UModal>
 
-        <!-- Toolbar -->
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div class="flex flex-1 flex-wrap items-center gap-2.5">
-            <div class="relative max-w-xs flex-1">
-              <UInput
-                v-model="query"
-                class="w-full [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)] [&_input]:pl-10 [&_input]:backdrop-blur-sm"
-                icon="i-lucide-search"
-                placeholder="Search retainers..."
-              />
+        <!-- Stat Cards -->
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div class="group overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5 transition-all duration-300 hover:border-blue-500/30 hover:bg-blue-500/[0.03]">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-xs font-medium uppercase tracking-wider text-muted">New for Review</p>
+                <p class="mt-1.5 text-3xl font-bold text-blue-400">{{ newReviewCount }}</p>
+              </div>
+              <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-500/10">
+                <UIcon name="i-lucide-user-plus" class="text-xl text-blue-400" />
+              </div>
             </div>
+          </div>
 
-            <USelect
-              v-if="isSuperAdmin"
-              v-model="leadVendorFilter"
-              :items="leadVendorOptions"
-              class="w-44 [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
-            />
+          <div class="group overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5 transition-all duration-300 hover:border-amber-500/30 hover:bg-amber-500/[0.03]">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-xs font-medium uppercase tracking-wider text-muted">24 Hour Approval</p>
+                <p class="mt-1.5 text-3xl font-bold text-amber-400">{{ approvalCount }}</p>
+              </div>
+              <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/10">
+                <UIcon name="i-lucide-clock" class="text-xl text-amber-400" />
+              </div>
+            </div>
+          </div>
 
-            <USelect
-              v-if="canSeeStatusFilter"
-              v-model="statusFilter"
-              :items="statusOptions"
-              class="w-44 [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
-            />
+          <div class="group overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5 transition-all duration-300 hover:border-green-500/30 hover:bg-green-500/[0.03]">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-xs font-medium uppercase tracking-wider text-muted">Approved</p>
+                <p class="mt-1.5 text-3xl font-bold text-green-400">{{ approvedCount }}</p>
+              </div>
+              <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-green-500/10">
+                <UIcon name="i-lucide-check-circle" class="text-xl text-green-400" />
+              </div>
+            </div>
+          </div>
+
+          <div class="group overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5 transition-all duration-300 hover:border-red-500/30 hover:bg-red-500/[0.03]">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-xs font-medium uppercase tracking-wider text-muted">Rejected</p>
+                <p class="mt-1.5 text-3xl font-bold text-red-400">{{ rejectedCount }}</p>
+              </div>
+              <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-red-500/10">
+                <UIcon name="i-lucide-x-circle" class="text-xl text-red-400" />
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- Error Alert -->
-        <UAlert
-          v-if="error"
-          color="error"
-          variant="subtle"
-          title="Unable to load retainers"
-          :description="error"
-          class="rounded-xl"
-        />
+        <!-- Filters -->
+        <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] px-5 py-3">
+          <div class="flex flex-wrap items-center gap-3">
+            <UInput
+              v-model="query"
+              class="max-w-xs"
+              icon="i-lucide-search"
+              placeholder="Search customers..."
+            />
 
-        <!-- Table Card -->
-        <div class="relative flex flex-1 min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)]">
-          <!-- Loading Skeleton -->
-          <div v-if="loading && !rows.length" class="flex flex-1 items-center justify-center p-12">
-            <div class="flex flex-col items-center gap-3">
-              <UIcon name="i-lucide-loader-2" class="animate-spin text-2xl text-[var(--ap-accent)]" />
-              <span class="text-sm text-muted">Loading retainers...</span>
-            </div>
+            <USelect
+              v-model="selectedStage"
+              :items="[{ label: 'All Stages', value: 'all' }, ...STAGES.map(s => ({ label: s.label, value: s.key }))]"
+              class="w-52"
+              value-key="value"
+              label-key="label"
+            />
+
+            <USelect
+              v-model="selectedState"
+              :items="[{ label: 'All States', value: 'all' }, ...availableStates.map(s => ({ label: s, value: s }))]"
+              class="w-40"
+              value-key="value"
+              label-key="label"
+            />
+
+            <USelect
+              v-model="selectedDateRange"
+              :items="DATE_RANGE_OPTIONS"
+              class="w-44"
+              value-key="value"
+              label-key="label"
+            />
+
+            <input
+              v-if="selectedDateRange === 'custom'"
+              v-model="customDate"
+              type="date"
+              class="h-9 rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] px-3 text-xs text-highlighted outline-none focus:border-[var(--ap-accent)]/40"
+            />
           </div>
 
-          <!-- Empty State -->
-          <div v-else-if="!loading && !rows.length" class="flex flex-1 items-center justify-center p-12">
-            <div class="flex flex-col items-center gap-3 text-center">
-              <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--ap-accent)]/10">
-                <UIcon name="i-lucide-inbox" class="text-2xl text-[var(--ap-accent)]/60" />
-              </div>
-              <div>
-                <p class="text-sm font-medium text-highlighted">
-                  No retainers found
-                </p>
-                <p class="mt-0.5 text-xs text-muted">
-                  Try adjusting your search or filters
-                </p>
-              </div>
-            </div>
-          </div>
+          <span class="inline-flex items-center rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-border)] px-3 py-1 text-xs font-semibold text-muted">
+            {{ filteredLeads.length }} customers
+          </span>
+        </div>
 
-          <!-- Table Content -->
-          <div v-else class="flex-1 min-h-0 overflow-y-auto retainers-scroll">
-            <table class="w-full table-fixed">
-              <thead class="sticky top-0 z-10">
-                <tr class="border-b border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] backdrop-blur-xl">
-                  <th :style="{ width: colWidth }" class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
-                    Client
-                  </th>
-                  <th :style="{ width: colWidth }" class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
-                    Phone
-                  </th>
-                  <th :style="{ width: colWidth }" class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
-                    Date
-                  </th>
-                  <th v-if="isSuperAdmin" :style="{ width: colWidth }" class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
-                    Vendor
-                  </th>
-                  <th v-if="canSeeAssignments" :style="{ width: colWidth }" class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
-                    Attorney
-                  </th>
-                  <th :style="{ width: colWidth }" class="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="row in pagedRows"
-                  :key="row.id"
-                  class="group cursor-pointer border-b border-[var(--ap-card-hover)] transition-all duration-200 hover:bg-[var(--ap-accent)]/[0.04]"
-                  @click="openRow(row)"
+        <!-- Kanban Board -->
+        <div class="min-h-0 flex-1 overflow-hidden">
+          <div class="flex h-full gap-4">
+            <div
+              v-for="stage in STAGES"
+              :key="stage.key"
+              class="flex min-w-0 flex-1 flex-col rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)]"
+              @dragover.prevent
+              @drop.prevent="onDropToStage(stage.key)"
+            >
+              <!-- Column Header -->
+              <div class="flex items-center justify-between border-b border-[var(--ap-card-border)] px-4 py-3">
+                <div class="flex items-center gap-2.5">
+                  <div
+                    class="flex h-7 w-7 items-center justify-center rounded-lg"
+                    :class="stageBgClass(stage.key)"
+                  >
+                    <UIcon
+                      :name="stageIcon(stage.key)"
+                      class="text-xs"
+                      :class="stageIconClass(stage.key)"
+                    />
+                  </div>
+                  <span class="text-sm font-semibold text-highlighted">{{ stage.label }}</span>
+                </div>
+                <span class="inline-flex items-center rounded-md bg-[var(--ap-card-border)] px-2 py-0.5 text-[11px] font-semibold text-muted">
+                  {{ leadsByStage.get(stage.key)?.length ?? 0 }}
+                </span>
+              </div>
+
+              <!-- Column Cards -->
+              <div class="flex-1 space-y-2 overflow-y-auto p-3 retainers-scroll">
+                <div
+                  v-for="lead in (leadsByStage.get(stage.key) ?? [])"
+                  :key="lead.id"
+                  class="group cursor-pointer rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-3 transition-all duration-200 hover:border-[var(--ap-accent)]/20 hover:bg-[var(--ap-accent)]/[0.03]"
+                  draggable="true"
+                  @dragstart="onDragStartLead(lead)"
+                  @dragend="onDragEndLead"
+                  @click="openLead(lead)"
                 >
-                  <!-- Client -->
-                  <td :style="{ width: colWidth }" class="px-5 py-3.5">
-                    <div class="flex items-center gap-3">
-                      <div class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--ap-accent)]/20 to-[var(--ap-accent)]/5 text-xs font-bold text-[var(--ap-accent)] ring-1 ring-[var(--ap-accent)]/10 transition-all duration-200 group-hover:ring-[var(--ap-accent)]/30 group-hover:shadow-[0_0_12px_var(--ap-accent-shadow)]">
-                        {{ getInitials(row.insured_name) }}
-                      </div>
-                      <div class="min-w-0">
-                        <p class="truncate text-sm font-medium text-highlighted transition-colors duration-200 group-hover:text-[var(--ap-accent)]">
-                          {{ row.insured_name ?? 'Unknown Client' }}
-                        </p>
-                      </div>
+                  <!-- Client Name & Initials -->
+                  <div class="flex items-start gap-2.5">
+                    <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[var(--ap-accent)]/20 to-[var(--ap-accent)]/5 text-[10px] font-bold text-[var(--ap-accent)] ring-1 ring-[var(--ap-accent)]/10">
+                      {{ getInitials(lead.clientName) }}
                     </div>
-                  </td>
-
-                  <!-- Phone -->
-                  <td :style="{ width: colWidth }" class="px-5 py-3.5">
-                    <div class="flex items-center gap-2">
-                      <UIcon name="i-lucide-phone" class="shrink-0 text-xs text-muted" />
-                      <span class="text-sm text-default tabular-nums">{{ formatPhone(row.client_phone_number) }}</span>
+                    <div class="min-w-0">
+                      <div class="truncate text-sm font-semibold text-highlighted group-hover:text-[var(--ap-accent)] transition-colors">{{ lead.clientName }}</div>
+                      <div class="mt-0.5 text-[11px] text-muted">{{ formatPhone(lead.phone) }}</div>
                     </div>
-                  </td>
+                  </div>
 
-                  <!-- Date -->
-                  <td :style="{ width: colWidth }" class="px-5 py-3.5">
-                    <div class="flex items-center gap-2">
-                      <UIcon name="i-lucide-calendar" class="shrink-0 text-xs text-muted" />
-                      <span class="text-sm text-default">{{ formatDate(row.date) }}</span>
+                  <!-- Date & State -->
+                  <div class="mt-2 flex items-center justify-between">
+                    <div class="flex items-center gap-1.5 text-[11px] text-muted">
+                      <UIcon name="i-lucide-calendar" class="size-3" />
+                      <span>{{ lead.date }}</span>
                     </div>
-                  </td>
-
-                  <!-- Lead Vendor (super admin only) -->
-                  <td v-if="isSuperAdmin" :style="{ width: colWidth }" class="px-5 py-3.5">
-                    <span
-                      v-if="row.lead_vendor"
-                      class="inline-flex items-center rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-divide)] px-2.5 py-1 text-xs font-medium text-default"
-                    >
-                      {{ row.lead_vendor }}
-                    </span>
-                    <span v-else class="text-xs text-muted">—</span>
-                  </td>
-
-                  <!-- Assigned Attorney (admin+) -->
-                  <td v-if="canSeeAssignments" :style="{ width: colWidth }" class="px-5 py-3.5">
-                    <span class="text-sm text-default">{{ row.assigned_attorney_name ?? '—' }}</span>
-                  </td>
-
-                  <!-- Actions -->
-                  <td :style="{ width: colWidth }" class="px-5 py-3.5">
-                    <div class="flex items-center justify-start gap-1.5">
-                      <button
-                        class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--ap-accent)]/20 bg-[var(--ap-accent)]/10 px-3 py-1.5 text-xs font-medium text-[var(--ap-accent)] transition-all hover:bg-[var(--ap-accent)]/20 hover:border-[var(--ap-accent)]/40"
-                        @click.stop="openRow(row)"
-                      >
-                        <UIcon name="i-lucide-eye" class="text-sm" />
-                        View
-                      </button>
-                      <button
-                        class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] px-3 py-1.5 text-xs font-medium text-muted transition-all hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400 disabled:pointer-events-none disabled:opacity-30"
-                        :disabled="row.source === 'leads'"
-                        @click.stop="openDrop(row)"
-                      >
-                        <UIcon name="i-lucide-ban" class="text-sm" />
-                        Drop
-                      </button>
+                    <div v-if="lead.state !== '—'" class="flex items-center gap-1 text-[11px] text-muted">
+                      <UIcon name="i-lucide-map-pin" class="size-3" />
+                      <span class="font-medium">{{ lead.state }}</span>
                     </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+                  </div>
+                </div>
 
-          <!-- Pagination Footer -->
-          <div class="flex items-center justify-between border-t border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] px-5 py-3 backdrop-blur-xl">
-            <div class="flex items-center gap-2">
-              <span class="text-xs text-muted">
-                Showing <span class="font-medium text-highlighted">{{ pagedRows.length }}</span> of <span class="font-medium text-highlighted">{{ totalCount }}</span>
-              </span>
-            </div>
-
-            <div class="flex items-center gap-1.5">
-              <button
-                class="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] px-3 text-xs font-medium text-default transition-all hover:bg-[var(--ap-card-border)] disabled:pointer-events-none disabled:opacity-30"
-                :disabled="!canPrev"
-                @click="goPrev"
-              >
-                <UIcon name="i-lucide-chevron-left" class="text-sm" />
-                Prev
-              </button>
-
-              <div class="flex h-8 items-center rounded-lg border border-[var(--ap-accent)]/20 bg-[var(--ap-accent)]/8 px-3">
-                <span class="text-xs font-semibold text-[var(--ap-accent)]">{{ displayPage }}</span>
-                <span class="mx-1 text-xs text-muted">/</span>
-                <span class="text-xs text-muted">{{ pageCount }}</span>
+                <!-- Empty State -->
+                <div
+                  v-if="(leadsByStage.get(stage.key)?.length ?? 0) === 0"
+                  class="flex items-center justify-center rounded-xl border border-dashed border-[var(--ap-card-border)] px-3 py-8 text-center text-xs text-muted"
+                >
+                  No Customers
+                </div>
               </div>
-
-              <button
-                class="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] px-3 text-xs font-medium text-default transition-all hover:bg-[var(--ap-card-border)] disabled:pointer-events-none disabled:opacity-30"
-                :disabled="!canNext"
-                @click="goNext"
-              >
-                Next
-                <UIcon name="i-lucide-chevron-right" class="text-sm" />
-              </button>
             </div>
           </div>
         </div>
@@ -746,6 +786,7 @@ const confirmDrop = async () => {
 <style scoped>
 .retainers-scroll::-webkit-scrollbar {
   width: 4px;
+  height: 4px;
 }
 .retainers-scroll::-webkit-scrollbar-track {
   background: transparent;

@@ -31,3 +31,14 @@ tsconfig.node.tsbuildinfo
 
 # Environment variables
 .env
+
+# Windsurf (local IDE artifacts)
+.windsurf/*
+!.windsurf/skills/
+!.windsurf/skills/**
+!.windsurf/workflows/
+!.windsurf/workflows/**
+
+# Claude (local AI assistant artifacts)
+.claude/
+claude.md
