@@ -38,10 +38,12 @@ const isAccounts = computed(() => auth.state.value.profile?.role === 'accounts')
 const isAdminOrSuper = computed(() => isSuperAdmin.value || isAdmin.value || isAccounts.value)
 const isPublisherMode = computed(() => route.path === '/invoicing/publisher')
 
+const canCreateInvoiceFromDeal = computed(() => isSuperAdmin.value || isAdmin.value)
+
 const canFilterByAttorney = computed(() => !isPublisherMode.value && (isSuperAdmin.value || isAdmin.value))
 const canFilterByVendor = computed(() => isPublisherMode.value && (isSuperAdmin.value || isAdmin.value))
 
-const pageTitle = computed(() => isPublisherMode.value ? 'Publisher Invoicing' : 'Lawyer Invoicing')
+const pageTitle = computed(() => isPublisherMode.value ? 'Publisher Invoicing' : 'Invoicing Portal')
 const createRoute = computed(() => isPublisherMode.value ? '/invoicing/create?mode=publisher' : '/invoicing/create?mode=lawyer')
 
 const loading = ref(false)
@@ -281,13 +283,13 @@ const formatDate = (value: string | null) => {
 }
 
 const getStatusLabel = (status: InvoiceStatus) => {
-  if (status === 'billable') return 'Billable'
-  if (status === 'pending') return isPublisherMode.value ? 'Billable – Awaiting to be Paid' : 'Billable'
-  if (status === 'in_review') return 'In Review'
+  if (status === 'billable') return 'Billable (Approved)'
+  if (status === 'pending') return isPublisherMode.value ? 'Billable – Awaiting to be Paid' : 'Billable (Approved)'
+  if (status === 'in_review') return 'Pending'
   if (status === 'signed_awaiting') return 'Signed – Awaiting to be Paid'
   if (status === 'in_preview') return 'In Preview'
-  if (status === 'paid') return 'Paid'
-  return 'Chargeback'
+  if (status === 'paid') return 'Paid (Successfully Invoiced!)'
+  return 'Chargeback/Credit (14 days Window)'
 }
 
 const getStatusIcon = (status: InvoiceStatus) => {
@@ -799,7 +801,7 @@ watch(pageCount, () => {
           <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-xs font-medium uppercase tracking-wider text-muted">Paid</p>
+                <p class="text-xs font-medium uppercase tracking-wider text-muted">Paid (Successfully Invoiced!)</p>
                 <p class="mt-1 text-2xl font-bold text-green-400">{{ formatMoney(paidAmount) }}</p>
               </div>
               <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-green-500/10">
@@ -823,7 +825,7 @@ watch(pageCount, () => {
           <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-xs font-medium uppercase tracking-wider text-muted">Chargeback</p>
+                <p class="text-xs font-medium uppercase tracking-wider text-muted">Chargeback/Credit (14 days Window)</p>
                 <p class="mt-1 text-2xl font-bold text-red-400">{{ formatMoney(chargebackAmount) }}</p>
               </div>
               <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/10">
@@ -851,16 +853,16 @@ watch(pageCount, () => {
                 ? [
                     { label: 'All Statuses', value: 'all' },
                     { label: 'Billable – Awaiting to be Paid', value: 'pending' },
-                    { label: 'In Review', value: 'in_review' },
-                    { label: 'Paid', value: 'paid' },
-                    { label: 'Chargeback', value: 'chargeback' }
+                    { label: 'Pending', value: 'in_review' },
+                    { label: 'Paid (Successfully Invoiced!)', value: 'paid' },
+                    { label: 'Chargeback/Credit (14 days Window)', value: 'chargeback' }
                   ]
                 : [
                     { label: 'All Statuses', value: 'all' },
-                    { label: 'Billable', value: 'pending' },
-                    { label: 'In Review', value: 'in_review' },
-                    { label: 'Paid', value: 'paid' },
-                    { label: 'Chargeback', value: 'chargeback' }
+                    { label: 'Billable (Approved)', value: 'pending' },
+                    { label: 'Pending', value: 'in_review' },
+                    { label: 'Paid (Successfully Invoiced!)', value: 'paid' },
+                    { label: 'Chargeback/Credit (14 days Window)', value: 'chargeback' }
                   ]"
               value-key="value"
               label-key="label"
@@ -1088,6 +1090,7 @@ watch(pageCount, () => {
 
                   <div class="mt-2 flex justify-end">
                     <button
+                      v-if="canCreateInvoiceFromDeal"
                       class="rounded-lg px-2 py-1 text-[10px] font-semibold text-blue-400 bg-blue-500/10 opacity-0 transition-all hover:bg-blue-500/20 group-hover:opacity-100"
                       title="Create Invoice"
                       @click.stop="openQualifiedDeal(deal)"
