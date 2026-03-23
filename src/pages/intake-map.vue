@@ -478,18 +478,6 @@ const orderValidationError = computed(() => {
   return maxOrderStatesError.value || maxOrdersPerStateError.value || duplicateCaseTypeError.value || quotaError.value || null
 })
 
-// Show toast whenever a validation error becomes active
-watch(orderValidationError, (err) => {
-  if (err) {
-    toast.add({
-      title: 'Order restriction',
-      description: err,
-      icon: 'i-lucide-alert-triangle',
-      color: 'error'
-    })
-  }
-})
-
 const resetOrderForm = () => {
   orderForm.value = {
     stateCode: '',
@@ -702,15 +690,7 @@ const submitCreateOrder = async () => {
 
 const handleCreateOrderSubmit = async (close: () => void) => {
   if (createOrderSubmitting.value) return
-  if (orderValidationError.value) {
-    toast.add({
-      title: 'Order restriction',
-      description: orderValidationError.value,
-      icon: 'i-lucide-alert-triangle',
-      color: 'error'
-    })
-    return
-  }
+  if (orderValidationError.value) return
 
   createOrderSubmitting.value = true
   try {
@@ -1301,6 +1281,14 @@ watch(myClosedOrders, () => {
               </div>
 
               <div v-else class="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+                <UAlert
+                  v-if="orderValidationError"
+                  color="error"
+                  variant="subtle"
+                  title="Order restriction"
+                  :description="orderValidationError"
+                  class="mb-4"
+                />
 
                 <div class="grid gap-4 sm:grid-cols-2">
                   <UFormField label="State" required>
