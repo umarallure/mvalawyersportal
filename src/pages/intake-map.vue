@@ -371,6 +371,7 @@ const orderForm = ref({
 })
 
 const createOrderSubmitting = ref(false)
+const NO_CRITERIA_INJURY_SEVERITY = 'no_criteria'
 
 // Auto-adjust quota when switching category (Commercial max is 1)
 watch(() => orderForm.value.caseCategory, (newCat) => {
@@ -378,6 +379,14 @@ watch(() => orderForm.value.caseCategory, (newCat) => {
   if (orderForm.value.quotaTotal > max) {
     orderForm.value.quotaTotal = max
   }
+})
+
+watch(() => [...orderForm.value.injurySeverity], (selected, previous) => {
+  if (!selected.includes(NO_CRITERIA_INJURY_SEVERITY) || selected.length <= 1) return
+
+  orderForm.value.injurySeverity = previous.includes(NO_CRITERIA_INJURY_SEVERITY)
+    ? selected.filter(value => value !== NO_CRITERIA_INJURY_SEVERITY)
+    : [NO_CRITERIA_INJURY_SEVERITY]
 })
 
 const selectedStateName = computed(() => {
@@ -529,13 +538,14 @@ const goToCreateOrderStep2 = () => {
 }
 
 const injurySeverityOptions = [
+  { label: 'No Severity Criteria', value: NO_CRITERIA_INJURY_SEVERITY },
   { label: 'Minor', value: 'minor' },
   { label: 'Moderate', value: 'moderate' },
   { label: 'Severe', value: 'severe' }
 ]
 
 const caseCategoryOptions = [
-  { label: 'Consumer Cases (MVA)', value: 'Consumer Cases (MVA)' },
+  { label: 'Consumer Cases', value: 'Consumer Cases' },
   { label: 'Commercial Cases', value: 'Commercial Cases' },
 ]
 

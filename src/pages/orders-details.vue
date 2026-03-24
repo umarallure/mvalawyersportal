@@ -94,7 +94,16 @@ const toStringArray = (v: unknown) => {
 }
 
 const criteriaLanguages = computed(() => toStringArray(criteria.value?.languages))
-const criteriaInjurySeverities = computed(() => toStringArray(criteria.value?.injury_severity))
+const injurySeverityLabelMap: Record<string, string> = {
+  no_criteria: 'No Severity Criteria',
+  minor: 'Minor',
+  moderate: 'Moderate',
+  severe: 'Severe'
+}
+
+const criteriaInjurySeverities = computed(() => {
+  return toStringArray(criteria.value?.injury_severity).map(value => injurySeverityLabelMap[value] ?? value)
+})
 const criteriaLiability = computed(() => criteria.value?.liability_status ? String(criteria.value.liability_status) : null)
 const criteriaInsurance = computed(() => criteria.value?.insurance_status ? String(criteria.value.insurance_status) : null)
 const criteriaMedical = computed(() => criteria.value?.medical_treatment ? String(criteria.value.medical_treatment) : null)
