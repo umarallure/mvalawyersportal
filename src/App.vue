@@ -38,7 +38,7 @@ const links = computed(() => [[
     to: '/intake-map',
     onSelect: () => { open.value = false }
   }, {
-    label: 'My Customers',
+    label: 'My Cases',
     icon: 'i-lucide-briefcase',
     to: '/retainers',
     onSelect: () => { open.value = false }
@@ -105,16 +105,28 @@ const links = computed(() => [[
         exact: true,
         onSelect: () => { open.value = false }
       }, {
+        label: 'Team Profile',
+        to: '/settings/team-profile',
+        exact: true,
+        onSelect: () => { open.value = false }
+      }, {
         label: 'Expertise & Jurisdiction',
         to: '/settings/expertise',
         exact: true,
         onSelect: () => { open.value = false }
       }, {
-        label: 'Pricing',
-        to: '/settings/capacity',
+        label: 'Retainer Contract Document',
+        to: '/settings/retainer-contract-document',
         exact: true,
         onSelect: () => { open.value = false }
       }] : [])
+      // TODO: re-enable with pricing redesign
+      // , {
+      //   label: 'Pricing',
+      //   to: '/settings/capacity',
+      //   exact: true,
+      //   onSelect: () => { open.value = false }
+      // }
     ]
   }
 ]] satisfies NavigationMenuItem[][])
