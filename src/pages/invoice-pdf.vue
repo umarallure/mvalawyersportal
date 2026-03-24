@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { useAuth } from '../composables/useAuth'
-import { getInvoice, getLawyerProfile, markInvoiceAsPaid, requestChargeback, type InvoiceItem, type InvoiceRow } from '../lib/invoices'
+import { getInvoice, getLawyerProfile, markInvoiceAsPaid, requestChargeback, type InvoiceRow } from '../lib/invoices'
 import { supabase } from '../lib/supabase'
 
 const route = useRoute()
@@ -23,6 +23,7 @@ const lawyerInfo = ref<{
   primary_email: string | null
   direct_phone: string | null
   bar_association_number: string | null
+  case_rate_per_deal: number | null
 } | null>(null)
 
 const lawyerFallback = ref<{
@@ -37,6 +38,28 @@ const vendorInfo = ref<{
 } | null>(null)
 
 const isPublisherInvoice = computed(() => invoice.value?.invoice_type === 'publisher')
+
+type InvoiceDealRow = {
+  id: string
+  submission_id: string
+  insured_name: string | null
+  state: string | null
+  assigned_attorney_id: string | null
+  updated_at: string | null
+}
+
+type DealDisplayRow = {
+  id: string
+  case_type: string | null
+  insured_name: string | null
+  state: string | null
+  unit_price: number
+  updated_at: string | null
+}
+
+const deals = ref<DealDisplayRow[]>([])
+const dealLoadError = ref<string | null>(null)
+const publisherAttorneyRateMap = ref(new Map<string, number>())
 
 const billToName = computed(() => {
   if (isPublisherInvoice.value) return vendorInfo.value?.center_name ?? vendorInfo.value?.lead_vendor ?? '—'
@@ -81,10 +104,61 @@ const formatDateShort = (value: string | null) => {
   }
 }
 
+const weekOfLabel = computed(() => {
+  const inv = invoice.value
+  if (!inv) return '—'
+  return `${formatDateShort(inv.date_range_start)} — ${formatDateShort(inv.date_range_end)}`
+})
+
+const loadPublisherAttorneyRates = async (rows: InvoiceDealRow[]) => {
+  const ids = [...new Set(rows
+    .map(r => String(r.assigned_attorney_id ?? '').trim())
+    .filter(Boolean)
+  )]
+
+  if (!ids.length) {
+    publisherAttorneyRateMap.value = new Map()
+    return
+  }
+
+  const { data, error } = await supabase
+    .from('attorney_profiles')
+    .select('user_id,case_rate_per_deal')
+    .in('user_id', ids)
+
+  if (error) throw new Error(error.message)
+
+  const map = new Map<string, number>()
+  ;(data ?? []).forEach((r) => {
+    const id = String((r as { user_id?: string | null }).user_id ?? '').trim()
+    if (!id) return
+    const raw = (r as { case_rate_per_deal?: unknown }).case_rate_per_deal
+    const n = Number(raw ?? 0)
+    if (!Number.isFinite(n) || n <= 0) return
+    map.set(id, Math.round(n * 100) / 100)
+  })
+
+  publisherAttorneyRateMap.value = map
+}
+
+const getDealUnitPrice = (deal: InvoiceDealRow) => {
+  if (isPublisherInvoice.value) {
+    const attorneyId = String(deal.assigned_attorney_id ?? '').trim()
+    if (!attorneyId) return 0
+    const n = publisherAttorneyRateMap.value.get(attorneyId) ?? 0
+    if (!Number.isFinite(n)) return 0
+    return Math.max(0, Math.round(n * 100) / 100)
+  }
+
+  const n = Number(lawyerInfo.value?.case_rate_per_deal ?? 0)
+  if (!Number.isFinite(n)) return 0
+  return Math.max(0, Math.round(n * 100) / 100)
+}
+
 const getStatusLabel = (status: string) => {
   if (status === 'billable') return 'BILLABLE'
-  if (status === 'pending') return 'BILLABLE'
-  if (status === 'in_review') return 'IN REVIEW'
+  if (status === 'pending') return 'PENDING'
+  if (status === 'in_review') return 'PENDING'
   if (status === 'signed_awaiting') return 'SIGNED – AWAITING PAYMENT'
   if (status === 'in_preview') return 'IN PREVIEW'
   if (status === 'paid') return 'PAID'
@@ -95,7 +169,7 @@ const getStatusClass = (status: string) => {
   if (status === 'billable') return 'status-billable'
   if (status === 'paid') return 'status-paid'
   if (status === 'pending') return 'status-pending'
-  if (status === 'in_review') return 'status-in-review'
+  if (status === 'in_review') return 'status-pending'
   if (status === 'signed_awaiting') return 'status-signed-awaiting'
   if (status === 'in_preview') return 'status-in-preview'
   return 'status-chargeback'
@@ -117,6 +191,13 @@ const chargebackError = ref<string | null>(null)
 const handlePrint = () => {
   window.print()
 }
+
+const zoom = ref(0.9)
+const clampZoom = (n: number) => Math.min(1.25, Math.max(0.65, Math.round(n * 100) / 100))
+const zoomIn = () => { zoom.value = clampZoom(zoom.value + 0.05) }
+const zoomOut = () => { zoom.value = clampZoom(zoom.value - 0.05) }
+const zoomReset = () => { zoom.value = 0.9 }
+const zoomLabel = computed(() => `${Math.round(zoom.value * 100)}%`)
 
 const handleMarkAsPaid = async () => {
   if (!invoice.value || invoice.value.status !== 'pending') return
@@ -195,8 +276,110 @@ onMounted(async () => {
       } : null
     }
 
+    deals.value = []
+    dealLoadError.value = null
+    if (inv.deal_ids?.length) {
+      const { data: ddfRows, error: ddfErr } = await supabase
+        .from('daily_deal_flow')
+        .select('id,submission_id,insured_name,state,assigned_attorney_id,updated_at')
+        .in('id', inv.deal_ids)
+
+      if (ddfErr) throw new Error(ddfErr.message)
+
+      const rawDeals = (ddfRows ?? []) as InvoiceDealRow[]
+      if (isPublisherInvoice.value) {
+        await loadPublisherAttorneyRates(rawDeals)
+      } else {
+        publisherAttorneyRateMap.value = new Map()
+      }
+
+      const normalizeSubmissionId = (sid: unknown) => {
+        const s = String(sid ?? '').trim()
+        if (!s) return ''
+        const n = Number(s)
+        if (Number.isFinite(n) && n > 0) return String(n)
+        return s
+      }
+
+      const submissionIds = [...new Set(rawDeals
+        .map(d => normalizeSubmissionId(d.submission_id))
+        .filter(Boolean)
+      )]
+
+      const submissionToLeadId = new Map<string, string>()
+      const leadIdToOrderId = new Map<string, string>()
+      const orderIdToCaseType = new Map<string, string>()
+
+      if (submissionIds.length) {
+        const { data: leadRows, error: leadErr } = await supabase
+          .from('leads')
+          .select('id,submission_id')
+          .in('submission_id', submissionIds)
+
+        if (leadErr) throw new Error(leadErr.message)
+
+        ;(leadRows ?? []).forEach((r) => {
+          const sid = normalizeSubmissionId((r as { submission_id?: string | null }).submission_id ?? '')
+          const lid = String((r as { id?: string | null }).id ?? '').trim()
+          if (!sid || !lid) return
+          submissionToLeadId.set(sid, lid)
+        })
+      }
+
+      const leadIds = [...new Set([...submissionToLeadId.values()].filter(Boolean))]
+      if (leadIds.length) {
+        const { data: fulfillmentRows, error: fErr } = await supabase
+          .from('order_fulfillments')
+          .select('lead_id,order_id')
+          .in('lead_id', leadIds)
+          .limit(5000)
+
+        if (fErr) throw new Error(fErr.message)
+
+        ;(fulfillmentRows ?? []).forEach((r) => {
+          const lid = String((r as { lead_id?: string | null }).lead_id ?? '').trim()
+          const oid = String((r as { order_id?: string | null }).order_id ?? '').trim()
+          if (!lid || !oid) return
+          if (!leadIdToOrderId.has(lid)) leadIdToOrderId.set(lid, oid)
+        })
+      }
+
+      const orderIds = [...new Set([...leadIdToOrderId.values()].filter(Boolean))]
+      if (orderIds.length) {
+        const { data: orderRows, error: oErr } = await supabase
+          .from('orders')
+          .select('id,case_type')
+          .in('id', orderIds)
+
+        if (oErr) throw new Error(oErr.message)
+
+        ;(orderRows ?? []).forEach((r) => {
+          const id = String((r as { id?: string | null }).id ?? '').trim()
+          const ct = (r as { case_type?: string | null }).case_type ?? null
+          if (!id) return
+          if (ct) orderIdToCaseType.set(id, ct)
+        })
+      }
+
+      deals.value = rawDeals.map((d) => {
+        const sid = normalizeSubmissionId(d.submission_id)
+        const leadId = sid ? submissionToLeadId.get(sid) : undefined
+        const orderId = leadId ? leadIdToOrderId.get(leadId) : undefined
+        const caseType = orderId ? (orderIdToCaseType.get(orderId) ?? null) : null
+        return {
+          id: d.id,
+          case_type: caseType,
+          insured_name: d.insured_name ?? null,
+          state: d.state ?? null,
+          unit_price: getDealUnitPrice(d),
+          updated_at: d.updated_at ?? null,
+        }
+      })
+    }
+
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load invoice'
+    dealLoadError.value = e instanceof Error ? e.message : 'Failed to load invoice deals'
   } finally {
     loading.value = false
   }
@@ -220,8 +403,14 @@ onMounted(async () => {
     <div v-else-if="invoice" class="invoice-container">
       <!-- Action Buttons (hidden on print) -->
       <div class="print-actions no-print">
+        <div class="zoom-controls">
+          <button class="zoom-btn" type="button" @click="zoomOut">−</button>
+          <div class="zoom-label">{{ zoomLabel }}</div>
+          <button class="zoom-btn" type="button" @click="zoomIn">+</button>
+          <button class="zoom-btn" type="button" @click="zoomReset">Reset</button>
+        </div>
         <button
-          v-if="invoice.status === 'in_review'"
+          v-if="invoice.status === 'pending'"
           class="mark-paid-btn"
           :disabled="markingPaid"
           @click="handleMarkAsPaid"
@@ -247,7 +436,9 @@ onMounted(async () => {
         {{ chargebackError }}
       </div>
 
-      <div class="invoice-paper">
+      <div class="invoice-zoom-viewport">
+        <div class="invoice-zoom-wrapper" :style="{ transform: `scale(${zoom})` }">
+          <div class="invoice-paper">
         <!-- Top accent bar -->
         <div class="accent-bar" />
 
@@ -294,31 +485,38 @@ onMounted(async () => {
               <span class="date-value">{{ formatDate(invoice.due_date) }}</span>
             </div>
             <div class="date-row">
-              <span class="date-label">Period</span>
-              <span class="date-value">{{ formatDateShort(invoice.date_range_start) }} — {{ formatDateShort(invoice.date_range_end) }}</span>
+              <span class="date-label">Week Of</span>
+              <span class="date-value">{{ weekOfLabel }}</span>
             </div>
           </div>
         </div>
 
         <!-- Line Items Table -->
         <div class="items-section">
+          <div v-if="dealLoadError" class="mark-paid-error no-print">
+            {{ dealLoadError }}
+          </div>
           <table class="items-table">
             <thead>
               <tr>
-                <th class="th-num">#</th>
-                <th class="th-desc">Description</th>
-                <th class="th-qty">Qty</th>
-                <th class="th-price">Unit Price</th>
-                <th class="th-amount">Amount</th>
+                <th class="th-week">Week Of</th>
+                <th class="th-pub">Publisher</th>
+                <th class="th-type">Case Type</th>
+                <th class="th-client">Client Name</th>
+                <th class="th-state">State</th>
+                <th class="th-price">Value</th>
+                <th class="th-date">Updated</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(item, idx) in (invoice.items as InvoiceItem[])" :key="idx">
-                <td class="td-num">{{ idx + 1 }}</td>
-                <td class="td-desc">{{ item.description }}</td>
-                <td class="td-qty">{{ item.quantity }}</td>
-                <td class="td-price">{{ formatMoney(item.unit_price) }}</td>
-                <td class="td-amount">{{ formatMoney(item.amount) }}</td>
+              <tr v-for="deal in deals" :key="deal.id">
+                <td class="td-week">{{ weekOfLabel }}</td>
+                <td class="td-pub">Accident Payments</td>
+                <td class="td-type">{{ deal.case_type ?? '—' }}</td>
+                <td class="td-client">{{ deal.insured_name ?? '—' }}</td>
+                <td class="td-state">{{ deal.state ?? '—' }}</td>
+                <td class="td-price">{{ formatMoney(deal.unit_price) }}</td>
+                <td class="td-date">{{ formatDateShort(deal.updated_at) }}</td>
               </tr>
             </tbody>
           </table>
@@ -355,6 +553,8 @@ onMounted(async () => {
             <div class="footer-sub">Payment is due by {{ formatDate(invoice.due_date) }}.</div>
           </div>
           <div class="footer-right" />
+        </div>
+          </div>
         </div>
       </div>
     </div>
@@ -402,7 +602,7 @@ onMounted(async () => {
 }
 
 .invoice-container {
-  max-width: 1000px;
+  max-width: 1280px;
   margin: 0 auto;
   padding: 40px 20px;
 }
@@ -412,6 +612,36 @@ onMounted(async () => {
   justify-content: flex-end;
   gap: 10px;
   margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid #e8ddd3;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.zoom-btn {
+  padding: 6px 10px;
+  border: 1px solid #e8ddd3;
+  border-radius: 8px;
+  background: #faf7f4;
+  color: #3d3530;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.zoom-label {
+  min-width: 52px;
+  text-align: center;
+  font-size: 12px;
+  color: #7c6a5a;
+  font-weight: 700;
 }
 
 .mark-paid-btn {
@@ -493,12 +723,21 @@ onMounted(async () => {
 
 /* Invoice Paper */
 .invoice-paper {
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 4px 32px rgba(174, 64, 16, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04);
-  padding: 48px;
-  position: relative;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
   overflow: hidden;
+  border: 1px solid #f0e8e0;
+}
+
+.invoice-zoom-viewport {
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.invoice-zoom-wrapper {
+  transform-origin: top center;
+  display: inline-block;
 }
 
 .accent-bar {
@@ -682,46 +921,59 @@ onMounted(async () => {
   text-transform: uppercase;
   text-align: left;
   border-bottom: 2px solid #e8ddd3;
+  white-space: nowrap;
 }
 
-.th-num { width: 50px; }
-.th-desc { width: auto; }
-.th-qty { width: 80px; text-align: center; }
-.th-price { width: 120px; text-align: right; }
-.th-amount { width: 120px; text-align: right; }
+.th-week { width: 280px; }
+.th-pub { width: 180px; }
+.th-type { width: 220px; }
+.th-client { width: auto; }
+.th-state { width: 90px; }
+.th-date { width: 140px; }
+.th-price { width: 140px; text-align: right; }
 
 .items-table td {
   padding: 14px 16px;
   font-size: 14px;
   color: #3d3530;
   border-bottom: 1px solid #f0e8e0;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
 }
 
-.td-num {
-  color: #9a8a7c;
-  font-weight: 600;
-  font-size: 13px;
+.td-week {
+  overflow: visible;
+  text-overflow: clip;
 }
 
-.td-desc {
-  font-weight: 500;
-}
 
-.td-qty {
-  text-align: center;
+.td-week,
+.td-pub,
+.td-type,
+.td-client,
+.td-state,
+.td-date {
   color: #7c6a5a;
+}
+
+.td-client {
+  font-weight: 500;
+  color: #3d3530;
+}
+
+.td-state {
+  font-weight: 600;
+  color: #9a8a7c;
+}
+
+.td-date {
+  font-variant-numeric: tabular-nums;
 }
 
 .td-price {
   text-align: right;
   color: #7c6a5a;
-  font-variant-numeric: tabular-nums;
-}
-
-.td-amount {
-  text-align: right;
-  font-weight: 600;
-  color: #141010;
   font-variant-numeric: tabular-nums;
 }
 
@@ -834,6 +1086,14 @@ onMounted(async () => {
     display: none !important;
   }
 
+  .invoice-zoom-viewport {
+    overflow: visible !important;
+  }
+
+  .invoice-zoom-wrapper {
+    transform: none !important;
+  }
+
   .invoice-pdf-page {
     background: white;
     padding: 0;
@@ -857,7 +1117,7 @@ onMounted(async () => {
 
   @page {
     margin: 0.5in;
-    size: letter;
+    size: letter landscape;
   }
 }
 

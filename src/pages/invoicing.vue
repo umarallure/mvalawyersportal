@@ -196,7 +196,7 @@ const filteredInvoices = computed(() => {
 
 const filteredQualifiedDeals = computed(() => {
   if (viewMode.value !== 'kanban') return []
-  if (selectedStatus.value !== 'all' && selectedStatus.value !== 'pending') return []
+  if (selectedStatus.value !== 'all' && selectedStatus.value !== 'billable') return []
 
   const q = query.value.trim().toLowerCase()
   const vendorQ = filterVendor.value.trim().toLowerCase()
@@ -236,16 +236,16 @@ const pagedRows = computed(() => {
   return filteredInvoices.value.slice(start, start + PAGE_SIZE)
 })
 
-const PUBLISHER_KANBAN_STATUSES: InvoiceStatus[] = ['pending', 'in_review', 'paid', 'chargeback']
-const LAWYER_KANBAN_STATUSES: InvoiceStatus[] = ['pending', 'in_review', 'paid', 'chargeback']
+const PUBLISHER_KANBAN_STATUSES: InvoiceStatus[] = ['billable', 'pending', 'paid', 'chargeback']
+const LAWYER_KANBAN_STATUSES: InvoiceStatus[] = ['billable', 'pending', 'paid', 'chargeback']
 
 const kanbanStatuses = computed(() =>
   isPublisherMode.value ? PUBLISHER_KANBAN_STATUSES : LAWYER_KANBAN_STATUSES
 )
 
 const getDisplayStatus = (invoice: InvoiceRow): InvoiceStatus => {
-  if (isPublisherMode.value && invoice.status === 'billable') return 'pending'
-  if (!isPublisherMode.value && invoice.status === 'signed_awaiting') return 'in_review'
+  if (invoice.status === 'in_review') return 'pending'
+  if (invoice.status === 'signed_awaiting') return 'pending'
   return invoice.status
 }
 
@@ -261,7 +261,7 @@ const invoicesByStatus = computed(() => {
 
 const totalAmount = computed(() => invoices.value.reduce((sum, inv) => sum + Number(inv.total_amount), 0))
 const paidAmount = computed(() => invoices.value.filter(inv => inv.status === 'paid').reduce((sum, inv) => sum + Number(inv.total_amount), 0))
-const pendingAmount = computed(() => invoices.value.filter(inv => inv.status === 'pending').reduce((sum, inv) => sum + Number(inv.total_amount), 0))
+const pendingAmount = computed(() => invoices.value.filter(inv => getDisplayStatus(inv) === 'pending').reduce((sum, inv) => sum + Number(inv.total_amount), 0))
 const chargebackAmount = computed(() => invoices.value.filter(inv => inv.status === 'chargeback').reduce((sum, inv) => sum + Number(inv.total_amount), 0))
 
 const formatMoney = (n: number) => {
@@ -284,18 +284,16 @@ const formatDate = (value: string | null) => {
 
 const getStatusLabel = (status: InvoiceStatus) => {
   if (status === 'billable') return 'Billable (Approved)'
-  if (status === 'pending') return isPublisherMode.value ? 'Billable – Awaiting to be Paid' : 'Billable (Approved)'
-  if (status === 'in_review') return 'Pending'
+  if (status === 'pending') return 'Pending (Net 7)'
   if (status === 'signed_awaiting') return 'Signed – Awaiting to be Paid'
   if (status === 'in_preview') return 'In Preview'
-  if (status === 'paid') return 'Paid (Successfully Invoiced!)'
+  if (status === 'paid') return 'Paid (Successfully Invoiced)'
   return 'Chargeback/Credit (14 days Window)'
 }
 
 const getStatusIcon = (status: InvoiceStatus) => {
   if (status === 'billable') return 'i-lucide-file-plus'
   if (status === 'pending') return 'i-lucide-clock'
-  if (status === 'in_review') return 'i-lucide-eye'
   if (status === 'signed_awaiting') return 'i-lucide-pen-line'
   if (status === 'in_preview') return 'i-lucide-search'
   if (status === 'paid') return 'i-lucide-check-circle'
@@ -305,7 +303,6 @@ const getStatusIcon = (status: InvoiceStatus) => {
 const getStatusColorClass = (status: InvoiceStatus) => {
   if (status === 'billable') return 'text-blue-400'
   if (status === 'pending') return 'text-amber-400'
-  if (status === 'in_review') return 'text-violet-400'
   if (status === 'signed_awaiting') return 'text-emerald-400'
   if (status === 'in_preview') return 'text-sky-400'
   if (status === 'paid') return 'text-green-400'
@@ -347,7 +344,7 @@ const handleDrop = async (e: DragEvent, targetStatus: InvoiceStatus) => {
     if (invoice.deal_ids?.length) {
       const dealUpdates: { payment_status?: string } = {}
       
-      if (targetStatus === 'in_review') {
+      if (targetStatus === 'pending') {
         dealUpdates.payment_status = invoice.invoice_type === 'lawyer' 
           ? 'attorney_payment_in_review' 
           : 'publisher_payment_in_review'
@@ -406,16 +403,12 @@ const load = async () => {
     }
 
     if (selectedStatus.value !== 'all') {
-      // In lawyer mode, we show any legacy `signed_awaiting` invoices under `in_review`.
-      // So for `in_review`, don't apply a strict server-side filter.
-      if (!(selectedStatus.value === 'in_review' && !isPublisherMode.value)) {
-        filters.status = selectedStatus.value
-      }
+      filters.status = selectedStatus.value
     }
 
     const data = (await listInvoices(filters)) as InvoiceListRow[]
 
-    // Load Qualified/Payable leads for the Billable (pending) column
+    // Load Qualified/Payable leads for the Billable column
     let dealsQb = supabase
       .from('daily_deal_flow')
       .select('id,submission_id,insured_name,client_phone_number,state,lead_vendor,payment_status,assigned_attorney_id,invoice_id,publisher_invoice_id,created_at')
@@ -801,7 +794,7 @@ watch(pageCount, () => {
           <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-xs font-medium uppercase tracking-wider text-muted">Paid (Successfully Invoiced!)</p>
+                <p class="text-xs font-medium uppercase tracking-wider text-muted">Paid (Successfully Invoiced)</p>
                 <p class="mt-1 text-2xl font-bold text-green-400">{{ formatMoney(paidAmount) }}</p>
               </div>
               <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-green-500/10">
@@ -813,7 +806,7 @@ watch(pageCount, () => {
           <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-5">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-xs font-medium uppercase tracking-wider text-muted">Pending</p>
+                <p class="text-xs font-medium uppercase tracking-wider text-muted">Pending (Net 7)</p>
                 <p class="mt-1 text-2xl font-bold text-amber-400">{{ formatMoney(pendingAmount) }}</p>
               </div>
               <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10">
@@ -847,26 +840,24 @@ watch(pageCount, () => {
               />
             </div>
 
-            <USelect
+            <USelectMenu
               v-model="selectedStatus"
+              class="w-[220px]"
               :items="isPublisherMode
                 ? [
                     { label: 'All Statuses', value: 'all' },
-                    { label: 'Billable – Awaiting to be Paid', value: 'pending' },
-                    { label: 'Pending', value: 'in_review' },
-                    { label: 'Paid (Successfully Invoiced!)', value: 'paid' },
+                    { label: 'Billable (Approved)', value: 'billable' },
+                    { label: 'Pending (Net 7)', value: 'pending' },
+                    { label: 'Paid (Successfully Invoiced)', value: 'paid' },
                     { label: 'Chargeback/Credit (14 days Window)', value: 'chargeback' }
                   ]
                 : [
                     { label: 'All Statuses', value: 'all' },
-                    { label: 'Billable (Approved)', value: 'pending' },
-                    { label: 'Pending', value: 'in_review' },
-                    { label: 'Paid (Successfully Invoiced!)', value: 'paid' },
+                    { label: 'Billable (Approved)', value: 'billable' },
+                    { label: 'Pending (Net 7)', value: 'pending' },
+                    { label: 'Paid (Successfully Invoiced)', value: 'paid' },
                     { label: 'Chargeback/Credit (14 days Window)', value: 'chargeback' }
                   ]"
-              value-key="value"
-              label-key="label"
-              class="w-44 [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
             />
 
             <UInputMenu
@@ -1043,7 +1034,7 @@ watch(pageCount, () => {
               class="flex min-w-[260px] flex-1 flex-col rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] transition-colors"
               :class="dragInvoiceId ? 'border-dashed' : ''"
               @dragover="handleDragOver"
-              @drop="status === 'pending' ? undefined : handleDrop($event, status)"
+              @drop="status === 'billable' ? undefined : handleDrop($event, status)"
             >
               <div class="flex items-center justify-between border-b border-[var(--ap-card-border)] px-4 py-3">
                 <div class="flex items-center gap-2">
@@ -1057,7 +1048,7 @@ watch(pageCount, () => {
 
               <div class="flex-1 space-y-2 overflow-y-auto p-2 invoicing-scroll">
                 <div
-                  v-for="deal in (status === 'pending' ? filteredQualifiedDeals : [])"
+                  v-for="deal in (status === 'billable' ? filteredQualifiedDeals : [])"
                   :key="`deal-${deal.id}`"
                   class="group cursor-pointer rounded-xl border border-dashed border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-3 transition-all duration-200 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.04]"
                   @click="openLeadDetails(deal)"
@@ -1134,7 +1125,7 @@ watch(pageCount, () => {
                     </span>
                     <div class="flex items-center gap-1.5">
                       <button
-                        v-if="getDisplayStatus(invoice) === 'in_review'"
+                        v-if="getDisplayStatus(invoice) === 'pending'"
                         class="rounded-lg px-2 py-1 text-[10px] font-semibold text-green-400 bg-green-500/10 opacity-0 transition-all hover:bg-green-500/20 group-hover:opacity-100"
                         title="Mark as Paid"
                         @click.stop="handleMarkAsPaid(invoice)"

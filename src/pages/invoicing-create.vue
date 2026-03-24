@@ -47,6 +47,8 @@ const selectedVendor = ref<CenterRow | null>(null)
 const deals = ref<Array<DealFlowRow & { selected: boolean }>>([])
 const loadingDeals = ref(false)
 
+const publisherAttorneyRateMap = ref(new Map<string, number>())
+
 const invoiceNumber = ref('')
 
 const form = ref({
@@ -57,7 +59,7 @@ const form = ref({
   deal_ids: [] as string[],
   items: [] as Array<InvoiceItem & { deal_id?: string }>,
   tax_rate: 0,
-  status: 'in_review' as InvoiceStatus,
+  status: 'pending' as InvoiceStatus,
   notes: '',
   due_date: ''
 })
@@ -96,6 +98,37 @@ const paymentWindowDays = computed(() => {
   return Math.floor(n)
 })
 
+const loadPublisherAttorneyRates = async (rows: DealFlowRow[]) => {
+  const ids = [...new Set(rows
+    .map(r => String(r.assigned_attorney_id ?? '').trim())
+    .filter(Boolean)
+  )]
+
+  if (!ids.length) {
+    publisherAttorneyRateMap.value = new Map()
+    return
+  }
+
+  const { data, error } = await supabase
+    .from('attorney_profiles')
+    .select('user_id,case_rate_per_deal')
+    .in('user_id', ids)
+
+  if (error) throw new Error(error.message)
+
+  const map = new Map<string, number>()
+  ;(data ?? []).forEach((r) => {
+    const id = String((r as { user_id?: string | null }).user_id ?? '').trim()
+    if (!id) return
+    const raw = (r as { case_rate_per_deal?: unknown }).case_rate_per_deal
+    const n = Number(raw ?? 0)
+    if (!Number.isFinite(n) || n <= 0) return
+    map.set(id, Math.round(n * 100) / 100)
+  })
+
+  publisherAttorneyRateMap.value = map
+}
+
 const selectedLawyerLabel = computed(() => {
   if (!form.value.lawyer_id) return ''
   const l = lawyers.value.find(lw => lw.user_id === form.value.lawyer_id)
@@ -129,7 +162,7 @@ const recipientValue = computed({
 })
 
 const statusOptions = [
-  { label: 'In Review', value: 'in_review' },
+  { label: 'Pending', value: 'pending' },
   { label: 'Paid', value: 'paid' },
   { label: 'Chargeback', value: 'chargeback' }
 ]
@@ -137,7 +170,7 @@ const statusOptions = [
 watch(isPublisherMode, (isPub) => {
   // Default newly-created invoices to review stage
   if (!isEdit.value) {
-    form.value.status = (isPub ? 'in_review' : 'in_review') as InvoiceStatus
+    form.value.status = (isPub ? 'pending' : 'pending') as InvoiceStatus
   }
 })
 
@@ -211,17 +244,9 @@ const recalcItem = (index: number) => {
 }
 
 const toDealUnitPrice = (deal: DealFlowRow) => {
-  const raw = (deal as unknown as { face_amount?: unknown }).face_amount
-  if (raw === null || raw === undefined) return 0
-  if (typeof raw === 'number') {
-    if (!Number.isFinite(raw)) return 0
-    return Math.max(0, Math.round(raw * 100) / 100)
-  }
-
-  const s = String(raw).trim()
-  if (!s) return 0
-  const normalized = s.replace(/[^0-9.-]/g, '')
-  const n = Number(normalized)
+  const attorneyId = String(deal.assigned_attorney_id ?? '').trim()
+  if (!attorneyId) return 0
+  const n = publisherAttorneyRateMap.value.get(attorneyId) ?? 0
   if (!Number.isFinite(n)) return 0
   return Math.max(0, Math.round(n * 100) / 100)
 }
@@ -322,6 +347,7 @@ const fetchDeals = async () => {
         dateEnd: form.value.date_range_end || null,
         editingInvoiceId: isEdit.value ? invoiceId.value : null
       })
+      await loadPublisherAttorneyRates(data)
       deals.value = data.map((d: DealFlowRow) => ({
         ...d,
         selected: form.value.deal_ids.includes(d.id)
@@ -385,7 +411,7 @@ const ensureDealSelected = async (dealId: string) => {
 
   const { data, error } = await supabase
     .from('daily_deal_flow')
-    .select('id,submission_id,insured_name,client_phone_number,lead_vendor,status,assigned_attorney_id,agent,carrier,face_amount,invoice_id,publisher_invoice_id,created_at')
+    .select('id,submission_id,insured_name,client_phone_number,state,lead_vendor,status,assigned_attorney_id,agent,carrier,face_amount,invoice_id,publisher_invoice_id,created_at,updated_at')
     .eq('id', dealId)
     .maybeSingle()
 
@@ -393,6 +419,9 @@ const ensureDealSelected = async (dealId: string) => {
   if (!data) return
 
   const fetched = data as DealFlowRow
+  if (isPublisherMode.value) {
+    await loadPublisherAttorneyRates([fetched])
+  }
   const baseUnit = isPublisherMode.value ? toDealUnitPrice(fetched) : caseRatePerDeal.value
   const unit = Math.round(baseUnit * upfrontMultiplier.value * 100) / 100
   const desc = String(fetched.insured_name ?? '').trim() || 'Unknown'

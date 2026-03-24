@@ -71,19 +71,19 @@ export async function createInvoice(input: {
   invoice_number: string
   lawyer_id?: string | null
   lead_vendor_id?: string | null
-  invoice_type?: InvoiceType
+  invoice_type: InvoiceType
   created_by: string
   date_range_start: string
   date_range_end: string
-  deal_ids: string[]
+  deal_ids?: string[]
   items: InvoiceItem[]
   subtotal: number
   tax_rate: number
   tax_amount: number
   total_amount: number
   status?: InvoiceStatus
-  notes?: string | null
-  due_date?: string | null
+  notes?: string
+  due_date?: string
 }): Promise<InvoiceRow> {
   const { data, error } = await supabase
     .from('invoices')
@@ -91,17 +91,17 @@ export async function createInvoice(input: {
       invoice_number: input.invoice_number,
       lawyer_id: input.lawyer_id ?? null,
       lead_vendor_id: input.lead_vendor_id ?? null,
-      invoice_type: input.invoice_type ?? 'lawyer',
+      invoice_type: input.invoice_type,
       created_by: input.created_by,
       date_range_start: input.date_range_start,
       date_range_end: input.date_range_end,
-      deal_ids: input.deal_ids,
+      deal_ids: input.deal_ids ?? [],
       items: input.items,
       subtotal: input.subtotal,
       tax_rate: input.tax_rate,
       tax_amount: input.tax_amount,
       total_amount: input.total_amount,
-      status: input.status ?? 'in_review',
+      status: input.status ?? 'pending',
       notes: input.notes ?? null,
       due_date: input.due_date ?? null
     })
@@ -230,6 +230,7 @@ export type DealFlowRow = {
   submission_id: string
   insured_name: string | null
   client_phone_number: string | null
+  state: string | null
   lead_vendor: string | null
   status: string | null
   payment_status?: DealPaymentStatus | null
@@ -240,9 +241,10 @@ export type DealFlowRow = {
   invoice_id: string | null
   publisher_invoice_id: string | null
   created_at: string | null
+  updated_at: string | null
 }
 
-const DEAL_FLOW_COLUMNS = 'id,submission_id,insured_name,client_phone_number,lead_vendor,status,payment_status,assigned_attorney_id,agent,carrier,face_amount,invoice_id,publisher_invoice_id,created_at'
+const DEAL_FLOW_COLUMNS = 'id,submission_id,insured_name,client_phone_number,state,lead_vendor,status,payment_status,assigned_attorney_id,agent,carrier,face_amount,invoice_id,publisher_invoice_id,created_at,updated_at'
 
 const QUALIFIED_PAYABLE_KEY = 'qualified_payable'
 const QUALIFIED_PAYABLE_LABEL = 'Awaiting Billable'
@@ -271,9 +273,9 @@ export async function listDealsForInvoice(input: {
     .from('daily_deal_flow')
     .select(DEAL_FLOW_COLUMNS)
     .eq('assigned_attorney_id', input.lawyerId)
-    .gte('created_at', input.dateStart)
-    .lte('created_at', input.dateEnd + 'T23:59:59.999Z')
-    .order('created_at', { ascending: false })
+    .gte('updated_at', input.dateStart)
+    .lte('updated_at', input.dateEnd + 'T23:59:59.999Z')
+    .order('updated_at', { ascending: false })
 
   if (input.editingInvoiceId) {
     qb = qb.or(
@@ -307,7 +309,7 @@ export async function listDealsForPublisherInvoice(input: {
     .from('daily_deal_flow')
     .select(DEAL_FLOW_COLUMNS)
     .eq('lead_vendor', input.vendorLeadName)
-    .order('created_at', { ascending: false })
+    .order('updated_at', { ascending: false })
 
   if (input.editingInvoiceId) {
     qb = qb.or(
@@ -319,10 +321,10 @@ export async function listDealsForPublisherInvoice(input: {
   }
 
   if (input.dateStart) {
-    qb = qb.gte('created_at', input.dateStart)
+    qb = qb.gte('updated_at', input.dateStart)
   }
   if (input.dateEnd) {
-    qb = qb.lte('created_at', input.dateEnd + 'T23:59:59.999Z')
+    qb = qb.lte('updated_at', input.dateEnd + 'T23:59:59.999Z')
   }
 
   const { data, error } = await qb
