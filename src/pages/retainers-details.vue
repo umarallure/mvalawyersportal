@@ -41,7 +41,7 @@ const actionLoading = ref(false)
 const activeTab = ref('basic')
 
 const tabs = [
-  { label: 'Basic Information', icon: 'i-lucide-user', value: 'basic' },
+  { label: 'Personal Information', icon: 'i-lucide-user', value: 'basic' },
   { label: 'Accident Details', icon: 'i-lucide-car', value: 'accident' },
   { label: 'Documents', icon: 'i-lucide-folder-open', value: 'documents' },
 ]
@@ -302,7 +302,7 @@ function formatFieldValue(key: string, value: unknown) {
 const basicInfoFields = computed(() => {
   if (!row.value) return []
   return [
-    ['insured_name', 'Retainer Name'],
+    ['insured_name', 'Client Name'],
     ['client_phone_number', 'Phone Number'],
     ['email', 'Email'],
     ['street_address', 'Address'],
@@ -320,13 +320,14 @@ const accidentDetailsFields = computed(() => {
     ['accident_date', 'Accident Date'],
     ['accident_location', 'Accident Location'],
     ['accident_scenario', 'Accident Scenario'],
+    ['was_client_driver', 'Was This Client the Driver?'],
     ['prior_attorney_involved', 'Prior Attorney Involved'],
     ['prior_attorney_details', 'Prior Attorney Details'],
     ['medical_attention', 'Medical Attention'],
     ['police_attended', 'Police Attended'],
     ['injuries', 'Injuries'],
     ['other_party_admit_fault', 'Other Party Admit Fault'],
-    ['passengers_count', 'Passengers Count']
+    ['passengers_count', 'Passengers Count ("Excluding the Driver")']
   ].map(([key, label]) => ({ key, label, value: (row.value as Record<string, unknown>)[key] }))
 })
 </script>
