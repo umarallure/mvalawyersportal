@@ -1,7 +1,41 @@
 <script setup lang="ts">
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
+
+// ── 3D tilt effect (mouse-tracking) ──
+const TILT_MAX = 6
+const tiltReady = ref(false)
+
+// Wait for the entrance animation to finish, then unlock tilt
+onMounted(() => {
+  setTimeout(() => { tiltReady.value = true }, 900)
+})
+
+const onTiltMove = (e: MouseEvent) => {
+  if (!tiltReady.value) return
+  const el = e.currentTarget as HTMLElement
+  // Strip ap-fade-in on first interaction so its fill-mode stops blocking transforms
+  el.classList.remove('ap-fade-in')
+  el.style.animation = 'none'
+
+  const rect = el.getBoundingClientRect()
+  const x = (e.clientX - rect.left) / rect.width
+  const y = (e.clientY - rect.top) / rect.height
+  const ry = (x - 0.5) * TILT_MAX * 2
+  const rx = (0.5 - y) * TILT_MAX * 2
+
+  el.style.transition = 'transform 0.15s ease-out'
+  el.style.transform = `perspective(600px) rotateX(${rx}deg) rotateY(${ry}deg) scale3d(1.02, 1.02, 1.02)`
+}
+
+const onTiltLeave = (e: MouseEvent) => {
+  if (!tiltReady.value) return
+  const el = e.currentTarget as HTMLElement
+  el.style.transition = 'transform 0.5s cubic-bezier(0.03, 0.98, 0.52, 0.99)'
+  el.style.transform = 'perspective(600px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)'
+}
 
 type TierCard = {
   name: string
@@ -99,75 +133,82 @@ const placeOrder = () => {
 
         <!-- ═══ Tier Cards Grid ═══ -->
         <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <!-- Tilt wrapper — separate from the animated card so ap-fade-in doesn't block inline transforms -->
           <div
             v-for="(tier, idx) in tierCards"
             :key="tier.name"
-            class="ap-fade-in group/card flex flex-col overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm transition-all duration-300 hover:shadow-xl"
-            :class="tier.hoverBorder"
+            class="tier-tilt ap-fade-in"
             :style="{ animationDelay: `${200 + idx * 100}ms` }"
+            @mousemove="onTiltMove"
+            @mouseleave="onTiltLeave"
           >
-            <!-- Card Header — centered text -->
             <div
-              class="flex items-center justify-center border-b border-black/[0.06] dark:border-white/[0.08] px-4 py-3"
-              :class="tier.headerGradient || 'tier-4-header'"
+              class="group/card flex h-full flex-col rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm transition-[box-shadow,background-color] duration-300 hover:shadow-xl hover:bg-white dark:hover:bg-[#1f1f1f]"
+              :class="tier.hoverBorder"
             >
-              <span class="text-sm font-semibold text-highlighted">{{ tier.name }}</span>
-            </div>
-
-            <!-- Accent Strip -->
-            <div class="h-[2px]" :class="tier.stripClass" />
-
-            <!-- Price -->
-            <div class="flex items-baseline justify-center gap-1 px-4 pt-5 pb-1">
-              <span
-                class="text-3xl font-bold"
-                :class="tier.priceColor || 'tier-4-price'"
-              >
-                {{ tier.price }}
-              </span>
-              <span class="text-xs text-muted">/ case</span>
-            </div>
-
-            <!-- Rows -->
-            <div class="flex-1 space-y-1 px-4 py-4">
+              <!-- Card Header — centered text -->
               <div
-                v-for="row in tier.rows"
-                :key="row.label"
-                class="flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors duration-150 hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
+                class="flex items-center justify-center overflow-hidden rounded-t-xl border-b border-black/[0.06] dark:border-white/[0.08] px-4 py-3"
+                :class="tier.headerGradient || 'tier-4-header'"
               >
-                <UIcon :name="row.icon" class="mt-0.5 size-4 shrink-0 text-muted" />
-                <div class="min-w-0">
-                  <div class="text-[10px] font-medium uppercase tracking-wider text-muted leading-tight">
-                    {{ row.label }}
-                  </div>
-                  <div class="mt-0.5 text-[13px] font-medium text-highlighted leading-snug">
-                    {{ row.value }}
-                  </div>
-                  <div v-if="row.sub" class="text-xs text-muted leading-snug">
-                    {{ row.sub }}
+                <span class="text-sm font-semibold text-highlighted">{{ tier.name }}</span>
+              </div>
+
+              <!-- Accent Strip -->
+              <div class="h-[2px]" :class="tier.stripClass" />
+
+              <!-- Price -->
+              <div class="flex items-baseline justify-center gap-1 px-4 pt-5 pb-1">
+                <span
+                  class="text-3xl font-bold"
+                  :class="tier.priceColor || 'tier-4-price'"
+                >
+                  {{ tier.price }}
+                </span>
+                <span class="text-xs text-muted">/ case</span>
+              </div>
+
+              <!-- Rows -->
+              <div class="flex-1 space-y-1 px-4 py-4">
+                <div
+                  v-for="row in tier.rows"
+                  :key="row.label"
+                  class="flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors duration-150 hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
+                >
+                  <UIcon :name="row.icon" class="mt-0.5 size-4 shrink-0 text-muted" />
+                  <div class="min-w-0">
+                    <div class="text-[10px] font-medium uppercase tracking-wider text-muted leading-tight">
+                      {{ row.label }}
+                    </div>
+                    <div class="mt-0.5 text-[13px] font-medium text-highlighted leading-snug">
+                      {{ row.value }}
+                    </div>
+                    <div v-if="row.sub" class="text-xs text-muted leading-snug">
+                      {{ row.sub }}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <!-- CTA Button -->
-            <div class="px-4 pb-4">
-              <button
-                class="tier-btn group/btn flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-all duration-200"
-                :class="[
-                  idx === 0 ? 'tier-btn--zinc' : '',
-                  idx === 1 ? 'tier-btn--orange-light' : '',
-                  idx === 2 ? 'tier-btn--orange' : '',
-                  idx === 3 ? 'tier-btn--primary' : ''
-                ]"
-                @click="placeOrder"
-              >
-                <span>Place Order</span>
-                <UIcon
-                  name="i-lucide-arrow-right"
-                  class="text-sm transition-transform duration-200 ease-out group-hover/btn:translate-x-1"
-                />
-              </button>
+              <!-- CTA Button -->
+              <div class="px-4 pb-4">
+                <button
+                  class="tier-btn group/btn flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-all duration-200"
+                  :class="[
+                    idx === 0 ? 'tier-btn--zinc' : '',
+                    idx === 1 ? 'tier-btn--orange-light' : '',
+                    idx === 2 ? 'tier-btn--orange' : '',
+                    idx === 3 ? 'tier-btn--primary' : ''
+                  ]"
+                  @click="placeOrder"
+                >
+                  <span>Place Order</span>
+                  <UIcon
+                    name="i-lucide-arrow-right"
+                    class="text-sm transition-transform duration-200 ease-out group-hover/btn:translate-x-1"
+                  />
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -177,7 +218,13 @@ const placeOrder = () => {
 </template>
 
 <style scoped>
-/* Tier 4 primary orange — uses CSS vars since Tailwind can't target them */
+/* ── 3D tilt wrapper (separate from ap-fade-in so inline transform works) ── */
+.tier-tilt {
+  will-change: transform;
+  transform-style: preserve-3d;
+}
+
+/* ── Tier 4 header / price / strip (CSS var colors) ── */
 .tier-4-header {
   background: linear-gradient(to right, rgba(174, 64, 16, 0.12), rgba(174, 64, 16, 0.04), transparent);
 }
@@ -191,55 +238,87 @@ const placeOrder = () => {
   background-color: var(--ap-accent);
 }
 
-/* ── Tier CTA buttons ── */
-.tier-btn {
-  border-color: rgba(0, 0, 0, 0.1);
-  color: inherit;
-  background: transparent;
-}
-.dark .tier-btn {
-  border-color: rgba(255, 255, 255, 0.1);
-}
+/* ── Tier CTA buttons — default state shows tier color ── */
 
 /* Tier 1 — zinc */
-.tier-btn--zinc:hover {
-  background: rgba(161, 161, 170, 0.1);
-  border-color: rgba(161, 161, 170, 0.4);
+.tier-btn--zinc {
+  background: rgba(161, 161, 170, 0.08);
+  border-color: rgba(161, 161, 170, 0.25);
   color: #71717a;
 }
-.dark .tier-btn--zinc:hover {
-  background: rgba(161, 161, 170, 0.1);
-  border-color: rgba(161, 161, 170, 0.35);
+.dark .tier-btn--zinc {
+  background: rgba(161, 161, 170, 0.08);
+  border-color: rgba(161, 161, 170, 0.2);
   color: #a1a1aa;
+}
+.tier-btn--zinc:hover {
+  background: rgba(161, 161, 170, 0.18);
+  border-color: rgba(161, 161, 170, 0.45);
+  color: #52525b;
+}
+.dark .tier-btn--zinc:hover {
+  background: rgba(161, 161, 170, 0.16);
+  border-color: rgba(161, 161, 170, 0.4);
+  color: #d4d4d8;
 }
 
 /* Tier 2 — light orange */
-.tier-btn--orange-light:hover {
-  background: rgba(251, 146, 60, 0.1);
-  border-color: rgba(251, 146, 60, 0.4);
+.tier-btn--orange-light {
+  background: rgba(253, 186, 116, 0.1);
+  border-color: rgba(253, 186, 116, 0.3);
   color: #fb923c;
 }
-.dark .tier-btn--orange-light:hover {
-  background: rgba(253, 186, 116, 0.1);
-  border-color: rgba(253, 186, 116, 0.35);
+.dark .tier-btn--orange-light {
+  background: rgba(253, 186, 116, 0.08);
+  border-color: rgba(253, 186, 116, 0.2);
   color: #fdba74;
+}
+.tier-btn--orange-light:hover {
+  background: rgba(251, 146, 60, 0.18);
+  border-color: rgba(251, 146, 60, 0.5);
+  color: #ea580c;
+}
+.dark .tier-btn--orange-light:hover {
+  background: rgba(253, 186, 116, 0.16);
+  border-color: rgba(253, 186, 116, 0.4);
+  color: #fb923c;
 }
 
 /* Tier 3 — stronger orange */
-.tier-btn--orange:hover {
+.tier-btn--orange {
   background: rgba(249, 115, 22, 0.1);
+  border-color: rgba(249, 115, 22, 0.3);
+  color: #f97316;
+}
+.dark .tier-btn--orange {
+  background: rgba(251, 146, 60, 0.08);
+  border-color: rgba(251, 146, 60, 0.2);
+  color: #fb923c;
+}
+.tier-btn--orange:hover {
+  background: rgba(234, 88, 12, 0.18);
+  border-color: rgba(234, 88, 12, 0.5);
+  color: #c2410c;
+}
+.dark .tier-btn--orange:hover {
+  background: rgba(249, 115, 22, 0.16);
   border-color: rgba(249, 115, 22, 0.4);
   color: #f97316;
 }
-.dark .tier-btn--orange:hover {
-  background: rgba(251, 146, 60, 0.1);
-  border-color: rgba(251, 146, 60, 0.35);
-  color: #fb923c;
-}
 
 /* Tier 4 — primary brand orange */
-.tier-btn--primary:hover {
+.tier-btn--primary {
   background: var(--ap-accent-soft);
+  border-color: rgba(174, 64, 16, 0.3);
+  color: var(--ap-accent);
+}
+.tier-btn--primary:hover {
+  background: rgba(174, 64, 16, 0.22);
+  border-color: var(--ap-accent-border);
+  color: var(--ap-accent-dark);
+}
+.dark .tier-btn--primary:hover {
+  background: rgba(174, 64, 16, 0.25);
   border-color: var(--ap-accent-border);
   color: var(--ap-accent);
 }
