@@ -59,6 +59,20 @@ const COLOR_NEUTRAL = '#d1d5db'
 const COLOR_GREEN = '#22c55e'
 const COLOR_YELLOW = '#eab308'
 const COLOR_RED = '#ef4444'
+const TEMPORARILY_UNAVAILABLE_STATE_CODES = ['CA'] as const
+const TEMPORARILY_UNAVAILABLE_STATE_SET = new Set<string>(TEMPORARILY_UNAVAILABLE_STATE_CODES)
+
+const normalizeStateCode = (stateCode: string) => String(stateCode || '').trim().toUpperCase()
+
+const isTemporarilyUnavailableState = (stateCode: string) => {
+  return TEMPORARILY_UNAVAILABLE_STATE_SET.has(normalizeStateCode(stateCode))
+}
+
+const getTemporarilyUnavailableStateError = (stateCode: string) => {
+  const code = normalizeStateCode(stateCode)
+  if (code === 'CA') return 'Temporarily not accepting orders in California.'
+  return 'Temporarily not accepting orders in this state.'
+}
 
 const isOrderInProgress = (order: Pick<OrderRow, 'quota_filled' | 'quota_total'>) => {
   return orderProgressPercent(order) > 0
@@ -359,7 +373,7 @@ const mapFilterOptions = [
   { label: 'All states', value: 'all' },
   { label: 'No orders', value: 'no_orders' },
   { label: 'Has open orders', value: 'has_orders' },
-  { label: 'Blocked states', value: 'blocked' }
+  { label: 'Unavailable states', value: 'blocked' }
 ]
 
 watch(mapFilter, () => {
@@ -372,6 +386,12 @@ const blockedStateCodes = ref<string[]>([])
 const blockedStateSet = computed(() => {
   return new Set(blockedStateCodes.value.map((c) => String(c || '').trim().toUpperCase()).filter(Boolean))
 })
+
+const isStateUnavailableForOrdering = (stateCode: string) => {
+  const code = normalizeStateCode(stateCode)
+  if (!code) return true
+  return blockedStateSet.value.has(code) || isTemporarilyUnavailableState(code)
+}
 
 const blockedStorageKey = computed(() => {
   const userId = auth.state.value.user?.id ?? ''
@@ -612,6 +632,9 @@ const maxOrdersPerStateError = computed(() => {
 const maxOrderStatesError = computed(() => {
   const stateCode = String(orderForm.value.stateCode || '').trim().toUpperCase()
   if (!stateCode) return null
+  if (isTemporarilyUnavailableState(stateCode)) {
+    return getTemporarilyUnavailableStateError(stateCode)
+  }
   if (!canOrderInState(stateCode)) {
     return `You already have active orders in ${MAX_ORDER_STATES.value} states (the maximum allowed). To place orders in a new state, please close or wait for existing orders to expire, or contact your account manager.`
   }
@@ -648,7 +671,7 @@ const openCreateOrder = () => {
 
 const openCreateOrderForState = (stateCode: string) => {
   const code = String(stateCode || '').trim().toUpperCase()
-  if (!code) return
+  if (!code || isTemporarilyUnavailableState(code)) return
   pendingStateCode.value = code
   orderForm.value.stateCode = code
   createOrderOpen.value = true
@@ -765,7 +788,7 @@ const orderStateOptions = computed(() => {
   return US_STATES
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name))
-    .filter((s) => !blockedStateSet.value.has(s.code))
+    .filter((s) => !isStateUnavailableForOrdering(s.code))
     // Max 2 orders per state (one per case category)
     .filter((s) => (openOrderCountByStateCode.value.get(s.code) ?? 0) < 2)
     // 5-state limit: only allow states that already have orders OR if under cap
@@ -779,6 +802,7 @@ const submitCreateOrder = async () => {
 
   const stateCode = String(orderForm.value.stateCode || '').trim().toUpperCase()
   if (!stateCode) return false
+  if (isTemporarilyUnavailableState(stateCode)) return false
 
   // Enforce: 5-state ordering limit
   if (!canOrderInState(stateCode)) return false
@@ -865,9 +889,15 @@ const handleCreateOrderSubmit = async (close: () => void) => {
 const MAP_PATH_SELECTOR = 'path[data-id], path[id]'
 
 const BLOCKED_PATTERN_ID = 'blocked-hatch'
+const TEMPORARILY_UNAVAILABLE_PATTERN_ID = 'temporarily-unavailable-hatch'
 
-const ensureBlockedPattern = (svg: SVGSVGElement) => {
-  const existing = svg.querySelector(`#${BLOCKED_PATTERN_ID}`)
+const ensureHatchPattern = (
+  svg: SVGSVGElement,
+  patternId: string,
+  backgroundColor: string,
+  stripeColor: string
+) => {
+  const existing = svg.querySelector(`#${patternId}`)
   if (existing) return
 
   let defs = svg.querySelector('defs')
@@ -877,21 +907,21 @@ const ensureBlockedPattern = (svg: SVGSVGElement) => {
   }
 
   const pattern = document.createElementNS('http://www.w3.org/2000/svg', 'pattern')
-  pattern.setAttribute('id', BLOCKED_PATTERN_ID)
+  pattern.setAttribute('id', patternId)
   pattern.setAttribute('patternUnits', 'userSpaceOnUse')
-  pattern.setAttribute('width', '10')
-  pattern.setAttribute('height', '10')
+  pattern.setAttribute('width', '12')
+  pattern.setAttribute('height', '12')
   pattern.setAttribute('patternTransform', 'rotate(45)')
 
   const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
-  bg.setAttribute('width', '10')
-  bg.setAttribute('height', '10')
-  bg.setAttribute('fill', '#f3f4f6')
+  bg.setAttribute('width', '12')
+  bg.setAttribute('height', '12')
+  bg.setAttribute('fill', backgroundColor)
 
   const stripe = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
-  stripe.setAttribute('width', '2')
-  stripe.setAttribute('height', '10')
-  stripe.setAttribute('fill', '#9ca3af')
+  stripe.setAttribute('width', '4')
+  stripe.setAttribute('height', '12')
+  stripe.setAttribute('fill', stripeColor)
 
   pattern.appendChild(bg)
   pattern.appendChild(stripe)
@@ -904,40 +934,45 @@ const applyMapColors = () => {
   const svg = root.querySelector('svg')
   if (!svg) return
 
-  ensureBlockedPattern(svg as SVGSVGElement)
+  ensureHatchPattern(svg as SVGSVGElement, BLOCKED_PATTERN_ID, '#f3f4f6', '#9ca3af')
+  ensureHatchPattern(svg as SVGSVGElement, TEMPORARILY_UNAVAILABLE_PATTERN_ID, '#fff7ed', '#f97316')
 
   const paths = svg.querySelectorAll(MAP_PATH_SELECTOR)
   paths.forEach((p) => {
     const path = p as SVGPathElement
     const code = p.getAttribute('data-id') || p.getAttribute('id')
     if (!code) return
-    const state = stateByCode.value.get(code)
-
-    const normalizedCode = String(code || '').trim().toUpperCase()
+    const normalizedCode = normalizeStateCode(code)
+    const state = stateByCode.value.get(normalizedCode)
     const isBlocked = blockedStateSet.value.has(normalizedCode)
+    const isTemporarilyUnavailable = isTemporarilyUnavailableState(normalizedCode)
+    const isUnavailable = isBlocked || isTemporarilyUnavailable
 
     const openOrders = Number(state?.openOrders) || 0
     const matchesFilter = mapFilter.value === 'all'
       ? true
       : mapFilter.value === 'no_orders'
-        ? !isBlocked && openOrders === 0
+        ? !isUnavailable && openOrders === 0
         : mapFilter.value === 'has_orders'
-          ? !isBlocked && openOrders > 0
-          : isBlocked
+          ? !isUnavailable && openOrders > 0
+          : isUnavailable
 
-    const fill = isBlocked
-      ? `url(#${BLOCKED_PATTERN_ID})`
+    const fill = isTemporarilyUnavailable
+      ? `url(#${TEMPORARILY_UNAVAILABLE_PATTERN_ID})`
+      : isBlocked
+        ? `url(#${BLOCKED_PATTERN_ID})`
       : state
         ? getStateFillColor(state.code)
         : COLOR_NEUTRAL
 
     const stroke = '#0b0b0b'
     const strokeWidth = '0.8'
+    const isInteractive = !isBlocked && (!isTemporarilyUnavailable || openOrders > 0)
 
     path.style.setProperty('fill', fill, 'important')
     path.style.setProperty('stroke', stroke, 'important')
     path.style.setProperty('stroke-width', strokeWidth, 'important')
-    path.style.cursor = matchesFilter && state && !isBlocked ? 'pointer' : 'default'
+    path.style.cursor = matchesFilter && state && isInteractive ? 'pointer' : 'default'
     path.style.opacity = matchesFilter ? '1' : '0.25'
     path.style.pointerEvents = matchesFilter ? 'auto' : 'none'
   })
@@ -1005,13 +1040,14 @@ const handleStateEnter = (evt: Event) => {
   if (!target) return
   const code = target.getAttribute('data-id') || target.getAttribute('id')
   if (!code) return
-  const state = stateByCode.value.get(code) ?? null
+  const normalizedCode = normalizeStateCode(code)
+  const state = stateByCode.value.get(normalizedCode) ?? null
   if (!state) return
 
-  tooltip.value.blocked = blockedStateSet.value.has(String(code || '').trim().toUpperCase())
+  tooltip.value.blocked = blockedStateSet.value.has(normalizedCode)
 
   tooltip.value.state = state
-  tooltip.value.myOrder = myOrderByStateCode.value.get(code) ?? null
+  tooltip.value.myOrder = myOrderByStateCode.value.get(normalizedCode) ?? null
   tooltip.value.open = true
 }
 
@@ -1048,10 +1084,18 @@ const handleStateClick = (evt: Event) => {
   if (!target) return
   const code = target.getAttribute('data-id') || target.getAttribute('id')
   if (!code) return
-  const state = stateByCode.value.get(code) ?? null
+  const normalizedCode = normalizeStateCode(code)
+  const state = stateByCode.value.get(normalizedCode) ?? null
   if (!state) return
 
-  const normalizedCode = String(code || '').trim().toUpperCase()
+  const stateOrders = openOrdersForStateCode(normalizedCode)
+  if (isTemporarilyUnavailableState(normalizedCode)) {
+    if (stateOrders.length > 0) {
+      router.push(`/orders/${stateOrders[0].id}?state=${normalizedCode}`)
+    }
+    return
+  }
+
   if (blockMode.value) {
     const next = new Set(blockedStateSet.value)
     if (next.has(normalizedCode)) next.delete(normalizedCode)
@@ -1061,8 +1105,6 @@ const handleStateClick = (evt: Event) => {
   }
 
   if (blockedStateSet.value.has(normalizedCode)) return
-
-  const stateOrders = openOrdersForStateCode(normalizedCode)
 
   // If state has 2 orders (max per state), navigate to the first one
   if (stateOrders.length >= 2) {
@@ -1697,6 +1739,13 @@ watch(myClosedOrders, () => {
                     style="background: repeating-linear-gradient(45deg, #9ca3af 0 2px, #f3f4f6 2px 6px);"
                   />
                   <span class="text-[10px] text-gray-500 dark:text-gray-400">Blocked</span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <div
+                    class="size-2.5 rounded-full"
+                    style="background: repeating-linear-gradient(45deg, #f97316 0 3px, #fff7ed 3px 7px);"
+                  />
+                  <span class="text-[10px] text-gray-500 dark:text-gray-400">Temporarily unavailable</span>
                 </div>
               </div>
               <div class="flex items-center gap-2">
