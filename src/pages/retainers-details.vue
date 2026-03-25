@@ -41,7 +41,7 @@ const actionLoading = ref(false)
 const activeTab = ref('basic')
 
 const tabs = [
-  { label: 'Basic Information', icon: 'i-lucide-user', value: 'basic' },
+  { label: 'Personal Information', icon: 'i-lucide-user', value: 'basic' },
   { label: 'Accident Details', icon: 'i-lucide-car', value: 'accident' },
   { label: 'Documents', icon: 'i-lucide-folder-open', value: 'documents' },
 ]
@@ -107,17 +107,60 @@ const load = async () => {
   try {
     await auth.init()
 
-    const userId = auth.state.value.user?.id
+    const userId = auth.state.value.profile?.user_id
     const userRole = auth.state.value.profile?.role
 
-    let queryBuilder = supabase
-      .from('daily_deal_flow')
-      .select('*')
-      .eq('id', id.value)
-
-    // If user is a lawyer, only allow leads assigned to them
+    // For lawyers, build name keywords for fallback matching
+    let nameKeywords: string[] = []
     if (userRole === 'lawyer' && userId) {
-      queryBuilder = queryBuilder.eq('assigned_attorney_id', userId)
+      const { data: attorneyProfile } = await supabase
+        .from('attorney_profiles')
+        .select('full_name')
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      const fullName = attorneyProfile?.full_name?.trim() || null
+      const displayName = auth.state.value.profile?.display_name?.trim() || null
+      const email = auth.state.value.profile?.email || null
+      const emailName = email ? email.split('@')[0].replace(/[^a-zA-Z]/g, ' ').trim() : null
+
+      const rawName = fullName || displayName || emailName || ''
+      nameKeywords = rawName
+        .split(/[\s\-_]+/)
+        .map((w: string) => w.trim().toLowerCase())
+        .filter((w: string) => w.length >= 3)
+    }
+
+    let data = null
+
+    if (userRole === 'lawyer' && userId) {
+      // First try by assigned_attorney_id
+      const { data: byId, error: byIdErr } = await supabase
+        .from('daily_deal_flow')
+        .select('*')
+        .eq('id', id.value)
+        .eq('assigned_attorney_id', userId)
+        .maybeSingle()
+
+      if (byIdErr) throw byIdErr
+      data = byId
+
+      // Fallback: match by any name keyword in submitted_attorney
+      if (!data && nameKeywords.length > 0) {
+        const orFilter = nameKeywords
+          .map((kw: string) => `submitted_attorney.ilike.%${kw}%`)
+          .join(',')
+
+        const { data: byName, error: byNameErr } = await supabase
+          .from('daily_deal_flow')
+          .select('*')
+          .eq('id', id.value)
+          .or(orFilter)
+          .maybeSingle()
+
+        if (byNameErr) throw byNameErr
+        data = byName
+      }
     } else if (!userRole) {
       // If no role, filter by lead vendor matching user's center
       const { data: userData, error: userErr } = await supabase
@@ -138,7 +181,15 @@ const load = async () => {
         if (centerErr) throw centerErr
 
         if (centerData?.lead_vendor) {
-          queryBuilder = queryBuilder.eq('lead_vendor', centerData.lead_vendor)
+          const { data: vendorData, error: vendorErr } = await supabase
+            .from('daily_deal_flow')
+            .select('*')
+            .eq('id', id.value)
+            .eq('lead_vendor', centerData.lead_vendor)
+            .maybeSingle()
+
+          if (vendorErr) throw vendorErr
+          data = vendorData
         } else {
           error.value = 'Lead not found'
           row.value = null
@@ -149,12 +200,17 @@ const load = async () => {
         row.value = null
         return
       }
+    } else {
+      // Admin and agent roles can view all leads (no filter)
+      const { data: allData, error: allErr } = await supabase
+        .from('daily_deal_flow')
+        .select('*')
+        .eq('id', id.value)
+        .maybeSingle()
+
+      if (allErr) throw allErr
+      data = allData
     }
-    // Admin and agent roles can view all leads (no filter)
-
-    const { data, error: supaError } = await queryBuilder.maybeSingle()
-
-    if (supaError) throw supaError
 
     if (!data) {
       let leadsQb = supabase
@@ -246,7 +302,7 @@ function formatFieldValue(key: string, value: unknown) {
 const basicInfoFields = computed(() => {
   if (!row.value) return []
   return [
-    ['insured_name', 'Retainer Name'],
+    ['insured_name', 'Client Name'],
     ['client_phone_number', 'Phone Number'],
     ['email', 'Email'],
     ['street_address', 'Address'],
@@ -264,13 +320,14 @@ const accidentDetailsFields = computed(() => {
     ['accident_date', 'Accident Date'],
     ['accident_location', 'Accident Location'],
     ['accident_scenario', 'Accident Scenario'],
+    ['was_client_driver', 'Was This Client the Driver?'],
     ['prior_attorney_involved', 'Prior Attorney Involved'],
     ['prior_attorney_details', 'Prior Attorney Details'],
     ['medical_attention', 'Medical Attention'],
     ['police_attended', 'Police Attended'],
     ['injuries', 'Injuries'],
     ['other_party_admit_fault', 'Other Party Admit Fault'],
-    ['passengers_count', 'Passengers Count']
+    ['passengers_count', 'Passengers Count ("Excluding the Driver")']
   ].map(([key, label]) => ({ key, label, value: (row.value as Record<string, unknown>)[key] }))
 })
 </script>
