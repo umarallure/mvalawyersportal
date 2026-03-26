@@ -43,6 +43,69 @@ export const PRICING_TIER_OPTIONS = Object.values(PRICING_TIERS).map(tier => ({
   value: tier.key
 }))
 
+// US States for multi-state document selection
+export const US_STATES = [
+  { code: 'AL', name: 'Alabama' },
+  { code: 'AK', name: 'Alaska' },
+  { code: 'AZ', name: 'Arizona' },
+  { code: 'AR', name: 'Arkansas' },
+  { code: 'CA', name: 'California' },
+  { code: 'CO', name: 'Colorado' },
+  { code: 'CT', name: 'Connecticut' },
+  { code: 'DE', name: 'Delaware' },
+  { code: 'DC', name: 'District of Columbia' },
+  { code: 'FL', name: 'Florida' },
+  { code: 'GA', name: 'Georgia' },
+  { code: 'HI', name: 'Hawaii' },
+  { code: 'ID', name: 'Idaho' },
+  { code: 'IL', name: 'Illinois' },
+  { code: 'IN', name: 'Indiana' },
+  { code: 'IA', name: 'Iowa' },
+  { code: 'KS', name: 'Kansas' },
+  { code: 'KY', name: 'Kentucky' },
+  { code: 'LA', name: 'Louisiana' },
+  { code: 'ME', name: 'Maine' },
+  { code: 'MD', name: 'Maryland' },
+  { code: 'MA', name: 'Massachusetts' },
+  { code: 'MI', name: 'Michigan' },
+  { code: 'MN', name: 'Minnesota' },
+  { code: 'MS', name: 'Mississippi' },
+  { code: 'MO', name: 'Missouri' },
+  { code: 'MT', name: 'Montana' },
+  { code: 'NE', name: 'Nebraska' },
+  { code: 'NV', name: 'Nevada' },
+  { code: 'NH', name: 'New Hampshire' },
+  { code: 'NJ', name: 'New Jersey' },
+  { code: 'NM', name: 'New Mexico' },
+  { code: 'NY', name: 'New York' },
+  { code: 'NC', name: 'North Carolina' },
+  { code: 'ND', name: 'North Dakota' },
+  { code: 'OH', name: 'Ohio' },
+  { code: 'OK', name: 'Oklahoma' },
+  { code: 'OR', name: 'Oregon' },
+  { code: 'PA', name: 'Pennsylvania' },
+  { code: 'RI', name: 'Rhode Island' },
+  { code: 'SC', name: 'South Carolina' },
+  { code: 'SD', name: 'South Dakota' },
+  { code: 'TN', name: 'Tennessee' },
+  { code: 'TX', name: 'Texas' },
+  { code: 'UT', name: 'Utah' },
+  { code: 'VT', name: 'Vermont' },
+  { code: 'VA', name: 'Virginia' },
+  { code: 'WA', name: 'Washington' },
+  { code: 'WV', name: 'West Virginia' },
+  { code: 'WI', name: 'Wisconsin' },
+  { code: 'WY', name: 'Wyoming' }
+] as const
+
+export type USStateCode = typeof US_STATES[number]['code']
+export type USStateName = typeof US_STATES[number]['name']
+
+export const US_STATES_OPTIONS = US_STATES.map(state => ({
+  label: `${state.name} (${state.code})`,
+  value: state.code
+}))
+
 export const RETAINER_CONTRACT_DOCUMENT_BUCKET = 'retainer-contract-documents'
 export const RETAINER_CONTRACT_DOCUMENT_MAX_SIZE_BYTES = 10 * 1024 * 1024
 export const RETAINER_CONTRACT_DOCUMENT_ALLOWED_MIME_TYPES = [
@@ -358,4 +421,155 @@ export async function getAttorneyNameMapByUserIds(userIds: string[]) {
   }
 
   return profileNameById
+}
+
+// Multi-state retainer contract documents types and functions
+
+export interface RetainerContractDocument {
+  id: string
+  user_id: string
+  state: string
+  document_path: string
+  document_name: string
+  document_mime_type: string
+  document_size_bytes: number
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export const buildMultiStateDocumentPath = (userId: string, state: string, fileName: string) => {
+  const timestamp = Date.now()
+  const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_')
+  return `${userId}/${state}/${timestamp}-${sanitizedFileName}`
+}
+
+export async function uploadMultiStateDocument(
+  userId: string,
+  state: string,
+  file: File,
+  notes?: string
+) {
+  const validationError = validateRetainerContractDocument(file)
+  if (validationError) {
+    throw new Error(validationError)
+  }
+
+  const path = buildMultiStateDocumentPath(userId, state, file.name)
+  const mimeType = normalizeRetainerContractDocumentMimeType(file)
+
+  const { error } = await supabase.storage
+    .from(RETAINER_CONTRACT_DOCUMENT_BUCKET)
+    .upload(path, file, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: mimeType
+    })
+
+  if (error) {
+    throw new Error(error.message || 'Failed to upload document')
+  }
+
+  const extension = RETAINER_CONTRACT_DOCUMENT_EXTENSION_BY_MIME[mimeType]
+  const normalizedName = file.name.trim() || `retainer-contract-document.${extension ?? 'pdf'}`
+
+  const now = new Date().toISOString()
+
+  const { data: docData, error: dbError } = await supabase
+    .from('retainer_contract_documents')
+    .insert({
+      user_id: userId,
+      state: state,
+      document_path: path,
+      document_name: normalizedName,
+      document_mime_type: mimeType,
+      document_size_bytes: file.size,
+      notes: notes || null,
+      created_at: now,
+      updated_at: now
+    })
+    .select()
+    .single()
+
+  if (dbError) {
+    await supabase.storage
+      .from(RETAINER_CONTRACT_DOCUMENT_BUCKET)
+      .remove([path])
+    throw new Error(dbError.message || 'Failed to save document record')
+  }
+
+  return docData as RetainerContractDocument
+}
+
+export async function getUserDocuments(userId: string): Promise<RetainerContractDocument[]> {
+  const { data, error } = await supabase
+    .from('retainer_contract_documents')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    throw new Error(error.message || 'Failed to fetch documents')
+  }
+
+  return (data || []) as RetainerContractDocument[]
+}
+
+export async function deleteMultiStateDocument(documentId: string) {
+  const { data: existingDoc, error: fetchError } = await supabase
+    .from('retainer_contract_documents')
+    .select('document_path')
+    .eq('id', documentId)
+    .maybeSingle()
+
+  if (fetchError) {
+    throw new Error(fetchError.message || 'Failed to fetch document')
+  }
+
+  if (existingDoc) {
+    await supabase.storage
+      .from(RETAINER_CONTRACT_DOCUMENT_BUCKET)
+      .remove([existingDoc.document_path])
+  }
+
+  const { error: deleteError } = await supabase
+    .from('retainer_contract_documents')
+    .delete()
+    .eq('id', documentId)
+
+  if (deleteError) {
+    throw new Error(deleteError.message || 'Failed to delete document')
+  }
+}
+
+export async function updateDocumentNotes(documentId: string, notes: string) {
+  const { data, error } = await supabase
+    .from('retainer_contract_documents')
+    .update({ notes, updated_at: new Date().toISOString() })
+    .eq('id', documentId)
+    .select()
+    .single()
+
+  if (error) {
+    throw new Error(error.message || 'Failed to update notes')
+  }
+
+  return data as RetainerContractDocument
+}
+
+export async function getMultiStateDocumentSignedUrl(path: string, expiresInSeconds = 60 * 30) {
+  const { data, error } = await supabase.storage
+    .from(RETAINER_CONTRACT_DOCUMENT_BUCKET)
+    .createSignedUrl(path, expiresInSeconds)
+
+  if (error) {
+    throw new Error(error.message || 'Failed to open document')
+  }
+
+  return data.signedUrl
+}
+
+export function getStateName(stateCode: string): string {
+  const state = US_STATES.find(s => s.code === stateCode)
+  return state?.name || stateCode
 }
