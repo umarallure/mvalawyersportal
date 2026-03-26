@@ -7,6 +7,8 @@ import { useAuth } from '../composables/useAuth'
 import { supabase } from '../lib/supabase'
 import { listInvoices, type InvoiceRow, type InvoiceStatus } from '../lib/invoices'
 import { listOrdersForLawyer, type OrderRow } from '../lib/orders'
+import DashboardMetricCard from '../components/dashboard/DashboardMetricCard.vue'
+import { VisXYContainer, VisArea, VisLine, VisCrosshair, VisTooltip } from '@unovis/vue'
 
 const router = useRouter()
 const { isNotificationsSlideoverOpen } = useDashboard()
@@ -48,19 +50,45 @@ const retainerCount = ref(0)
 
 const orders = ref<OrderRow[]>([])
 const orderCount = ref(0)
+const orderQuotaTotal = ref(0)
+const orderQuotaFilled = ref(0)
 
 const invoices = ref<InvoiceRowWithLawyerName[]>([])
 
+type DashboardInvoiceStage = 'billable' | 'pending' | 'paid' | 'chargeback'
+
+const getDashboardInvoiceStage = (status: InvoiceStatus): DashboardInvoiceStage => {
+  if (status === 'paid') return 'paid'
+  if (status === 'chargeback') return 'chargeback'
+  if (status === 'in_review' || status === 'signed_awaiting' || status === 'in_preview') return 'pending'
+  return 'billable'
+}
+
+const dashboardInvoiceStageSummary = computed(() => {
+  const summary: Record<DashboardInvoiceStage, { count: number; amount: number }> = {
+    billable: { count: 0, amount: 0 },
+    pending: { count: 0, amount: 0 },
+    paid: { count: 0, amount: 0 },
+    chargeback: { count: 0, amount: 0 }
+  }
+
+  invoices.value.forEach((invoice) => {
+    const stage = getDashboardInvoiceStage(invoice.status)
+    summary[stage].count += 1
+    summary[stage].amount += Number(invoice.total_amount) || 0
+  })
+
+  return summary
+})
+
 const totalInvoiced = computed(() => invoices.value.reduce((s, i) => s + Number(i.total_amount), 0))
-const pendingInvoiceAmount = computed(() => invoices.value.filter(i => i.status === 'pending').reduce((s, i) => s + Number(i.total_amount), 0))
-const paidInvoiceAmount = computed(() => invoices.value.filter(i => i.status === 'paid').reduce((s, i) => s + Number(i.total_amount), 0))
-const pendingInvoiceCount = computed(() => invoices.value.filter(i => i.status === 'pending').length)
+const pendingInvoiceAmount = computed(() => dashboardInvoiceStageSummary.value.pending.amount)
+const paidInvoiceAmount = computed(() => dashboardInvoiceStageSummary.value.paid.amount)
+const pendingReviewInvoiceCount = computed(() => dashboardInvoiceStageSummary.value.pending.count)
 
 const fulfillmentPercent = computed(() => {
-  const total = orders.value.reduce((s, o) => s + o.quota_total, 0)
-  const filled = orders.value.reduce((s, o) => s + o.quota_filled, 0)
-  if (!total) return 0
-  return Math.round((filled / total) * 100)
+  if (!orderQuotaTotal.value) return 0
+  return Math.round((orderQuotaFilled.value / orderQuotaTotal.value) * 100)
 })
 
 const formatMoney = (n: number) => {
@@ -95,26 +123,34 @@ const getInitials = (name: string | null) => {
 }
 
 const getStatusColor = (status: InvoiceStatus) => {
-  if (status === 'paid') return 'text-green-400'
-  if (status === 'pending') return 'text-amber-400'
+  const stage = getDashboardInvoiceStage(status)
+  if (stage === 'billable') return 'text-blue-400'
+  if (stage === 'pending') return 'text-amber-400'
+  if (stage === 'paid') return 'text-green-400'
   return 'text-red-400'
 }
 
 const getStatusBg = (status: InvoiceStatus) => {
-  if (status === 'paid') return 'bg-green-500/10'
-  if (status === 'pending') return 'bg-amber-500/10'
+  const stage = getDashboardInvoiceStage(status)
+  if (stage === 'billable') return 'bg-blue-500/10'
+  if (stage === 'pending') return 'bg-amber-500/10'
+  if (stage === 'paid') return 'bg-green-500/10'
   return 'bg-red-500/10'
 }
 
 const getStatusIcon = (status: InvoiceStatus) => {
-  if (status === 'paid') return 'i-lucide-check-circle'
-  if (status === 'pending') return 'i-lucide-clock'
+  const stage = getDashboardInvoiceStage(status)
+  if (stage === 'billable') return 'i-lucide-file-check'
+  if (stage === 'pending') return 'i-lucide-clock'
+  if (stage === 'paid') return 'i-lucide-check-circle'
   return 'i-lucide-alert-triangle'
 }
 
 const getStatusLabel = (status: InvoiceStatus) => {
-  if (status === 'paid') return 'Paid'
-  if (status === 'pending') return 'Pending'
+  const stage = getDashboardInvoiceStage(status)
+  if (stage === 'billable') return 'Billable'
+  if (stage === 'pending') return 'Pending'
+  if (stage === 'paid') return 'Paid'
   return 'Chargeback'
 }
 
@@ -235,9 +271,18 @@ const load = async () => {
       const ordersData = await listOrdersForLawyer({ lawyerId: userId })
       orders.value = ordersData.slice(0, 5)
       orderCount.value = ordersData.length
+      orderQuotaTotal.value = ordersData.reduce((sum, order) => sum + order.quota_total, 0)
+      orderQuotaFilled.value = ordersData.reduce((sum, order) => sum + order.quota_filled, 0)
+    } else {
+      orders.value = []
+      orderCount.value = 0
+      orderQuotaTotal.value = 0
+      orderQuotaFilled.value = 0
     }
 
-    const invFilters: { lawyer_id?: string; status?: InvoiceStatus } = {}
+    const invFilters: { lawyer_id?: string; status?: InvoiceStatus; invoice_type?: 'lawyer' | 'publisher' } = {
+      invoice_type: 'lawyer'
+    }
     if (role === 'lawyer' && userId) {
       invFilters.lawyer_id = userId
     }
@@ -263,7 +308,7 @@ const load = async () => {
         const fallbackMap = new Map(appUserRows.map(u => [String(u.user_id ?? ''), String(u.display_name || u.email || '').trim()]))
 
         invData.forEach((inv: InvoiceRowWithLawyerName) => {
-          inv.lawyer_name = nameMap.get(inv.lawyer_id) || fallbackMap.get(inv.lawyer_id) || null
+          inv.lawyer_name = nameMap.get(inv.lawyer_id ?? '') || fallbackMap.get(inv.lawyer_id ?? '') || null
         })
       }
     }
@@ -293,6 +338,125 @@ const latestInvoices = computed(() => invoices.value.slice(0, 5))
 onMounted(() => {
   load()
 })
+
+// ── New computed properties for redesigned dashboard ──
+
+const activeWorkbenchTab = ref('retainers')
+
+type InvoiceTrendPoint = {
+  month: string
+  monthKey: string
+  amount: number
+  count: number
+}
+
+const INVOICE_TREND_MONTHS = 6
+
+const parseInvoiceDate = (value: string | null | undefined) => {
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+const getMonthKey = (date: Date) => {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
+const formatMonthLabel = (monthKey: string) => {
+  return new Date(`${monthKey}-01T00:00:00`).toLocaleDateString('en-US', { month: 'short' })
+}
+
+const getRecentMonthKeys = (count: number) => {
+  const currentMonth = new Date()
+  currentMonth.setDate(1)
+  currentMonth.setHours(0, 0, 0, 0)
+
+  return Array.from({ length: count }, (_, idx) => {
+    const date = new Date(currentMonth)
+    date.setMonth(currentMonth.getMonth() - (count - idx - 1))
+    return getMonthKey(date)
+  })
+}
+
+// Receivables pipeline — group invoices by due month and bucket into paid/pending/at-risk.
+const invoiceTrendData = computed<InvoiceTrendPoint[]>(() => {
+  const monthKeys = getRecentMonthKeys(INVOICE_TREND_MONTHS)
+
+  const byMonth = new Map<string, Omit<InvoiceTrendPoint, 'month' | 'monthKey'>>()
+
+  invoices.value.forEach((invoice) => {
+    const createdAt = parseInvoiceDate(invoice.created_at)
+    if (!createdAt) return
+
+    const monthKey = getMonthKey(createdAt)
+    const amount = Number(invoice.total_amount) || 0
+
+    const existing = byMonth.get(monthKey) || {
+      amount: 0,
+      count: 0
+    }
+
+    existing.amount += amount
+    existing.count += 1
+
+    byMonth.set(monthKey, existing)
+  })
+
+  return monthKeys.map((monthKey) => {
+    const data = byMonth.get(monthKey) || { amount: 0, count: 0 }
+
+    return {
+      month: formatMonthLabel(monthKey),
+      monthKey,
+      ...data
+    }
+  })
+})
+
+// Chart accessors
+const trendX = (_: InvoiceTrendPoint, i: number) => i
+const trendY = (d: InvoiceTrendPoint) => d.amount
+const trendTemplate = (d: InvoiceTrendPoint) =>
+  d.count
+    ? `${d.month}: ${formatMoney(d.amount)} across ${d.count} ${d.count === 1 ? 'invoice' : 'invoices'}`
+    : `${d.month}: No invoices yet`
+
+// Invoice status distribution
+const invoiceStatusBreakdown = computed(() => {
+  const billable = dashboardInvoiceStageSummary.value.billable.count
+  const pending = dashboardInvoiceStageSummary.value.pending.count
+  const paid = dashboardInvoiceStageSummary.value.paid.count
+  const chargeback = dashboardInvoiceStageSummary.value.chargeback.count
+  const total = invoices.value.length || 1
+  return [
+    { label: 'Billable', count: billable, pct: Math.round((billable / total) * 100), color: 'bg-blue-400', text: 'text-blue-400' },
+    { label: 'Pending', count: pending, pct: Math.round((pending / total) * 100), color: 'bg-amber-400', text: 'text-amber-400' },
+    { label: 'Paid', count: paid, pct: Math.round((paid / total) * 100), color: 'bg-green-400', text: 'text-green-400' },
+    { label: 'Chargeback', count: chargeback, pct: Math.round((chargeback / total) * 100), color: 'bg-red-400', text: 'text-red-400' }
+  ]
+})
+
+// Fulfillment stats
+const totalQuota = computed(() => orderQuotaTotal.value)
+const filledQuota = computed(() => orderQuotaFilled.value)
+
+const trendChartMax = computed(() => {
+  return Math.max(...invoiceTrendData.value.map(point => point.amount), 1)
+})
+
+const monthGrowth = computed(() => {
+  const lastIndex = invoiceTrendData.value.length - 1
+  const prev = lastIndex > 0 ? invoiceTrendData.value[lastIndex - 1]?.amount ?? 0 : 0
+  const curr = lastIndex >= 0 ? invoiceTrendData.value[lastIndex]?.amount ?? 0 : 0
+
+  if (!prev) return curr > 0 ? 100 : 0
+  if (curr === prev) return 0
+  return Math.round(((curr - prev) / prev) * 100)
+})
+
+const showMonthGrowth = computed(() =>
+  invoiceTrendData.value.slice(-2).some(point => point.count > 0)
+)
 </script>
 
 <template>
@@ -336,130 +500,348 @@ onMounted(() => {
 
     <template #body>
       <div class="flex flex-col gap-6">
-        <!-- ═══ Stat Cards ═══ -->
-        <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <!-- Retainers -->
-          <div
-            class="group relative cursor-pointer overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4 sm:p-5 transition-all duration-300 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.03]"
-            @click="router.push('/retainers')"
-          >
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <p class="text-xs font-medium uppercase tracking-wider text-muted">Retainers</p>
-                <p class="mt-1.5 text-3xl font-bold text-highlighted">{{ retainerCount }}</p>
+
+        <!-- ═══ KPI Strip ═══ -->
+        <div class="grid grid-cols-2 gap-4 lg:grid-cols-4 kpi-strip">
+          <div class="ap-fade-in">
+            <DashboardMetricCard
+              title="Retainers"
+              :value="retainerCount"
+              icon="i-lucide-briefcase"
+              accent="orange-light"
+              clickable
+              @click="router.push('/retainers')"
+            >
+              <div class="mt-3 flex items-center gap-1.5 text-xs text-muted">
+                <UIcon name="i-lucide-arrow-right" class="text-[10px] transition-transform duration-200 group-hover:translate-x-0.5" />
+                <span class="group-hover:text-orange-400 transition-colors">View all retainers</span>
               </div>
-              <div class="flex h-11 w-11 shrink-0 items-center justify-center self-start rounded-xl bg-[var(--ap-accent)]/10 transition-all duration-300 group-hover:bg-[var(--ap-accent)]/20 sm:h-12 sm:w-12">
-                <UIcon name="i-lucide-briefcase" class="text-xl text-[var(--ap-accent)]" />
+            </DashboardMetricCard>
+          </div>
+
+          <div class="ap-fade-in ap-delay-1">
+            <DashboardMetricCard
+              title="Active Orders"
+              :value="orderCount"
+              icon="i-lucide-shopping-cart"
+              accent="blue"
+              :progress="fulfillmentPercent"
+              progress-label="Fulfillment"
+              clickable
+              @click="router.push('/fulfillment')"
+            />
+          </div>
+
+          <div class="ap-fade-in ap-delay-2">
+            <DashboardMetricCard
+              title="Total Invoiced"
+              :value="formatMoney(totalInvoiced)"
+              icon="i-lucide-circle-dollar-sign"
+              accent="green"
+              clickable
+              @click="router.push('/invoicing')"
+            >
+              <div class="mt-3 flex items-center gap-3 text-xs">
+                <span class="text-green-500 dark:text-green-400">{{ formatMoney(paidInvoiceAmount) }} paid</span>
+                <span class="text-muted">·</span>
+                <span class="text-amber-500 dark:text-amber-400">{{ formatMoney(pendingInvoiceAmount) }} pending</span>
+              </div>
+            </DashboardMetricCard>
+          </div>
+
+          <div class="ap-fade-in ap-delay-3">
+            <DashboardMetricCard
+              title="Pending Invoices"
+              :value="pendingReviewInvoiceCount"
+              icon="i-lucide-clock"
+              accent="amber"
+              clickable
+              @click="router.push('/invoicing')"
+            >
+              <div class="mt-3 flex items-center gap-1.5 text-xs text-muted">
+                <UIcon name="i-lucide-arrow-right" class="text-[10px] transition-transform duration-200 group-hover:translate-x-0.5" />
+                <span class="group-hover:text-amber-400 transition-colors">Review invoices</span>
+              </div>
+            </DashboardMetricCard>
+          </div>
+        </div>
+
+        <!-- ═══ Main Row — Trend Chart + Action Center ═══ -->
+        <div class="grid gap-5 lg:grid-cols-3">
+
+          <!-- Invoice Trend -->
+          <div class="lg:col-span-2 ap-fade-in ap-delay-4 flex flex-col overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm">
+            <div class="flex flex-col gap-4 border-b border-black/[0.06] dark:border-white/[0.06] px-5 py-4 xl:flex-row xl:items-center xl:justify-between">
+              <div class="flex items-center gap-3">
+                <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--ap-accent)]/10">
+                  <UIcon name="i-lucide-trending-up" class="text-sm text-[var(--ap-accent)]" />
+                </div>
+                <div>
+                  <h3 class="text-sm font-semibold text-highlighted">Invoice Trend</h3>
+                  <p class="text-[11px] text-muted">Last 6 months</p>
+                </div>
+              </div>
+
+              <!-- Month-over-month growth -->
+              <div
+                v-if="showMonthGrowth"
+                class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 xl:justify-end"
+                :class="monthGrowth >= 0 ? 'bg-green-500/10' : 'bg-red-500/10'"
+              >
+                <UIcon
+                  :name="monthGrowth >= 0 ? 'i-lucide-trending-up' : 'i-lucide-trending-down'"
+                  class="text-sm"
+                  :class="monthGrowth >= 0 ? 'text-green-400' : 'text-red-400'"
+                />
+                <span
+                  class="text-xs font-semibold tabular-nums"
+                  :class="monthGrowth >= 0 ? 'text-green-400' : 'text-red-400'"
+                >
+                  {{ monthGrowth > 0 ? '+' : '' }}{{ monthGrowth }}%
+                </span>
+                <span class="text-[10px] text-muted">vs last month</span>
               </div>
             </div>
-            <div class="mt-3 flex items-center gap-1.5 text-xs text-muted">
-              <UIcon name="i-lucide-arrow-right" class="text-[10px] transition-transform duration-200 group-hover:translate-x-0.5" />
-              <span class="group-hover:text-[var(--ap-accent)] transition-colors">View all retainers</span>
+
+            <div v-if="loading" class="flex flex-1 items-center justify-center p-16">
+              <UIcon name="i-lucide-loader-2" class="animate-spin text-xl text-[var(--ap-accent)]" />
+            </div>
+            <div v-else class="flex flex-1 flex-col">
+              <!-- Chart area — grows to fill available space -->
+              <div class="flex-1 min-h-[200px] pt-13.5">
+                <svg class="absolute" width="0" height="0">
+                  <defs>
+                    <linearGradient
+                      id="invoiceTrendGradient"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop offset="0%" stop-color="#ae4010" stop-opacity="0.24" />
+                      <stop offset="100%" stop-color="#ae4010" stop-opacity="0.02" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+
+                <div class="h-full">
+                  <VisXYContainer
+                    :data="invoiceTrendData"
+                    :padding="{ top: 16, bottom: 0, left: 0, right: 0 }"
+                    :y-domain="[0, trendChartMax]"
+                    :prevent-empty-domain="true"
+                  >
+                    <VisArea
+                      :x="trendX"
+                      :y="trendY"
+                      color="url(#invoiceTrendGradient)"
+                      :opacity="1"
+                      :curve-type="'monotoneX'"
+                    />
+                    <VisLine
+                      :x="trendX"
+                      :y="trendY"
+                      color="var(--ap-accent)"
+                      :line-width="2"
+                      :curve-type="'monotoneX'"
+                    />
+                    <VisCrosshair
+                      :template="trendTemplate"
+                      color="var(--ap-accent)"
+                    />
+                    <VisTooltip />
+                  </VisXYContainer>
+                </div>
+              </div>
+
+              <!-- Monthly strip — pinned to bottom of card -->
+              <div
+                class="grid border-t border-black/[0.04] bg-white/90 dark:border-white/[0.04] dark:bg-[#1a1a1a]/60"
+                :style="{ gridTemplateColumns: `repeat(${invoiceTrendData.length}, minmax(0, 1fr))` }"
+              >
+                <div
+                  v-for="(point, idx) in invoiceTrendData"
+                  :key="point.monthKey"
+                  class="flex flex-col items-center gap-1 py-3 transition-colors duration-150 hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
+                  :class="idx < invoiceTrendData.length - 1 ? 'border-r border-black/[0.04] dark:border-white/[0.04]' : ''"
+                >
+                  <span class="text-[10px] font-medium uppercase tracking-wider text-muted">{{ point.month }}</span>
+                  <span class="text-[12px] font-semibold text-[var(--ap-accent)] tabular-nums">
+                    {{ formatMoney(point.amount) }}
+                  </span>
+                  <span
+                    class="text-[10px]"
+                    :class="point.count ? 'text-muted' : 'text-muted/75 italic'"
+                  >
+                    {{ point.count ? `${point.count} ${point.count === 1 ? 'invoice' : 'invoices'}` : 'No invoices yet' }}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
-          <!-- Orders -->
-          <div
-            class="group relative cursor-pointer overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4 sm:p-5 transition-all duration-300 hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.03]"
-            @click="router.push('/fulfillment')"
-          >
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <p class="text-xs font-medium uppercase tracking-wider text-muted">Active Orders</p>
-                <p class="mt-1.5 text-3xl font-bold text-highlighted">{{ orderCount }}</p>
-              </div>
-              <div class="flex h-11 w-11 shrink-0 items-center justify-center self-start rounded-xl bg-[var(--ap-accent)]/10 transition-all duration-300 group-hover:bg-[var(--ap-accent)]/20 sm:h-12 sm:w-12">
-                <UIcon name="i-lucide-shopping-cart" class="text-xl text-[var(--ap-accent)]" />
+          <!-- Action Center + Distribution -->
+          <div class="ap-fade-in ap-delay-5 flex flex-col gap-5">
+
+            <!-- Quick Actions -->
+            <div class="overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm p-5">
+              <h3 class="text-sm font-semibold text-highlighted mb-4">Quick Actions</h3>
+              <div class="space-y-2.5">
+                <button
+                  class="flex w-full items-center gap-3 rounded-lg border border-[var(--ap-accent)]/15 px-3.5 py-3 text-sm text-left transition-all duration-200 hover:bg-[var(--ap-accent)]/[0.06] hover:border-[var(--ap-accent)]/30 group"
+                  @click="router.push('/intake-map?action=create-order')"
+                >
+                  <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--ap-accent)]/10 transition-colors group-hover:bg-[var(--ap-accent)]/20">
+                    <UIcon name="i-lucide-plus" class="text-sm text-[var(--ap-accent)]" />
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <span class="font-medium text-highlighted text-[13px]">Place New Order</span>
+                    <p class="text-[11px] text-muted mt-0.5">Create a new case order</p>
+                  </div>
+                  <UIcon name="i-lucide-chevron-right" class="text-xs text-muted/50 transition-all duration-200 group-hover:text-[var(--ap-accent)] group-hover:translate-x-0.5" />
+                </button>
+                <button
+                  v-if="isAdminOrSuper"
+                  class="flex w-full items-center gap-3 rounded-lg border border-amber-400/15 px-3.5 py-3 text-sm text-left transition-all duration-200 hover:bg-amber-500/[0.06] hover:border-amber-400/30 group"
+                  @click="router.push('/invoicing/create')"
+                >
+                  <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 transition-colors group-hover:bg-amber-500/20">
+                    <UIcon name="i-lucide-receipt" class="text-sm text-amber-400" />
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <span class="font-medium text-highlighted text-[13px]">Create Invoice</span>
+                    <p class="text-[11px] text-muted mt-0.5">Generate a new invoice</p>
+                  </div>
+                  <UIcon name="i-lucide-chevron-right" class="text-xs text-muted/50 transition-all duration-200 group-hover:text-amber-400 group-hover:translate-x-0.5" />
+                </button>
+                <button
+                  class="flex w-full items-center gap-3 rounded-lg border border-orange-300/15 dark:border-orange-400/15 px-3.5 py-3 text-sm text-left transition-all duration-200 hover:bg-orange-400/[0.06] hover:border-orange-300/30 dark:hover:border-orange-400/30 group"
+                  @click="router.push('/retainers')"
+                >
+                  <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-orange-400/10 transition-colors group-hover:bg-orange-400/20">
+                    <UIcon name="i-lucide-briefcase" class="text-sm text-orange-400" />
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <span class="font-medium text-highlighted text-[13px]">View Retainers</span>
+                    <p class="text-[11px] text-muted mt-0.5">Browse your case retainers</p>
+                  </div>
+                  <UIcon name="i-lucide-chevron-right" class="text-xs text-muted/50 transition-all duration-200 group-hover:text-orange-400 group-hover:translate-x-0.5" />
+                </button>
               </div>
             </div>
-            <div class="mt-3">
-              <div class="flex items-center justify-between text-xs text-muted mb-1">
-                <span>Fulfillment</span>
-                <span class="font-semibold text-highlighted">{{ fulfillmentPercent }}%</span>
+
+            <!-- Invoice Breakdown -->
+            <div class="overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm p-5">
+              <div class="mb-4 flex items-center justify-between gap-3">
+                <h3 class="text-sm font-semibold text-highlighted">Invoice Breakdown</h3>
+                <span class="inline-flex items-center rounded-lg bg-black/[0.04] px-2.5 py-1 text-[10px] font-semibold text-muted dark:bg-white/[0.06]">
+                  {{ invoices.length }} total
+                </span>
               </div>
-              <div class="h-1.5 w-full overflow-hidden rounded-full bg-[var(--ap-card-border)]">
+
+              <!-- Status bar -->
+              <div v-if="invoices.length" class="flex h-2 w-full overflow-hidden rounded-full mb-4">
                 <div
-                  class="h-full rounded-full bg-[var(--ap-accent)] transition-all duration-500"
-                  :style="{ width: `${fulfillmentPercent}%` }"
+                  v-for="seg in invoiceStatusBreakdown"
+                  :key="seg.label"
+                  :class="seg.color"
+                  :style="{ width: `${seg.pct}%` }"
+                  class="transition-all duration-500"
                 />
               </div>
-            </div>
-          </div>
 
-          <!-- Total Invoiced -->
-          <div
-            class="group relative cursor-pointer overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4 sm:p-5 transition-all duration-300 hover:border-green-500/30 hover:bg-green-500/[0.03]"
-            @click="router.push('/invoicing')"
-          >
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <p class="text-xs font-medium uppercase tracking-wider text-muted">Total Invoiced</p>
-                <p class="mt-1.5 text-3xl font-bold text-green-400">{{ formatMoney(totalInvoiced) }}</p>
+              <div class="space-y-3">
+                <div
+                  v-for="seg in invoiceStatusBreakdown"
+                  :key="seg.label"
+                  class="flex items-center justify-between"
+                >
+                  <div class="flex items-center gap-2">
+                    <div class="h-2.5 w-2.5 rounded-full" :class="seg.color" />
+                    <span class="text-xs text-muted">{{ seg.label }}</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-semibold" :class="seg.text">{{ seg.count }}</span>
+                    <span class="text-[10px] text-muted">({{ seg.pct }}%)</span>
+                  </div>
+                </div>
               </div>
-              <div class="flex h-11 w-11 shrink-0 items-center justify-center self-start rounded-xl bg-green-500/10 transition-all duration-300 group-hover:bg-green-500/20 sm:h-12 sm:w-12">
-                <UIcon name="i-lucide-circle-dollar-sign" class="text-xl text-green-400" />
-              </div>
-            </div>
-            <div class="mt-3 flex items-center gap-3 text-xs">
-              <span class="text-green-400">{{ formatMoney(paidInvoiceAmount) }} paid</span>
-              <span class="text-muted">·</span>
-              <span class="text-amber-400">{{ formatMoney(pendingInvoiceAmount) }} pending</span>
-            </div>
-          </div>
 
-          <!-- Pending Invoices -->
-          <div
-            class="group relative cursor-pointer overflow-hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4 sm:p-5 transition-all duration-300 hover:border-amber-500/30 hover:bg-amber-500/[0.03]"
-            @click="router.push('/invoicing')"
-          >
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <p class="text-xs font-medium uppercase tracking-wider text-muted">Pending Invoices</p>
-                <p class="mt-1.5 text-3xl font-bold text-amber-400">{{ pendingInvoiceCount }}</p>
+              <!-- Fulfillment summary -->
+              <div v-if="orders.length" class="mt-5 pt-4 border-t border-black/[0.06] dark:border-white/[0.06]">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-xs text-muted">Order Fulfillment</span>
+                  <span class="text-xs font-semibold text-highlighted">{{ filledQuota }}/{{ totalQuota }}</span>
+                </div>
+                <div class="h-1.5 w-full overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/[0.08]">
+                  <div
+                    class="h-full rounded-full bg-[var(--ap-accent)] transition-all duration-700 ease-out"
+                    :style="{ width: `${fulfillmentPercent}%` }"
+                  />
+                </div>
               </div>
-              <div class="flex h-11 w-11 shrink-0 items-center justify-center self-start rounded-xl bg-amber-500/10 transition-all duration-300 group-hover:bg-amber-500/20 sm:h-12 sm:w-12">
-                <UIcon name="i-lucide-clock" class="text-xl text-amber-400" />
-              </div>
-            </div>
-            <div class="mt-3 flex items-center gap-1.5 text-xs text-muted">
-              <UIcon name="i-lucide-arrow-right" class="text-[10px] transition-transform duration-200 group-hover:translate-x-0.5" />
-              <span class="group-hover:text-amber-400 transition-colors">Review invoices</span>
             </div>
           </div>
         </div>
 
-        <!-- ═══ Main Content Grid ═══ -->
-        <div class="grid gap-5 lg:grid-cols-3">
+        <!-- ═══ Tabbed Workbench ═══ -->
+        <div class="ap-fade-in ap-delay-6 overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm">
 
-          <!-- ── Latest Retainers Card ── -->
-          <div class="lg:col-span-2 flex flex-col rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] overflow-hidden">
-            <!-- Header -->
-            <div class="flex items-center justify-between border-b border-[var(--ap-card-border)] px-5 py-4">
-              <div class="flex items-center gap-3">
-                <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--ap-accent)]/10">
-                  <UIcon name="i-lucide-briefcase" class="text-sm text-[var(--ap-accent)]" />
-                </div>
-                <div>
-                  <h3 class="text-sm font-semibold text-highlighted">Latest Retainers</h3>
-                  <p class="text-[11px] text-muted">Most recent first</p>
-                </div>
-              </div>
+          <!-- Tab Header -->
+          <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/[0.06] px-5">
+            <div class="flex items-center gap-1 -mb-px">
               <button
-                class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] px-3 py-1.5 text-xs font-medium text-muted transition-all hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/10 hover:text-[var(--ap-accent)]"
-                @click="router.push('/retainers')"
+                v-for="tab in [
+                  { key: 'retainers', label: 'Retainers', icon: 'i-lucide-briefcase', count: retainerCount },
+                  { key: 'orders', label: 'Orders', icon: 'i-lucide-shopping-cart', count: orderCount },
+                  { key: 'invoices', label: 'Invoices', icon: 'i-lucide-receipt', count: invoices.length }
+                ]"
+                :key="tab.key"
+                class="relative flex items-center gap-2 px-4 py-3.5 text-sm font-medium transition-colors duration-200"
+                :class="activeWorkbenchTab === tab.key
+                  ? 'text-[var(--ap-accent)]'
+                  : 'text-muted hover:text-highlighted'"
+                @click="activeWorkbenchTab = tab.key"
               >
-                See All
-                <UIcon name="i-lucide-arrow-right" class="text-[10px]" />
+                <UIcon :name="tab.icon" class="text-sm" />
+                <span>{{ tab.label }}</span>
+                <span
+                  class="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-md px-1.5 text-[10px] font-semibold"
+                  :class="activeWorkbenchTab === tab.key
+                    ? 'bg-[var(--ap-accent)]/10 text-[var(--ap-accent)]'
+                    : 'bg-black/[0.04] dark:bg-white/[0.04] text-muted'"
+                >
+                  {{ tab.count }}
+                </span>
+                <!-- Active indicator -->
+                <div
+                  v-if="activeWorkbenchTab === tab.key"
+                  class="absolute bottom-0 left-2 right-2 h-0.5 rounded-t-full bg-[var(--ap-accent)]"
+                />
               </button>
             </div>
 
-            <!-- Loading -->
-            <div v-if="loading" class="flex flex-1 items-center justify-center p-10">
-              <UIcon name="i-lucide-loader-2" class="animate-spin text-xl text-[var(--ap-accent)]" />
-            </div>
+            <button
+              class="inline-flex items-center gap-1.5 rounded-lg border border-black/[0.06] dark:border-white/[0.08] bg-black/[0.02] dark:bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-muted transition-all hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/10 hover:text-[var(--ap-accent)]"
+              @click="router.push(
+                activeWorkbenchTab === 'retainers' ? '/retainers'
+                : activeWorkbenchTab === 'orders' ? '/fulfillment'
+                : '/invoicing'
+              )"
+            >
+              See All
+              <UIcon name="i-lucide-arrow-right" class="text-[10px]" />
+            </button>
+          </div>
 
-            <!-- Empty -->
-            <div v-else-if="!retainers.length" class="flex flex-1 items-center justify-center p-10">
+          <!-- Loading State -->
+          <div v-if="loading" class="flex items-center justify-center p-16">
+            <UIcon name="i-lucide-loader-2" class="animate-spin text-xl text-[var(--ap-accent)]" />
+          </div>
+
+          <!-- ── Retainers Tab ── -->
+          <template v-else-if="activeWorkbenchTab === 'retainers'">
+            <div v-if="!retainers.length" class="flex items-center justify-center p-16">
               <div class="text-center">
                 <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--ap-accent)]/10 mb-3">
                   <UIcon name="i-lucide-inbox" class="text-xl text-[var(--ap-accent)]/50" />
@@ -467,12 +849,10 @@ onMounted(() => {
                 <p class="text-sm text-muted">No retainers found</p>
               </div>
             </div>
-
-            <!-- Table -->
-            <div v-else class="flex-1 overflow-auto dash-scroll">
+            <div v-else class="overflow-auto dash-scroll">
               <table class="w-full">
                 <thead>
-                  <tr class="border-b border-[var(--ap-card-divide)] bg-[var(--ap-card-bg)]">
+                  <tr class="border-b border-black/[0.04] dark:border-white/[0.04] bg-black/[0.01] dark:bg-white/[0.01]">
                     <th class="px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted">Client</th>
                     <th class="hidden px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted sm:table-cell">Phone</th>
                     <th class="hidden px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted sm:table-cell">Status</th>
@@ -482,9 +862,10 @@ onMounted(() => {
                 </thead>
                 <tbody>
                   <tr
-                    v-for="row in retainers"
+                    v-for="(row, idx) in retainers"
                     :key="row.id"
-                    class="group cursor-pointer border-b border-[var(--ap-card-hover)] transition-all duration-200 hover:bg-[var(--ap-accent)]/[0.04]"
+                    class="ap-fade-in-row group cursor-pointer border-b border-black/[0.03] dark:border-white/[0.03] transition-all duration-200 hover:bg-[var(--ap-accent)]/[0.05]"
+                    :style="{ animationDelay: `${idx * 60}ms` }"
                     @click="openRetainer(row)"
                   >
                     <td class="px-5 py-3">
@@ -540,37 +921,70 @@ onMounted(() => {
                 </tbody>
               </table>
             </div>
-          </div>
+          </template>
 
-          <!-- ── Invoices Card ── -->
-          <div class="flex flex-col rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] overflow-hidden">
-            <!-- Header -->
-            <div class="flex items-center justify-between border-b border-[var(--ap-card-border)] px-5 py-4">
-              <div class="flex items-center gap-3">
-                <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10">
-                  <UIcon name="i-lucide-receipt" class="text-sm text-amber-400" />
+          <!-- ── Orders Tab ── -->
+          <template v-else-if="activeWorkbenchTab === 'orders'">
+            <div v-if="!orders.length" class="flex items-center justify-center p-16">
+              <div class="text-center">
+                <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--ap-accent)]/10 mb-3">
+                  <UIcon name="i-lucide-shopping-cart" class="text-xl text-[var(--ap-accent)]/50" />
                 </div>
-                <div>
-                  <h3 class="text-sm font-semibold text-highlighted">Invoices</h3>
-                  <p class="text-[11px] text-muted">{{ invoices.length }} total</p>
+                <p class="text-sm text-muted">No orders placed yet</p>
+              </div>
+            </div>
+            <div v-else class="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+              <div
+                v-for="(order, idx) in orders"
+                :key="order.id"
+                class="ap-fade-in group cursor-pointer rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/80 dark:bg-[#1a1a1a]/40 p-4 transition-all duration-200 hover:border-[var(--ap-accent)]/20 hover:bg-white dark:hover:bg-[#1f1f1f] hover:shadow-md"
+                :style="{ animationDelay: `${idx * 80}ms` }"
+                @click="openOrder(order)"
+              >
+                <div class="flex items-start justify-between gap-2">
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-semibold text-highlighted truncate group-hover:text-[var(--ap-accent)] transition-colors">
+                      {{ order.case_type }}
+                    </p>
+                    <p class="mt-0.5 text-[11px] text-muted">
+                      {{ (order.target_states || []).map(s => s.toUpperCase()).join(', ') || '—' }}
+                    </p>
+                  </div>
+                  <span
+                    class="inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
+                    :class="getOrderStatusColor(getOrderDisplayStatus(order))"
+                  >
+                    {{ getOrderDisplayStatus(order) }}
+                  </span>
+                </div>
+
+                <div class="mt-3">
+                  <div class="flex items-center justify-between text-[11px] mb-1">
+                    <span class="text-muted">{{ order.quota_filled }}/{{ order.quota_total }} filled</span>
+                    <span class="font-semibold" :class="orderFillPercent(order) >= 100 ? 'text-green-400' : 'text-[var(--ap-accent)]'">
+                      {{ orderFillPercent(order) }}%
+                    </span>
+                  </div>
+                  <div class="h-1.5 w-full overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/[0.08]">
+                    <div
+                      class="h-full rounded-full transition-all duration-500"
+                      :class="orderFillPercent(order) >= 100 ? 'bg-green-400' : 'bg-[var(--ap-accent)]'"
+                      :style="{ width: `${Math.min(orderFillPercent(order), 100)}%` }"
+                    />
+                  </div>
+                </div>
+
+                <div class="mt-2.5 flex items-center justify-between text-[11px] text-muted">
+                  <span>Created {{ formatDate(order.created_at) }}</span>
+                  <span>Exp. {{ formatDate(order.expires_at) }}</span>
                 </div>
               </div>
-              <button
-                class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] px-3 py-1.5 text-xs font-medium text-muted transition-all hover:border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-400"
-                @click="router.push('/invoicing')"
-              >
-                See All
-                <UIcon name="i-lucide-arrow-right" class="text-[10px]" />
-              </button>
             </div>
+          </template>
 
-            <!-- Loading -->
-            <div v-if="loading" class="flex flex-1 items-center justify-center p-10">
-              <UIcon name="i-lucide-loader-2" class="animate-spin text-xl text-amber-400" />
-            </div>
-
-            <!-- Empty -->
-            <div v-else-if="!invoices.length" class="flex flex-1 items-center justify-center p-10">
+          <!-- ── Invoices Tab ── -->
+          <template v-else-if="activeWorkbenchTab === 'invoices'">
+            <div v-if="!invoices.length" class="flex items-center justify-center p-16">
               <div class="text-center">
                 <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/10 mb-3">
                   <UIcon name="i-lucide-receipt" class="text-xl text-amber-400/50" />
@@ -588,14 +1002,13 @@ onMounted(() => {
                 </UButton>
               </div>
             </div>
-
-            <!-- Invoice List -->
-            <div v-else class="flex-1 overflow-auto dash-scroll">
-              <div class="divide-y divide-[var(--ap-card-divide)]">
+            <div v-else class="overflow-auto dash-scroll">
+              <div class="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
                 <div
-                  v-for="inv in latestInvoices"
+                  v-for="(inv, idx) in latestInvoices"
                   :key="inv.id"
-                  class="group flex items-center gap-3 px-5 py-3.5 cursor-pointer transition-all duration-200 hover:bg-[var(--ap-card-hover)]"
+                  class="ap-fade-in-row group flex items-center gap-3 px-5 py-3.5 cursor-pointer transition-all duration-200 hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
+                  :style="{ animationDelay: `${idx * 60}ms` }"
                   @click="openInvoicePdf(inv)"
                 >
                   <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" :class="getStatusBg(inv.status)">
@@ -621,113 +1034,37 @@ onMounted(() => {
                   </div>
                 </div>
               </div>
-            </div>
 
-            <!-- Quick Create -->
-            <div v-if="isAdminOrSuper && invoices.length" class="border-t border-[var(--ap-card-border)] px-5 py-3">
-              <button
-                class="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] px-3 py-2.5 text-xs font-medium text-muted transition-all hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.04] hover:text-[var(--ap-accent)]"
-                @click="router.push('/invoicing/create')"
-              >
-                <UIcon name="i-lucide-plus" class="text-sm" />
-                Create Invoice
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- ═══ Orders Section ═══ -->
-        <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] overflow-hidden">
-          <!-- Header -->
-          <div class="flex items-center justify-between border-b border-[var(--ap-card-border)] px-5 py-4">
-            <div class="flex items-center gap-3">
-              <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--ap-accent)]/10">
-                <UIcon name="i-lucide-shopping-cart" class="text-sm text-[var(--ap-accent)]" />
-              </div>
-              <div>
-                <h3 class="text-sm font-semibold text-highlighted">Recent Orders</h3>
-                <p class="text-[11px] text-muted">{{ orderCount }} orders · {{ fulfillmentPercent }}% fulfilled overall</p>
-              </div>
-            </div>
-            <button
-              class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--ap-card-border)] bg-[var(--ap-card-hover)] px-3 py-1.5 text-xs font-medium text-muted transition-all hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/10 hover:text-[var(--ap-accent)]"
-              @click="router.push('/fulfillment')"
-            >
-              See All
-              <UIcon name="i-lucide-arrow-right" class="text-[10px]" />
-            </button>
-          </div>
-
-          <!-- Loading -->
-          <div v-if="loading" class="flex items-center justify-center p-10">
-            <UIcon name="i-lucide-loader-2" class="animate-spin text-xl text-[var(--ap-accent)]" />
-          </div>
-
-          <!-- Empty -->
-          <div v-else-if="!orders.length" class="flex items-center justify-center p-10">
-            <div class="text-center">
-              <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--ap-accent)]/10 mb-3">
-                <UIcon name="i-lucide-shopping-cart" class="text-xl text-[var(--ap-accent)]/50" />
-              </div>
-              <p class="text-sm text-muted">No orders placed yet</p>
-            </div>
-          </div>
-
-          <!-- Orders Grid -->
-          <div v-else class="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-            <div
-              v-for="order in orders"
-              :key="order.id"
-              class="group cursor-pointer rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4 transition-all duration-200 hover:border-[var(--ap-accent)]/20 hover:bg-[var(--ap-accent)]/[0.03]"
-              @click="openOrder(order)"
-            >
-              <div class="flex items-start justify-between gap-2">
-                <div class="min-w-0 flex-1">
-                  <p class="text-sm font-semibold text-highlighted truncate group-hover:text-[var(--ap-accent)] transition-colors">
-                    {{ order.case_type }}
-                  </p>
-                  <p class="mt-0.5 text-[11px] text-muted">
-                    {{ (order.target_states || []).map(s => s.toUpperCase()).join(', ') || '—' }}
-                  </p>
-                </div>
-                <span
-                  class="inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
-                  :class="getOrderStatusColor(getOrderDisplayStatus(order))"
+              <!-- Quick Create -->
+              <div v-if="isAdminOrSuper" class="border-t border-black/[0.06] dark:border-white/[0.06] px-5 py-3">
+                <button
+                  class="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-black/[0.08] dark:border-white/[0.08] bg-black/[0.01] dark:bg-white/[0.02] px-3 py-2.5 text-xs font-medium text-muted transition-all hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/[0.05] hover:text-[var(--ap-accent)]"
+                  @click="router.push('/invoicing/create')"
                 >
-                  {{ getOrderDisplayStatus(order) }}
-                </span>
-              </div>
-
-              <!-- Progress -->
-              <div class="mt-3">
-                <div class="flex items-center justify-between text-[11px] mb-1">
-                  <span class="text-muted">{{ order.quota_filled }}/{{ order.quota_total }} filled</span>
-                  <span class="font-semibold" :class="orderFillPercent(order) >= 100 ? 'text-green-400' : 'text-[var(--ap-accent)]'">
-                    {{ orderFillPercent(order) }}%
-                  </span>
-                </div>
-                <div class="h-1.5 w-full overflow-hidden rounded-full bg-[var(--ap-card-border)]">
-                  <div
-                    class="h-full rounded-full transition-all duration-500"
-                    :class="orderFillPercent(order) >= 100 ? 'bg-green-400' : 'bg-[var(--ap-accent)]'"
-                    :style="{ width: `${Math.min(orderFillPercent(order), 100)}%` }"
-                  />
-                </div>
-              </div>
-
-              <div class="mt-2.5 flex items-center justify-between text-[11px] text-muted">
-                <span>Created {{ formatDate(order.created_at) }}</span>
-                <span>Exp. {{ formatDate(order.expires_at) }}</span>
+                  <UIcon name="i-lucide-plus" class="text-sm" />
+                  Create Invoice
+                </button>
               </div>
             </div>
-          </div>
+          </template>
         </div>
+
       </div>
     </template>
   </UDashboardPanel>
 </template>
 
 <style scoped>
+/* ── KPI strip: force equal-height cards ── */
+.kpi-strip > div {
+  display: flex;
+}
+.kpi-strip > div > * {
+  flex: 1;
+}
+
+
+/* ── Scrollbar ── */
 .dash-scroll::-webkit-scrollbar {
   width: 4px;
 }
@@ -735,10 +1072,10 @@ onMounted(() => {
   background: transparent;
 }
 .dash-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(128, 128, 128, 0.15);
   border-radius: 999px;
 }
 .dash-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(128, 128, 128, 0.25);
 }
 </style>

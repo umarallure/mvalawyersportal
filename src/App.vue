@@ -51,7 +51,7 @@ const links = computed(() => [[
 
   // Invoicing — visible to all roles that can log in (lawyer sees lawyer only via route guard)
   {
-    label: 'Lawyer Invoicing',
+    label: 'Invoicing',
     icon: 'i-lucide-receipt',
     to: '/invoicing/lawyer',
     onSelect: () => { open.value = false }
