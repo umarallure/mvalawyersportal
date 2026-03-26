@@ -43,7 +43,7 @@ const isPublisherMode = computed(() => route.path === '/invoicing/publisher')
 const canFilterByAttorney = computed(() => !isPublisherMode.value && (isSuperAdmin.value || isAdmin.value))
 const canFilterByVendor = computed(() => isPublisherMode.value && (isSuperAdmin.value || isAdmin.value))
 
-const pageTitle = computed(() => isPublisherMode.value ? 'Publisher Invoicing' : 'Lawyer Invoicing')
+const pageTitle = computed(() => isPublisherMode.value ? 'Publisher Invoicing' : 'Invoicing')
 const createRoute = computed(() => isPublisherMode.value ? '/invoicing/create?mode=publisher' : '/invoicing/create?mode=lawyer')
 
 const loading = ref(false)
