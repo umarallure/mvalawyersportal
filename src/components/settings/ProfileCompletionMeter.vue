@@ -36,13 +36,6 @@ const completionPercentage = computed(() => {
   return Math.round((requiredScore + optionalScore) * 100)
 })
 
-const completionColor = computed(() => {
-  const pct = completionPercentage.value
-  if (pct >= 80) return 'success'
-  if (pct >= 50) return 'warning'
-  return 'error'
-})
-
 const completionMessage = computed(() => {
   const pct = completionPercentage.value
   if (pct === 100) return 'Complete!'
@@ -53,50 +46,46 @@ const completionMessage = computed(() => {
 </script>
 
 <template>
-  <div class="relative overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 backdrop-blur-sm px-4 py-3">
-    <div class="pointer-events-none absolute inset-0 bg-gradient-to-r from-[var(--ap-accent)]/[0.03] via-transparent to-transparent" />
-
+  <div class="relative overflow-hidden rounded-xl border border-emerald-400/25 bg-white/90 px-4 py-3 shadow-sm backdrop-blur-sm dark:border-emerald-400/20 dark:bg-[#1a1a1a]/60">
     <div class="relative flex items-center gap-4">
       <!-- Icon -->
-      <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--ap-accent)]/10">
-        <UIcon name="i-lucide-shield-check" class="text-sm text-[var(--ap-accent)]" />
-      </div>
+      <UIcon name="i-lucide-shield-check" class="shrink-0 text-lg text-white" />
 
       <!-- Progress bar section — takes available space -->
       <div class="flex min-w-0 flex-1 items-center gap-4">
         <span class="shrink-0 text-xs font-medium text-highlighted">Profile Completion</span>
 
         <!-- Progress bar -->
-        <div class="relative h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
+        <div class="relative h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-emerald-400/10 dark:bg-white/[0.06]">
           <div
-            class="absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out bg-gradient-to-r from-emerald-400/10 via-emerald-400/60 to-emerald-400"
+            class="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-emerald-300/20 via-emerald-400/60 to-emerald-500 transition-all duration-700 ease-out dark:from-emerald-200/20 dark:via-emerald-300/60 dark:to-emerald-400"
             :style="{ width: `${completionPercentage}%` }"
           />
         </div>
 
         <!-- Percentage -->
-        <span class="shrink-0 text-sm font-bold tabular-nums text-emerald-400">
+        <span class="shrink-0 text-sm font-bold tabular-nums text-emerald-500 dark:text-emerald-300">
           {{ completionPercentage }}%
         </span>
       </div>
 
       <!-- Divider -->
-      <div class="hidden h-4 w-px bg-white/[0.08] sm:block" />
+      <div class="hidden h-4 w-px bg-emerald-400/15 sm:block" />
 
       <!-- Stats -->
       <div class="hidden items-center gap-3 sm:flex">
         <div class="flex items-center gap-1.5">
-          <UIcon name="i-lucide-check-circle" class="size-3 text-emerald-400/60" />
+          <UIcon name="i-lucide-check-circle" class="size-3 text-emerald-500/70 dark:text-emerald-300/70" />
           <span class="text-[11px] text-muted tabular-nums">{{ filledRequiredCount }}/{{ requiredFields.length }} Required</span>
         </div>
         <div class="flex items-center gap-1.5">
-          <UIcon name="i-lucide-star" class="size-3 text-amber-400/60" />
+          <UIcon name="i-lucide-star" class="size-3 text-emerald-400/60 dark:text-emerald-300/60" />
           <span class="text-[11px] text-muted tabular-nums">{{ filledOptionalCount }}/{{ optionalFields.length }} Optional</span>
         </div>
       </div>
 
       <!-- Divider -->
-      <div class="hidden h-4 w-px bg-white/[0.08] sm:block" />
+      <div class="hidden h-4 w-px bg-emerald-400/15 sm:block" />
 
       <!-- Message -->
       <span class="hidden shrink-0 text-[11px] text-muted lg:inline">{{ completionMessage }}</span>

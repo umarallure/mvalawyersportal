@@ -305,8 +305,8 @@ onBeforeRouteLeave((_to, _from, next) => {
     <!-- ═══ Page Header ═══ -->
     <div class="ap-fade-in flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div class="flex items-center gap-4">
-        <div class="relative flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--ap-accent)]/10 ring-1 ring-[var(--ap-accent)]/20">
-          <UIcon name="i-lucide-file-text" class="text-lg text-[var(--ap-accent)]" />
+        <div class="relative flex h-11 w-11 items-center justify-center rounded-xl bg-white/90 shadow-sm ring-[0.5px] ring-white/80 dark:bg-[#1a1a1a]/60 dark:ring-white/70">
+          <UIcon name="i-lucide-file-text" class="text-lg text-zinc-900 dark:text-white" />
           <div
             class="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-[#1a1a1a] transition-colors"
             :class="showAddForm ? 'bg-[var(--ap-accent)]' : 'bg-emerald-400'"
@@ -335,43 +335,44 @@ onBeforeRouteLeave((_to, _from, next) => {
           v-if="canAddMore && !showAddForm"
           label="Add Document"
           icon="i-lucide-plus"
-          class="rounded-lg bg-[var(--ap-accent)] text-white hover:bg-[var(--ap-accent)]/80 transition-colors duration-200"
+          class="group rounded-lg bg-[var(--ap-accent)] text-white hover:bg-[var(--ap-accent)]/80 hover:text-black transition-colors duration-200"
+          :ui="{ leadingIcon: 'text-white transition duration-200 group-hover:text-black' }"
           @click="startAddDocument"
         />
       </div>
     </div>
 
     <!-- ═══ Add Document Form ═══ -->
-    <div v-if="showAddForm" class="ap-fade-in ap-delay-1 relative overflow-hidden rounded-xl border border-[var(--ap-accent)]/25 bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm transition-shadow duration-300 hover:shadow-xl">
+    <div v-if="showAddForm" class="ap-fade-in ap-delay-1 relative w-full max-w-2xl overflow-hidden rounded-xl border border-[var(--ap-accent)]/25 bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm transition-shadow duration-300 hover:shadow-xl">
       <div class="pointer-events-none absolute inset-0 bg-gradient-to-br from-[var(--ap-accent)]/[0.04] via-transparent to-transparent" />
 
       <div class="relative border-b border-black/[0.06] dark:border-white/[0.06]">
         <div class="pointer-events-none absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-[var(--ap-accent)]/[0.08] to-transparent" />
         <div class="absolute bottom-0 inset-x-0 h-[2px] bg-gradient-to-r from-[var(--ap-accent)] via-[var(--ap-accent)]/60 to-transparent" />
-        <div class="relative flex items-center gap-3 px-5 py-3.5">
-          <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--ap-accent)]/10">
-            <UIcon name="i-lucide-plus-circle" class="text-xs text-[var(--ap-accent)]" />
+        <div class="relative flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div class="flex items-center gap-2.5">
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-[0.5px] border-[var(--ap-accent)]/45 bg-[var(--ap-accent)]/10 dark:border-[var(--ap-accent)]/40">
+              <UIcon name="i-lucide-plus-circle" class="text-sm text-[var(--ap-accent)]" />
+            </div>
+            <div>
+              <h4 class="text-sm font-semibold text-highlighted">
+                Add New Document
+              </h4>
+              <p class="text-[11px] text-muted">
+                Upload a state-specific retainer file and add notes in one clean step.
+              </p>
+            </div>
           </div>
-          <h3 class="text-[13px] font-semibold text-highlighted">
-            Add New Document
-          </h3>
+          <div class="flex items-center gap-2 self-start sm:self-auto">
+            <span class="rounded-md border-[0.5px] border-[var(--ap-accent)]/45 bg-[var(--ap-accent)]/10 px-2 py-0.5 text-[11px] font-medium text-[var(--ap-accent)] dark:border-[var(--ap-accent)]/40">
+              New document
+            </span>
+          </div>
         </div>
       </div>
 
-      <div class="relative space-y-4 px-5 py-5">
-        <div class="grid gap-4 sm:grid-cols-2">
-          <div class="space-y-1.5">
-            <label class="text-xs font-medium text-highlighted">
-              State <span class="text-red-400/80">*</span>
-            </label>
-            <USelect
-              v-model="newDocument.state"
-              :items="availableStates"
-              placeholder="Select a state"
-              class="w-full"
-            />
-          </div>
-
+      <div class="relative space-y-4 p-4 sm:p-5">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div class="space-y-1.5">
             <label class="text-xs font-medium text-highlighted">
               Document <span class="text-red-400/80">*</span>
@@ -404,7 +405,7 @@ onBeforeRouteLeave((_to, _from, next) => {
             <button
               v-else
               type="button"
-              class="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--ap-accent)]/30 bg-[var(--ap-accent)]/[0.02] px-4 py-3 text-xs font-medium text-muted transition-colors hover:border-[var(--ap-accent)]/50 hover:bg-[var(--ap-accent)]/[0.06] hover:text-[var(--ap-accent)]"
+              class="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--ap-accent)]/30 bg-[var(--ap-accent)]/[0.02] px-3.5 py-2.5 text-[11px] font-medium text-muted transition-colors hover:border-[var(--ap-accent)]/50 hover:bg-[var(--ap-accent)]/[0.06] hover:text-[var(--ap-accent)]"
               @click="openFilePicker"
             >
               <UIcon name="i-lucide-upload" class="text-sm text-[var(--ap-accent)]" />
@@ -413,6 +414,19 @@ onBeforeRouteLeave((_to, _from, next) => {
             <p class="text-[11px] text-muted">
               Accepted: PDF, DOC, DOCX. Max: {{ maxFileSizeLabel }}
             </p>
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="text-xs font-medium text-highlighted">
+              State <span class="text-red-400/80">*</span>
+            </label>
+            <USelect
+              v-model="newDocument.state"
+              :items="availableStates"
+              placeholder="Select a state"
+              size="sm"
+              class="w-full"
+            />
           </div>
         </div>
 
@@ -423,29 +437,35 @@ onBeforeRouteLeave((_to, _from, next) => {
           <UTextarea
             v-model="newDocument.notes"
             placeholder="Add any notes about this document..."
-            :rows="3"
+            :rows="2"
+            size="sm"
             class="w-full"
           />
         </div>
 
-        <div class="flex justify-end gap-2 pt-1">
-          <UButton
-            type="button"
-            label="Cancel"
-            color="neutral"
-            variant="ghost"
-            class="rounded-lg"
-            @click="cancelAddDocument"
-          />
-          <UButton
-            type="button"
-            label="Save Document"
-            icon="i-lucide-check"
-            :loading="saving"
-            class="rounded-lg bg-[var(--ap-accent)] text-white hover:bg-[var(--ap-accent)]/90"
-            :disabled="!newDocument.state || !newDocument.file"
-            @click="saveNewDocument"
-          />
+        <div class="flex flex-col gap-3 border-t border-[var(--ap-accent)]/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <p class="text-[11px] text-muted">
+            You can update notes or remove this document later from the list below.
+          </p>
+          <div class="flex gap-2 sm:justify-end">
+            <UButton
+              type="button"
+              label="Cancel"
+              color="neutral"
+              variant="ghost"
+              class="flex-1 rounded-lg sm:flex-none"
+              @click="cancelAddDocument"
+            />
+            <UButton
+              type="button"
+              label="Save Document"
+              icon="i-lucide-check"
+              :loading="saving"
+              class="flex-1 rounded-lg bg-[var(--ap-accent)] text-white hover:bg-[var(--ap-accent)]/90 sm:flex-none"
+              :disabled="!newDocument.state || !newDocument.file"
+              @click="saveNewDocument"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -459,7 +479,7 @@ onBeforeRouteLeave((_to, _from, next) => {
         <div class="absolute bottom-0 inset-x-0 h-[2px] bg-gradient-to-r from-[var(--ap-accent)] via-[var(--ap-accent)]/60 to-transparent" />
         <div class="relative flex items-center justify-between px-5 py-3.5">
           <div class="flex items-center gap-3">
-            <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--ap-accent)]/10">
+            <div class="flex h-7 w-7 items-center justify-center rounded-lg border-[0.5px] border-[var(--ap-accent)]/45 bg-[var(--ap-accent)]/10 dark:border-[var(--ap-accent)]/40">
               <UIcon name="i-lucide-folder-open" class="text-xs text-[var(--ap-accent)]" />
             </div>
             <h3 class="text-[13px] font-semibold text-highlighted">
@@ -490,7 +510,8 @@ onBeforeRouteLeave((_to, _from, next) => {
           label="Add Document"
           icon="i-lucide-plus"
           size="sm"
-          class="mt-4 rounded-lg bg-[var(--ap-accent)] text-white hover:bg-[var(--ap-accent)]/80 transition-colors duration-200"
+          class="group mt-4 rounded-lg bg-[var(--ap-accent)] text-white hover:bg-[var(--ap-accent)]/80 hover:text-black transition-colors duration-200"
+          :ui="{ leadingIcon: 'text-white transition duration-200 group-hover:text-black' }"
           @click="startAddDocument"
         />
       </div>

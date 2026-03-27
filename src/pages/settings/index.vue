@@ -111,8 +111,8 @@ const cancelEditing = () => {
           v-if="!isEditing"
           label="Edit"
           icon="i-lucide-pencil"
-          class="group rounded-lg bg-[var(--ap-accent)] text-white hover:bg-[var(--ap-accent)]/80 transition-colors duration-200"
-          :ui="{ leadingIcon: 'transition duration-200 group-hover:-rotate-12' }"
+          class="group rounded-lg bg-[var(--ap-accent)] text-white hover:bg-[var(--ap-accent)]/80 hover:text-black transition-colors duration-200"
+          :ui="{ leadingIcon: 'text-white transition duration-200 group-hover:-rotate-12 group-hover:text-black' }"
           @click="startEditing"
         />
         <template v-else>
