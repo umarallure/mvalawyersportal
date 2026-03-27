@@ -230,8 +230,8 @@ onBeforeRouteLeave((_to, _from, next) => {
     <!-- ═══ Page Header ═══ -->
     <div class="ap-fade-in flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div class="flex items-center gap-4">
-        <div class="relative flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--ap-accent)]/10 ring-1 ring-[var(--ap-accent)]/20">
-          <UIcon name="i-lucide-map-pin" class="text-lg text-[var(--ap-accent)]" />
+        <div class="relative flex h-11 w-11 items-center justify-center rounded-xl bg-white/90 shadow-sm ring-[0.5px] ring-white/80 dark:bg-[#1a1a1a]/60 dark:ring-white/70">
+          <UIcon name="i-lucide-map-pin" class="text-lg text-zinc-900 dark:text-white" />
           <div
             class="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-[#1a1a1a] transition-colors"
             :class="isEditing ? 'bg-[var(--ap-accent)]' : 'bg-emerald-400'"
@@ -260,8 +260,8 @@ onBeforeRouteLeave((_to, _from, next) => {
           v-if="!isEditing"
           label="Edit"
           icon="i-lucide-pencil"
-          class="group rounded-lg bg-[var(--ap-accent)] text-white hover:bg-[var(--ap-accent)]/80 transition-colors duration-200"
-          :ui="{ leadingIcon: 'transition duration-200 group-hover:-rotate-12' }"
+          class="group rounded-lg bg-[var(--ap-accent)] text-white hover:bg-[var(--ap-accent)]/80 hover:text-black transition-colors duration-200"
+          :ui="{ leadingIcon: 'text-white transition duration-200 group-hover:-rotate-12 group-hover:text-black' }"
           @click="startEditing"
         />
         <template v-else>
@@ -302,7 +302,7 @@ onBeforeRouteLeave((_to, _from, next) => {
           <div class="pointer-events-none absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-[var(--ap-accent)]/[0.08] to-transparent" />
           <div class="absolute bottom-0 inset-x-0 h-[2px] bg-gradient-to-r from-[var(--ap-accent)] via-[var(--ap-accent)]/60 to-transparent" />
           <div class="relative flex items-center gap-3 px-5 py-3.5">
-            <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--ap-accent)]/10">
+            <div class="flex h-7 w-7 items-center justify-center rounded-lg border-[0.5px] border-[var(--ap-accent)]/45 bg-[var(--ap-accent)]/10 dark:border-[var(--ap-accent)]/40">
               <UIcon name="i-lucide-globe" class="text-xs text-[var(--ap-accent)]" />
             </div>
             <h3 class="text-[13px] font-semibold text-highlighted">
@@ -397,7 +397,7 @@ onBeforeRouteLeave((_to, _from, next) => {
           <div class="pointer-events-none absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-[var(--ap-accent)]/[0.08] to-transparent" />
           <div class="absolute bottom-0 inset-x-0 h-[2px] bg-gradient-to-r from-[var(--ap-accent)] via-[var(--ap-accent)]/60 to-transparent" />
           <div class="relative flex items-center gap-3 px-5 py-3.5">
-            <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--ap-accent)]/10">
+            <div class="flex h-7 w-7 items-center justify-center rounded-lg border-[0.5px] border-[var(--ap-accent)]/45 bg-[var(--ap-accent)]/10 dark:border-[var(--ap-accent)]/40">
               <UIcon name="i-lucide-scale" class="text-xs text-[var(--ap-accent)]" />
             </div>
             <h3 class="text-[13px] font-semibold text-highlighted">
