@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
+
+// ── Case category toggle ──
+const selectedCategory = ref<'consumer' | 'commercial'>('consumer')
+const COMMERCIAL_ORDERS_PAUSED = true
 
 // ── 3D tilt effect (mouse-tracking) ──
 const TILT_MAX = 6
@@ -47,64 +51,85 @@ type TierCard = {
   rows: { label: string; value: string; sub?: string; icon: string }[]
 }
 
-const tierCards: TierCard[] = [
+const consumerTierCards: TierCard[] = [
   {
-    name: 'Tier 1',
+    name: 'Tier 1 Transfer',
     price: '$2,500',
-    priceColor: 'text-zinc-500 dark:text-zinc-400',
-    headerGradient: 'bg-gradient-to-r from-zinc-500/[0.10] via-zinc-500/[0.04] to-transparent dark:from-zinc-400/[0.14] dark:via-zinc-400/[0.06] dark:to-transparent',
-    stripClass: 'bg-zinc-400 dark:bg-zinc-500',
-    hoverBorder: 'hover:border-zinc-400/40',
+    priceColor: 'tier-transfer-price',
+    headerGradient: 'tier-transfer-header',
+    stripClass: 'tier-transfer-strip',
+    hoverBorder: 'hover:border-white/20 dark:hover:border-white/25',
     rows: [
-      { label: 'Accident Occurred', value: '18–24 Months Ago', icon: 'i-lucide-calendar-clock' },
-      { label: 'Liability', value: 'Unclear / Contested', icon: 'i-lucide-scale' },
-      { label: 'Type of Injury', value: 'Minor Injuries', sub: 'Limited Treatment', icon: 'i-lucide-heart-pulse' },
-      { label: 'Documentation', value: 'No Police Report', sub: 'Or Weak Documentation', icon: 'i-lucide-file-x' }
+      { label: 'Accident Occurred', value: '12+ Months Ago', icon: 'i-lucide-calendar-clock' },
+      { label: 'Type of Injury', value: 'Minor to Moderate', icon: 'i-lucide-heart-pulse' },
+      { label: 'Documentation', value: 'Minor Documentation Covered', sub: 'Signed Retainer', icon: 'i-lucide-file-x' },
+      { label: 'Liability', value: '100% Accepted', sub: 'Or Very Strong Proof', icon: 'i-lucide-scale' }
     ]
   },
   {
-    name: 'Tier 2',
+    name: 'Tier 2 Bronze',
     price: '$3,500',
-    priceColor: 'text-orange-400 dark:text-orange-300',
-    headerGradient: 'bg-gradient-to-r from-orange-400/[0.10] via-orange-400/[0.04] to-transparent dark:from-orange-300/[0.14] dark:via-orange-300/[0.06] dark:to-transparent',
-    stripClass: 'bg-orange-300 dark:bg-orange-400',
-    hoverBorder: 'hover:border-orange-300/40',
-    rows: [
-      { label: 'Accident Occurred', value: '12–18 Months Ago', icon: 'i-lucide-calendar-clock' },
-      { label: 'Liability', value: 'Leaning In Client\'s Favor', icon: 'i-lucide-scale' },
-      { label: 'Type of Injury', value: 'Moderate Injuries', sub: 'Chiro + Urgent Care', icon: 'i-lucide-heart-pulse' },
-      { label: 'Documentation', value: 'Some Supporting Documents', sub: 'Available', icon: 'i-lucide-file-check' }
-    ]
-  },
-  {
-    name: 'Tier 3',
-    price: '$4,500',
-    priceColor: 'text-orange-500 dark:text-orange-400',
-    headerGradient: 'bg-gradient-to-r from-orange-500/[0.10] via-orange-500/[0.04] to-transparent dark:from-orange-400/[0.14] dark:via-orange-400/[0.06] dark:to-transparent',
-    stripClass: 'bg-orange-400 dark:bg-orange-500',
-    hoverBorder: 'hover:border-orange-400/40',
+    priceColor: 'tier-bronze-price',
+    headerGradient: 'tier-bronze-header',
+    stripClass: 'tier-bronze-strip',
+    hoverBorder: 'hover:border-[#CD7F32]/40',
     rows: [
       { label: 'Accident Occurred', value: '6–12 Months Ago', icon: 'i-lucide-calendar-clock' },
-      { label: 'Liability', value: 'Strong', sub: 'Police Report, Witness', icon: 'i-lucide-scale' },
-      { label: 'Type of Injury', value: 'Moderate To Significant', sub: 'Injuries', icon: 'i-lucide-heart-pulse' },
-      { label: 'Documentation', value: 'Better Chance of Settlement', sub: 'Due to treatment timeline', icon: 'i-lucide-file-check-2' }
+      { label: 'Type of Injury', value: 'Moderate to Severe', icon: 'i-lucide-heart-pulse' },
+      { label: 'Documentation', value: 'Majority Documentation Covered', sub: 'Signed Retainer, Police Report', icon: 'i-lucide-file-check' },
+      { label: 'Liability', value: '100% Accepted', sub: 'Or Very Strong Proof', icon: 'i-lucide-scale' }
     ]
   },
   {
-    name: 'Tier 4',
+    name: 'Tier 3 Silver',
+    price: '$4,500',
+    priceColor: 'tier-silver-price',
+    headerGradient: 'tier-silver-header',
+    stripClass: 'tier-silver-strip',
+    hoverBorder: 'hover:border-[#94a3b8]/40',
+    rows: [
+      { label: 'Accident Occurred', value: '3–6 Months Ago', icon: 'i-lucide-calendar-clock' },
+      { label: 'Type of Injury', value: 'Moderate to Severe', icon: 'i-lucide-heart-pulse' },
+      { label: 'Documentation', value: 'All Documentation Covered', sub: 'Signed Retainer, Proof of Medical Treatment, Police Report', icon: 'i-lucide-file-check-2' },
+      { label: 'Liability', value: '100% Accepted', sub: 'Or Very Strong Proof', icon: 'i-lucide-scale' }
+    ]
+  },
+  {
+    name: 'Tier 4 Gold',
     price: '$6,000',
+    priceColor: 'tier-gold-price',
+    headerGradient: 'tier-gold-header',
+    stripClass: 'tier-gold-strip',
+    hoverBorder: 'hover:border-[#D4AF37]/40',
+    rows: [
+      { label: 'Accident Occurred', value: '0–3 Months Ago', icon: 'i-lucide-calendar-clock' },
+      { label: 'Type of Injury', value: 'Moderate to Catastrophic', icon: 'i-lucide-heart-pulse' },
+      { label: 'Documentation', value: 'All Documentation Covered', sub: 'Insurance, Proof of Medical Treatment, Police Report', icon: 'i-lucide-file-badge' },
+      { label: 'Liability', value: '100% Accepted', sub: 'Or Very Strong Proof', icon: 'i-lucide-scale' }
+    ]
+  }
+]
+
+const commercialTierCards: TierCard[] = [
+  {
+    name: 'Commercial',
+    price: '$7,500',
     priceColor: '',
     headerGradient: '',
     stripClass: 'tier-4-strip',
     hoverBorder: 'hover:border-[var(--ap-accent-border)]',
     rows: [
-      { label: 'Accident Occurred', value: '0–6 Months Ago', icon: 'i-lucide-calendar-clock' },
+      { label: 'Case Type', value: 'Commercial Vehicle Accident', icon: 'i-lucide-truck' },
       { label: 'Liability', value: '100% Accepted', sub: 'Or Very Strong Proof', icon: 'i-lucide-scale' },
-      { label: 'Type of Injury', value: 'Serious Injuries', sub: 'Fracture, Critical Surgery', icon: 'i-lucide-heart-pulse' },
-      { label: 'Documentation', value: 'High-Value Case', sub: 'Strong damages + documentation', icon: 'i-lucide-file-badge' }
+      { label: 'Documentation', value: 'All Documentation Covered', sub: 'Insurance, Proof of Medical Treatment, Police Report', icon: 'i-lucide-file-badge' },
+      { label: 'Type of Injury', value: 'Moderate to Catastrophic', icon: 'i-lucide-heart-pulse' }
     ]
   }
 ]
+
+const activeTierCards = computed(() => {
+  return selectedCategory.value === 'consumer' ? consumerTierCards : commercialTierCards
+})
 
 const placeOrder = () => {
   router.push({ path: '/intake-map', query: { action: 'create-order' } })
@@ -124,18 +149,51 @@ const placeOrder = () => {
     <template #body>
       <div class="space-y-6">
         <!-- Header -->
-        <div class="ap-fade-in">
-          <h2 class="text-lg font-semibold text-highlighted">Pricing Per Case</h2>
-          <p class="mt-1 text-sm text-muted">
-            Each tier reflects the case value based on recency, liability strength, injury severity, and documentation quality.
+        <div class="ap-fade-in flex items-start justify-between gap-4">
+          <div>
+            <h2 class="text-lg font-semibold text-highlighted">
+              {{ selectedCategory === 'consumer' ? 'Consumer Cases — Pricing Per Case' : 'Commercial Cases — Pricing Per Case' }}
+            </h2>
+            <p class="mt-1 text-sm text-muted">
+              Each tier reflects the case value based on recency, liability strength, injury severity, and documentation quality.
+            </p>
+          </div>
+          <USelect
+            :model-value="selectedCategory"
+            :items="[
+              { label: 'Consumer Cases', value: 'consumer' },
+              { label: 'Commercial Cases', value: 'commercial' }
+            ]"
+            value-key="value"
+            label-key="label"
+            class="w-48 shrink-0"
+            @update:model-value="selectedCategory = $event as 'consumer' | 'commercial'"
+          />
+        </div>
+
+        <!-- ═══ Commercial paused notice ═══ -->
+        <div
+          v-if="selectedCategory === 'commercial' && COMMERCIAL_ORDERS_PAUSED"
+          class="ap-fade-in flex items-center gap-3 rounded-lg border border-amber-400/30 bg-amber-50 px-4 py-3 dark:border-amber-500/20 dark:bg-amber-950/30"
+        >
+          <UIcon name="i-lucide-info" class="size-5 shrink-0 text-amber-500" />
+          <p class="text-sm text-amber-700 dark:text-amber-400">
+            Commercial case orders are temporarily closed. Order availability will open soon.
           </p>
         </div>
 
         <!-- ═══ Tier Cards Grid ═══ -->
-        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div
+          :class="[
+            'grid gap-4',
+            selectedCategory === 'consumer'
+              ? 'sm:grid-cols-2 xl:grid-cols-4'
+              : 'max-w-sm'
+          ]"
+        >
           <!-- Tilt wrapper — separate from the animated card so ap-fade-in doesn't block inline transforms -->
           <div
-            v-for="(tier, idx) in tierCards"
+            v-for="(tier, idx) in activeTierCards"
             :key="tier.name"
             class="tier-tilt ap-fade-in"
             :style="{ animationDelay: `${200 + idx * 100}ms` }"
@@ -195,15 +253,19 @@ const placeOrder = () => {
                 <button
                   class="tier-btn group/btn flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-all duration-200"
                   :class="[
-                    idx === 0 ? 'tier-btn--zinc' : '',
-                    idx === 1 ? 'tier-btn--orange-light' : '',
-                    idx === 2 ? 'tier-btn--orange' : '',
-                    idx === 3 ? 'tier-btn--primary' : ''
+                    selectedCategory === 'consumer' && idx === 0 ? 'tier-btn--transfer' : '',
+                    selectedCategory === 'consumer' && idx === 1 ? 'tier-btn--bronze' : '',
+                    selectedCategory === 'consumer' && idx === 2 ? 'tier-btn--silver' : '',
+                    selectedCategory === 'consumer' && idx === 3 ? 'tier-btn--gold' : '',
+                    selectedCategory === 'commercial' ? 'tier-btn--commercial' : '',
+                    selectedCategory === 'commercial' && COMMERCIAL_ORDERS_PAUSED ? 'cursor-not-allowed' : ''
                   ]"
+                  :disabled="selectedCategory === 'commercial' && COMMERCIAL_ORDERS_PAUSED"
                   @click="placeOrder"
                 >
-                  <span>Place Order</span>
+                  <span>{{ selectedCategory === 'commercial' && COMMERCIAL_ORDERS_PAUSED ? 'Coming Soon' : 'Place Order' }}</span>
                   <UIcon
+                    v-if="!(selectedCategory === 'commercial' && COMMERCIAL_ORDERS_PAUSED)"
                     name="i-lucide-arrow-right"
                     class="text-sm transition-transform duration-200 ease-out group-hover/btn:translate-x-1"
                   />
@@ -238,88 +300,155 @@ const placeOrder = () => {
   background-color: var(--ap-accent);
 }
 
-/* ── Tier CTA buttons — default state shows tier color ── */
+/* ── Tier card colors ── */
 
-/* Tier 1 — zinc */
-.tier-btn--zinc {
-  background: rgba(161, 161, 170, 0.08);
-  border-color: rgba(161, 161, 170, 0.25);
-  color: #71717a;
+/* Bronze — #CD7F32 / rgb(205, 127, 50) */
+.tier-bronze-price { color: #CD7F32; }
+.dark .tier-bronze-price { color: #d99a5b; }
+.tier-bronze-header {
+  background: linear-gradient(to right, rgba(205, 127, 50, 0.12), rgba(205, 127, 50, 0.04), transparent);
 }
-.dark .tier-btn--zinc {
-  background: rgba(161, 161, 170, 0.08);
-  border-color: rgba(161, 161, 170, 0.2);
-  color: #a1a1aa;
+.dark .tier-bronze-header {
+  background: linear-gradient(to right, rgba(205, 127, 50, 0.18), rgba(205, 127, 50, 0.07), transparent);
 }
-.tier-btn--zinc:hover {
-  background: rgba(161, 161, 170, 0.18);
-  border-color: rgba(161, 161, 170, 0.45);
-  color: #52525b;
+.tier-bronze-strip { background-color: #CD7F32; }
+.dark .tier-bronze-strip { background-color: #b56e2a; }
+
+/* Silver — #94a3b8 / cool metallic gray */
+.tier-silver-price { color: #7a8a9e; }
+.dark .tier-silver-price { color: #a8b8cc; }
+.tier-silver-header {
+  background: linear-gradient(to right, rgba(148, 163, 184, 0.14), rgba(148, 163, 184, 0.05), transparent);
 }
-.dark .tier-btn--zinc:hover {
-  background: rgba(161, 161, 170, 0.16);
-  border-color: rgba(161, 161, 170, 0.4);
-  color: #d4d4d8;
+.dark .tier-silver-header {
+  background: linear-gradient(to right, rgba(168, 184, 204, 0.18), rgba(168, 184, 204, 0.07), transparent);
+}
+.tier-silver-strip { background-color: #94a3b8; }
+.dark .tier-silver-strip { background-color: #8899aa; }
+
+/* Gold — #D4AF37 / rgb(212, 175, 55) */
+.tier-gold-price { color: #B8960C; }
+.dark .tier-gold-price { color: #D4AF37; }
+.tier-gold-header {
+  background: linear-gradient(to right, rgba(212, 175, 55, 0.12), rgba(212, 175, 55, 0.04), transparent);
+}
+.dark .tier-gold-header {
+  background: linear-gradient(to right, rgba(212, 175, 55, 0.18), rgba(212, 175, 55, 0.07), transparent);
+}
+.tier-gold-strip { background-color: #D4AF37; }
+.dark .tier-gold-strip { background-color: #b8960c; }
+
+/* ── Tier card colors — Transfer (white accent) ── */
+.tier-transfer-price { color: #6b7280; }
+.dark .tier-transfer-price { color: #e5e7eb; }
+.tier-transfer-header {
+  background: linear-gradient(to right, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0.12), transparent);
+}
+.dark .tier-transfer-header {
+  background: linear-gradient(to right, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03), transparent);
+}
+.tier-transfer-strip { background-color: #d1d5db; }
+.dark .tier-transfer-strip { background-color: rgba(255, 255, 255, 0.25); }
+
+/* ── Tier CTA buttons ── */
+
+/* Tier 1 — transfer (white accent) */
+.tier-btn--transfer {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #6b7280;
+}
+.dark .tier-btn--transfer {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #d1d5db;
+}
+.tier-btn--transfer:hover {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.18);
+  color: #374151;
+}
+.dark .tier-btn--transfer:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #f3f4f6;
 }
 
-/* Tier 2 — light orange */
-.tier-btn--orange-light {
-  background: rgba(253, 186, 116, 0.1);
-  border-color: rgba(253, 186, 116, 0.3);
-  color: #fb923c;
+/* Tier 2 — bronze */
+.tier-btn--bronze {
+  background: rgba(205, 127, 50, 0.08);
+  border-color: rgba(205, 127, 50, 0.25);
+  color: #CD7F32;
 }
-.dark .tier-btn--orange-light {
-  background: rgba(253, 186, 116, 0.08);
-  border-color: rgba(253, 186, 116, 0.2);
-  color: #fdba74;
+.dark .tier-btn--bronze {
+  background: rgba(205, 127, 50, 0.08);
+  border-color: rgba(205, 127, 50, 0.2);
+  color: #d99a5b;
 }
-.tier-btn--orange-light:hover {
-  background: rgba(251, 146, 60, 0.18);
-  border-color: rgba(251, 146, 60, 0.5);
-  color: #ea580c;
+.tier-btn--bronze:hover {
+  background: rgba(205, 127, 50, 0.18);
+  border-color: rgba(205, 127, 50, 0.45);
+  color: #a0612a;
 }
-.dark .tier-btn--orange-light:hover {
-  background: rgba(253, 186, 116, 0.16);
-  border-color: rgba(253, 186, 116, 0.4);
-  color: #fb923c;
-}
-
-/* Tier 3 — stronger orange */
-.tier-btn--orange {
-  background: rgba(249, 115, 22, 0.1);
-  border-color: rgba(249, 115, 22, 0.3);
-  color: #f97316;
-}
-.dark .tier-btn--orange {
-  background: rgba(251, 146, 60, 0.08);
-  border-color: rgba(251, 146, 60, 0.2);
-  color: #fb923c;
-}
-.tier-btn--orange:hover {
-  background: rgba(234, 88, 12, 0.18);
-  border-color: rgba(234, 88, 12, 0.5);
-  color: #c2410c;
-}
-.dark .tier-btn--orange:hover {
-  background: rgba(249, 115, 22, 0.16);
-  border-color: rgba(249, 115, 22, 0.4);
-  color: #f97316;
+.dark .tier-btn--bronze:hover {
+  background: rgba(205, 127, 50, 0.16);
+  border-color: rgba(205, 127, 50, 0.4);
+  color: #e0a86a;
 }
 
-/* Tier 4 — primary brand orange */
-.tier-btn--primary {
+/* Tier 3 — silver */
+.tier-btn--silver {
+  background: rgba(148, 163, 184, 0.1);
+  border-color: rgba(148, 163, 184, 0.3);
+  color: #7a8a9e;
+}
+.dark .tier-btn--silver {
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.2);
+  color: #a8b8cc;
+}
+.tier-btn--silver:hover {
+  background: rgba(148, 163, 184, 0.2);
+  border-color: rgba(148, 163, 184, 0.5);
+  color: #5c6b7e;
+}
+.dark .tier-btn--silver:hover {
+  background: rgba(148, 163, 184, 0.16);
+  border-color: rgba(148, 163, 184, 0.4);
+  color: #c0cfe0;
+}
+
+/* Tier 4 — gold */
+.tier-btn--gold {
+  background: rgba(212, 175, 55, 0.08);
+  border-color: rgba(212, 175, 55, 0.25);
+  color: #B8960C;
+}
+.dark .tier-btn--gold {
+  background: rgba(212, 175, 55, 0.08);
+  border-color: rgba(212, 175, 55, 0.2);
+  color: #D4AF37;
+}
+.tier-btn--gold:hover {
+  background: rgba(212, 175, 55, 0.18);
+  border-color: rgba(212, 175, 55, 0.45);
+  color: #8a7400;
+}
+.dark .tier-btn--gold:hover {
+  background: rgba(212, 175, 55, 0.16);
+  border-color: rgba(212, 175, 55, 0.4);
+  color: #e6c54a;
+}
+
+/* Commercial — matches card accent strip color */
+.tier-btn--commercial {
   background: var(--ap-accent-soft);
-  border-color: rgba(174, 64, 16, 0.3);
+  border-color: rgba(174, 64, 16, 0.2);
   color: var(--ap-accent);
 }
-.tier-btn--primary:hover {
-  background: rgba(174, 64, 16, 0.22);
-  border-color: var(--ap-accent-border);
-  color: var(--ap-accent-dark);
-}
-.dark .tier-btn--primary:hover {
-  background: rgba(174, 64, 16, 0.25);
-  border-color: var(--ap-accent-border);
+.dark .tier-btn--commercial {
+  background: rgba(174, 64, 16, 0.08);
+  border-color: rgba(174, 64, 16, 0.18);
   color: var(--ap-accent);
 }
 </style>
