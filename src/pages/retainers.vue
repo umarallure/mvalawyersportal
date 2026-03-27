@@ -483,7 +483,7 @@ const multiSelectUi = {
 }
 
 const filterCaseCategoryOptions = [
-  { label: 'Consumer Cases', value: 'Consumer Cases (MVA)' },
+  { label: 'Consumer Cases', value: 'Consumer Cases' },
   { label: 'Commercial Cases', value: 'Commercial Cases' },
 ]
 

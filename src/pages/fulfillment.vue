@@ -49,7 +49,7 @@ const normalize = (v: unknown) => String(v ?? '').trim().toLowerCase()
 const normalizeCaseType = (caseType: string): string => {
   const t = caseType.trim().toLowerCase()
   if (t.includes('motor vehicle') || t.includes('mva') || t.includes('consumer')) {
-    return 'Consumer Cases (MVA)'
+    return 'Consumer Cases'
   }
   if (t.includes('commercial')) {
     return 'Commercial Cases'
@@ -271,7 +271,7 @@ const multiSelectUi = {
 
 const orderTypeOptions = [
   { label: 'All Orders', value: 'all' },
-  { label: 'Consumer Cases', value: 'Consumer Cases (MVA)' },
+  { label: 'Consumer Cases', value: 'Consumer Cases' },
   { label: 'Commercial Cases', value: 'Commercial Cases' }
 ]
 
