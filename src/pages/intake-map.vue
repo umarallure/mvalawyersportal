@@ -217,7 +217,7 @@ const orderLanguageFilterOptions = computed(() => {
 })
 
 const filterCaseCategoryOptions = [
-  { label: 'Consumer Cases', value: 'Consumer Cases (MVA)' },
+  { label: 'Consumer Cases', value: 'Consumer Cases' },
   { label: 'Commercial Cases', value: 'Commercial Cases' },
 ]
 
@@ -519,7 +519,7 @@ const orderVerifyError = computed(() => {
 
 const orderForm = ref({
   stateCode: '' as string,
-  caseCategory: 'Consumer Cases (MVA)' as string,
+  caseCategory: 'Consumer Cases' as string,
   injurySeverity: [] as string[],
   liabilityStatus: 'clear_only' as 'clear_only' | 'disputed_ok',
   insuranceStatus: 'insured_only' as 'insured_only' | 'uninsured_ok',
@@ -534,8 +534,8 @@ const createOrderSubmitting = ref(false)
 const NO_CRITERIA_INJURY_SEVERITY = 'no_criteria'
 
 // Auto-adjust quota when switching category (Commercial max is 1)
-watch(() => orderForm.value.caseCategory, (newCat) => {
-  const max = newCat === 'Commercial Cases' ? 1 : 5
+watch(() => orderForm.value.caseCategory, () => {
+  const max = maxQuotaForCategory.value
   if (orderForm.value.quotaTotal > max) {
     orderForm.value.quotaTotal = max
   }
@@ -555,8 +555,10 @@ const selectedStateName = computed(() => {
   return US_STATES.find(s => s.code === code)?.name ?? code
 })
 
+const isCommercialSelected = computed(() => orderForm.value.caseCategory === 'Commercial Cases')
+
 const maxQuotaForCategory = computed(() => {
-  return orderForm.value.caseCategory === 'Commercial Cases' ? 1 : 5
+  return isCommercialSelected.value ? 1 : 5
 })
 
 const quotaError = computed(() => {
@@ -577,7 +579,7 @@ const quotaError = computed(() => {
 const normalizeCaseType = (caseType: string): string => {
   const t = caseType.trim().toLowerCase()
   if (t.includes('motor vehicle') || t.includes('mva') || t.includes('consumer')) {
-    return 'Consumer Cases (MVA)'
+    return 'Consumer Cases'
   }
   if (t.includes('commercial')) {
     return 'Commercial Cases'
@@ -660,7 +662,7 @@ const orderValidationError = computed(() => {
 const resetOrderForm = () => {
   orderForm.value = {
     stateCode: '',
-    caseCategory: 'Consumer Cases (MVA)',
+    caseCategory: 'Consumer Cases',
     injurySeverity: [],
     liabilityStatus: 'clear_only',
     insuranceStatus: 'insured_only',
@@ -1514,6 +1516,7 @@ watch(myClosedOrders, () => {
                       value-key="value"
                       label-key="label"
                       placeholder="Select a state"
+                      :disabled="isCommercialSelected"
                     />
                   </UFormField>
 
@@ -1538,6 +1541,7 @@ watch(myClosedOrders, () => {
                       multiple
                       placeholder="Select injury severities"
                       :ui="multiSelectUi"
+                      :disabled="isCommercialSelected"
                     >
                       <template #item-leading>
                         <span class="relative flex size-4 items-center justify-center">
@@ -1562,6 +1566,7 @@ watch(myClosedOrders, () => {
                       value-key="value"
                       label-key="label"
                       placeholder="Select liability"
+                      :disabled="isCommercialSelected"
                     />
                   </UFormField>
 
@@ -1573,6 +1578,7 @@ watch(myClosedOrders, () => {
                       value-key="value"
                       label-key="label"
                       placeholder="Select insurance"
+                      :disabled="isCommercialSelected"
                     />
                   </UFormField>
 
@@ -1583,6 +1589,7 @@ watch(myClosedOrders, () => {
                       class="w-full"
                       value-key="value"
                       label-key="label"
+                      :disabled="isCommercialSelected"
                     />
                   </UFormField>
 
@@ -1594,6 +1601,7 @@ watch(myClosedOrders, () => {
                       multiple
                       placeholder="Select languages"
                       :ui="multiSelectUi"
+                      :disabled="isCommercialSelected"
                     >
                       <template #item-leading>
                         <span class="relative flex size-4 items-center justify-center">
@@ -1611,7 +1619,7 @@ watch(myClosedOrders, () => {
                   </UFormField>
 
                   <UFormField label="Client requirements">
-                    <UCheckbox v-model="orderForm.noPriorAttorney" label="No prior attorney" />
+                    <UCheckbox v-model="orderForm.noPriorAttorney" label="No prior attorney" :disabled="isCommercialSelected" />
                   </UFormField>
 
                   <UFormField label="Quota" description="Total number of cases needed" required>
@@ -1620,6 +1628,7 @@ watch(myClosedOrders, () => {
                       type="number"
                       min="1"
                       :max="maxQuotaForCategory"
+                      :disabled="isCommercialSelected"
                     />
                     <div class="mt-1 text-xs text-muted">
                       Maximum {{ maxQuotaForCategory }} {{ maxQuotaForCategory === 1 ? 'case' : 'cases' }} per order for {{ orderForm.caseCategory }}.
@@ -1638,6 +1647,7 @@ watch(myClosedOrders, () => {
                           type="radio"
                           name="expiresInDays"
                           class="h-4 w-4"
+                          :disabled="isCommercialSelected"
                           @change="() => { orderForm.expiresInDays = opt.value }"
                         >
                         <span class="text-sm">
@@ -1689,7 +1699,7 @@ watch(myClosedOrders, () => {
                   color="primary"
                   variant="solid"
                   :loading="createOrderSubmitting"
-                  :disabled="createOrderSubmitting || !!orderValidationError || !String(orderForm.stateCode || '').trim() || Number(orderForm.quotaTotal) <= 0"
+                  :disabled="createOrderSubmitting || isCommercialSelected"
                   @click="async () => { await handleCreateOrderSubmit(close) }"
                 >
                   Create

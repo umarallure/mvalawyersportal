@@ -47,7 +47,7 @@ const loadingLeads = ref(false)
 // ── Helpers ────────────────────────────────────────────────────────────────
 const normalizeCaseType = (t: string) => {
   const lower = t.trim().toLowerCase()
-  if (lower.includes('motor vehicle') || lower.includes('mva') || lower.includes('consumer')) return 'Consumer Cases (MVA)'
+  if (lower.includes('motor vehicle') || lower.includes('mva') || lower.includes('consumer')) return 'Consumer Cases'
   if (lower.includes('commercial')) return 'Commercial Cases'
   return t.trim()
 }
