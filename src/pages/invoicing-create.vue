@@ -435,14 +435,15 @@ const toggleDeal = (dealId: string) => {
 
   error.value = null
 
-  deal.selected = !deal.selected
+  const wasSelected = deal.selected
 
-  if (deal.selected) {
-    if (!form.value.deal_ids.includes(dealId)) {
-      form.value.deal_ids.push(dealId)
-    }
-  } else {
-    form.value.deal_ids = form.value.deal_ids.filter(id => id !== dealId)
+  // Enforce single-select: deselect all deals first
+  deals.value.forEach(d => { d.selected = false })
+  form.value.deal_ids = []
+
+  if (!wasSelected) {
+    deal.selected = true
+    form.value.deal_ids = [dealId]
   }
 
   syncItemsWithSelectedDeals()
@@ -873,21 +874,11 @@ onMounted(async () => {
 
               <!-- Deals Selection -->
               <div class="rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-6">
-                <div class="mb-4 flex items-center justify-between">
+                <div class="mb-3 flex items-center justify-between">
                   <h3 class="text-sm font-semibold uppercase tracking-wider text-highlighted">
                     Assigned Deals
                   </h3>
                   <div class="flex items-center gap-2">
-                    <UButton
-                      v-if="deals.length"
-                      color="neutral"
-                      variant="ghost"
-                      size="xs"
-                      class="rounded-lg"
-                      @click="selectAllDeals"
-                    >
-                      {{ deals.every(d => d.selected) ? 'Deselect All' : 'Select All' }}
-                    </UButton>
                     <UButton
                       v-if="deals.some(d => d.selected)"
                       color="primary"
@@ -900,6 +891,15 @@ onMounted(async () => {
                       Auto-generate Items
                     </UButton>
                   </div>
+                </div>
+
+                <!-- Single-case policy notice -->
+                <div class="mb-4 flex items-start gap-2 rounded-xl border border-amber-200/60 bg-amber-50/50 px-3 py-2.5 dark:border-amber-500/20 dark:bg-amber-500/[0.06]">
+                  <UIcon name="i-lucide-info" class="mt-0.5 shrink-0 text-sm text-amber-500" />
+                  <p class="text-xs text-amber-700 dark:text-amber-400">
+                    <span class="font-semibold">One case per invoice.</span>
+                    Each invoice can only be linked to a single case. If you need to invoice for multiple cases, please create a separate invoice for each one.
+                  </p>
                 </div>
 
                 <div
@@ -967,6 +967,7 @@ onMounted(async () => {
                     Line Items
                   </h3>
                   <UButton
+                    v-if="form.items.length === 0"
                     color="primary"
                     variant="soft"
                     size="xs"
@@ -979,7 +980,7 @@ onMounted(async () => {
                 </div>
 
                 <div v-if="!form.items.length" class="rounded-xl border border-dashed border-[var(--ap-card-border)] px-4 py-8 text-center text-xs text-muted">
-                  No line items yet. Click "Add Item" to get started.
+                  No line item yet. Click "Add Item" to add one. Only one line item is allowed per invoice.
                 </div>
 
                 <div v-else class="space-y-3">
