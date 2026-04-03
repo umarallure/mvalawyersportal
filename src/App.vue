@@ -10,10 +10,12 @@ type HubSpotWindow = Window & typeof globalThis & {
   HubSpotConversations?: {
     widget?: {
       refresh?: () => void
+      remove?: () => void
     }
   }
   hsConversationsOnReady?: Array<() => void>
 }
+
 const toast = useToast()
 const route = useRoute()
 const auth = useAuth()
@@ -21,6 +23,11 @@ const auth = useAuth()
 const open = ref(false)
 const sidebarCollapsed = ref(false)
 let collapsedBeforeGuide = false
+
+const isPublicPage = computed(() =>
+  ['/login', '/', '/get-started'].includes(route.path) ||
+  route.path.endsWith('/pdf')
+)
 
 function withHubSpotReady(callback: () => void) {
   if (typeof window === 'undefined') return
@@ -36,24 +43,31 @@ function withHubSpotReady(callback: () => void) {
   w.hsConversationsOnReady.push(callback)
 }
 
-function refreshHubSpotChat() {
+function syncHubSpotChat() {
   withHubSpotReady(() => {
     window.setTimeout(() => {
-      ;(window as HubSpotWindow).HubSpotConversations?.widget?.refresh?.()
+      const widget = (window as HubSpotWindow).HubSpotConversations?.widget
+      if (!widget) return
+
+      if (isPublicPage.value) {
+        widget.remove?.()
+      } else {
+        widget.refresh?.()
+      }
     }, 200)
   })
 }
 
 onMounted(() => {
   auth.init().catch(() => {})
-  refreshHubSpotChat()
+  syncHubSpotChat()
 })
 
 watch(
   () => route.fullPath,
   async () => {
     await nextTick()
-    refreshHubSpotChat()
+    syncHubSpotChat()
   }
 )
 
@@ -176,11 +190,6 @@ const links = computed(() => [[
     ]
   }
 ]] satisfies NavigationMenuItem[][])
-
-const isPublicPage = computed(() =>
-  ['/login', '/', '/get-started'].includes(route.path)
-  || route.path.endsWith('/pdf')
-)
 
 watch(() => route.path, (to, from) => {
   if (to === '/product-guide' && from !== '/product-guide') {

@@ -73,6 +73,16 @@ textarea {
   font-family: inherit;
 }
 
+#hubspot-messages-iframe-container {
+  color-scheme: light !important;
+  background: transparent !important;
+}
+
+#hubspot-messages-iframe-container iframe {
+  background: transparent !important;
+  color-scheme: light !important;
+}
+
 .dark {
   --ap-bg: #202020;
   --ap-surface: #202020;
