@@ -1,11 +1,19 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useStorage } from '@vueuse/core'
 import type { NavigationMenuItem } from '@nuxt/ui'
 
 import { useAuth } from './composables/useAuth'
 
+type HubSpotWindow = Window & typeof globalThis & {
+  HubSpotConversations?: {
+    widget?: {
+      refresh?: () => void
+    }
+  }
+  hsConversationsOnReady?: Array<() => void>
+}
 const toast = useToast()
 const route = useRoute()
 const auth = useAuth()
@@ -14,10 +22,40 @@ const open = ref(false)
 const sidebarCollapsed = ref(false)
 let collapsedBeforeGuide = false
 
-onMounted(() => {
-  auth.init().catch(() => {
+function withHubSpotReady(callback: () => void) {
+  if (typeof window === 'undefined') return
+
+  const w = window as HubSpotWindow
+
+  if (w.HubSpotConversations?.widget) {
+    callback()
+    return
+  }
+
+  w.hsConversationsOnReady = w.hsConversationsOnReady || []
+  w.hsConversationsOnReady.push(callback)
+}
+
+function refreshHubSpotChat() {
+  withHubSpotReady(() => {
+    window.setTimeout(() => {
+      ;(window as HubSpotWindow).HubSpotConversations?.widget?.refresh?.()
+    }, 200)
   })
+}
+
+onMounted(() => {
+  auth.init().catch(() => {})
+  refreshHubSpotChat()
 })
+
+watch(
+  () => route.fullPath,
+  async () => {
+    await nextTick()
+    refreshHubSpotChat()
+  }
+)
 
 const role = computed(() => auth.state.value.profile?.role)
 const isAdmin = computed(() => role.value === 'super_admin' || role.value === 'admin')
