@@ -9,9 +9,10 @@ import { useAuth } from './composables/useAuth'
 type HubSpotWindow = Window & typeof globalThis & {
   HubSpotConversations?: {
     widget?: {
-      refresh?: () => void
+      load?: () => void
       remove?: () => void
     }
+    on?: (event: string, callback: () => void) => void
   }
   hsConversationsOnReady?: Array<() => void>
 }
@@ -22,6 +23,8 @@ const auth = useAuth()
 
 const open = ref(false)
 const sidebarCollapsed = ref(false)
+const chatOpen = ref(false)
+const chatBtnRef = ref<HTMLElement | null>(null)
 let collapsedBeforeGuide = false
 
 const isPublicPage = computed(() =>
@@ -43,31 +46,48 @@ function withHubSpotReady(callback: () => void) {
   w.hsConversationsOnReady.push(callback)
 }
 
-function syncHubSpotChat() {
+function loadHubSpotWidget() {
   withHubSpotReady(() => {
-    window.setTimeout(() => {
-      const widget = (window as HubSpotWindow).HubSpotConversations?.widget
-      if (!widget) return
+    const widget = (window as HubSpotWindow).HubSpotConversations?.widget
+    if (!widget) return
 
-      if (isPublicPage.value) {
-        widget.remove?.()
-      } else {
-        widget.refresh?.()
-      }
-    }, 200)
+    if (isPublicPage.value) {
+      chatOpen.value = false
+      widget.remove?.()
+    } else {
+      widget.load?.()
+    }
   })
+}
+
+const chatWrapperRef = ref<HTMLElement | null>(null)
+
+function repositionChat() {
+  const wrapper = chatWrapperRef.value
+  if (!wrapper || !chatBtnRef.value) return
+
+  const rect = chatBtnRef.value.getBoundingClientRect()
+  wrapper.style.left = `${rect.right + 8}px`
+  wrapper.style.bottom = `${window.innerHeight - rect.bottom}px`
+}
+
+function toggleChat() {
+  chatOpen.value = !chatOpen.value
+  if (chatOpen.value) {
+    nextTick(repositionChat)
+  }
 }
 
 onMounted(() => {
   auth.init().catch(() => {})
-  syncHubSpotChat()
+  loadHubSpotWidget()
 })
 
 watch(
   () => route.fullPath,
   async () => {
     await nextTick()
-    syncHubSpotChat()
+    loadHubSpotWidget()
   }
 )
 
@@ -271,6 +291,16 @@ if (cookie.value !== 'accepted') {
               tooltip
               class="mt-auto"
             />
+
+            <button
+              ref="chatBtnRef"
+              class="w-full flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors cursor-pointer bg-primary text-white hover:bg-primary/90"
+              :class="collapsed ? 'p-2' : 'px-2.5 py-2'"
+              @click="toggleChat"
+            >
+              <UIcon name="i-lucide-message-circle" class="size-5 shrink-0" />
+              <span v-if="!collapsed" class="truncate">Chat With Us</span>
+            </button>
           </template>
 
           <template #footer="{ collapsed }">
@@ -283,6 +313,24 @@ if (cookie.value !== 'accepted') {
         <RouterView />
 
         <NotificationsSlideover />
+
+        <!-- HubSpot inline-embed container — positioned by toggleChat() -->
+        <div
+          ref="chatWrapperRef"
+          class="fixed z-50 rounded-lg shadow-xl"
+          :style="{ width: '376px', height: '500px', left: chatOpen ? undefined : '-9999px' }"
+        >
+          <button
+            class="absolute top-2 right-2 z-10 flex items-center justify-center size-7 rounded-full bg-black/40 hover:bg-black/60 text-white cursor-pointer transition-colors"
+            @click="toggleChat"
+          >
+            <UIcon name="i-lucide-x" class="size-4" />
+          </button>
+          <div
+            id="hs-chat-embed"
+            class="w-full h-full overflow-hidden rounded-lg"
+          />
+        </div>
       </UDashboardGroup>
     </UApp>
   </Suspense>
