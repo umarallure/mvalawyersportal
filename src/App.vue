@@ -24,7 +24,6 @@ const auth = useAuth()
 const open = ref(false)
 const sidebarCollapsed = ref(false)
 const chatOpen = ref(false)
-const chatBtnRef = ref<HTMLElement | null>(null)
 let collapsedBeforeGuide = false
 
 const isPublicPage = computed(() =>
@@ -60,22 +59,8 @@ function loadHubSpotWidget() {
   })
 }
 
-const chatWrapperRef = ref<HTMLElement | null>(null)
-
-function repositionChat() {
-  const wrapper = chatWrapperRef.value
-  if (!wrapper || !chatBtnRef.value) return
-
-  const rect = chatBtnRef.value.getBoundingClientRect()
-  wrapper.style.left = `${rect.right + 8}px`
-  wrapper.style.bottom = `${window.innerHeight - rect.bottom}px`
-}
-
 function toggleChat() {
   chatOpen.value = !chatOpen.value
-  if (chatOpen.value) {
-    nextTick(repositionChat)
-  }
 }
 
 onMounted(() => {
@@ -293,7 +278,6 @@ if (cookie.value !== 'accepted') {
             />
 
             <button
-              ref="chatBtnRef"
               class="w-full flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors cursor-pointer bg-primary text-white hover:bg-primary/90"
               :class="collapsed ? 'p-2' : 'px-2.5 py-2'"
               @click="toggleChat"
@@ -316,9 +300,9 @@ if (cookie.value !== 'accepted') {
 
         <!-- HubSpot inline-embed container — positioned by toggleChat() -->
         <div
-          ref="chatWrapperRef"
           class="fixed z-50 rounded-lg shadow-xl"
-          :style="{ width: '376px', height: '500px', left: chatOpen ? undefined : '-9999px' }"
+          :class="chatOpen ? 'bottom-16 left-[280px]' : '-left-full'"
+          style="width: 376px; height: 500px;"
         >
           <button
             class="absolute top-2 right-2 z-10 flex items-center justify-center size-7 rounded-full bg-black/40 hover:bg-black/60 text-white cursor-pointer transition-colors"
