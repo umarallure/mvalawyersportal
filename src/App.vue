@@ -9,9 +9,10 @@ import { useAuth } from './composables/useAuth'
 type HubSpotWindow = Window & typeof globalThis & {
   HubSpotConversations?: {
     widget?: {
-      refresh?: () => void
+      load?: () => void
       remove?: () => void
     }
+    on?: (event: string, callback: () => void) => void
   }
   hsConversationsOnReady?: Array<() => void>
 }
@@ -22,6 +23,7 @@ const auth = useAuth()
 
 const open = ref(false)
 const sidebarCollapsed = ref(false)
+const chatOpen = ref(false)
 let collapsedBeforeGuide = false
 
 const isPublicPage = computed(() =>
@@ -43,31 +45,34 @@ function withHubSpotReady(callback: () => void) {
   w.hsConversationsOnReady.push(callback)
 }
 
-function syncHubSpotChat() {
+function loadHubSpotWidget() {
   withHubSpotReady(() => {
-    window.setTimeout(() => {
-      const widget = (window as HubSpotWindow).HubSpotConversations?.widget
-      if (!widget) return
+    const widget = (window as HubSpotWindow).HubSpotConversations?.widget
+    if (!widget) return
 
-      if (isPublicPage.value) {
-        widget.remove?.()
-      } else {
-        widget.refresh?.()
-      }
-    }, 200)
+    if (isPublicPage.value) {
+      chatOpen.value = false
+      widget.remove?.()
+    } else {
+      widget.load?.()
+    }
   })
+}
+
+function toggleChat() {
+  chatOpen.value = !chatOpen.value
 }
 
 onMounted(() => {
   auth.init().catch(() => {})
-  syncHubSpotChat()
+  loadHubSpotWidget()
 })
 
 watch(
   () => route.fullPath,
   async () => {
     await nextTick()
-    syncHubSpotChat()
+    loadHubSpotWidget()
   }
 )
 
@@ -271,6 +276,15 @@ if (cookie.value !== 'accepted') {
               tooltip
               class="mt-auto"
             />
+
+            <button
+              class="w-full flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors cursor-pointer bg-primary text-white hover:bg-primary/90"
+              :class="collapsed ? 'p-2' : 'px-2.5 py-2'"
+              @click="toggleChat"
+            >
+              <UIcon name="i-lucide-message-circle" class="size-5 shrink-0" />
+              <span v-if="!collapsed" class="truncate">Chat With Us</span>
+            </button>
           </template>
 
           <template #footer="{ collapsed }">
@@ -283,6 +297,24 @@ if (cookie.value !== 'accepted') {
         <RouterView />
 
         <NotificationsSlideover />
+
+        <!-- HubSpot inline-embed container — positioned by toggleChat() -->
+        <div
+          class="fixed z-50 rounded-lg shadow-xl"
+          :class="chatOpen ? 'bottom-16 left-[280px]' : '-left-full'"
+          style="width: 376px; height: 500px;"
+        >
+          <button
+            class="absolute top-2 right-2 z-10 flex items-center justify-center size-7 rounded-full bg-black/40 hover:bg-black/60 text-white cursor-pointer transition-colors"
+            @click="toggleChat"
+          >
+            <UIcon name="i-lucide-x" class="size-4" />
+          </button>
+          <div
+            id="hs-chat-embed"
+            class="w-full h-full overflow-hidden rounded-lg"
+          />
+        </div>
       </UDashboardGroup>
     </UApp>
   </Suspense>

@@ -73,13 +73,19 @@ textarea {
   font-family: inherit;
 }
 
+/* ── HubSpot: we use inlineEmbedSelector so the floating widget should never appear.
+   Safety fallback in case HubSpot still creates it. ── */
 #hubspot-messages-iframe-container {
-  color-scheme: light !important;
-  background: transparent !important;
+  display: none !important;
 }
 
-#hubspot-messages-iframe-container iframe {
-  background: transparent !important;
+/* Force HubSpot's inner wrappers + iframe to fill our sized container */
+#hs-chat-embed > *,
+#hs-chat-embed > * > *,
+#hs-chat-embed iframe {
+  width: 100% !important;
+  height: 100% !important;
+  border: none !important;
   color-scheme: light !important;
 }
 
