@@ -102,10 +102,12 @@ const _useAuth = () => {
     state.value.loading = true
     const { error } = await supabase.auth.signOut()
     state.value.loading = false
-    if (error) throw error
+    // Always clear local state even if the server call fails
+    // (e.g. 403 when session token is already expired in production)
     state.value.session = null
     state.value.user = null
     state.value.profile = null
+    if (error) console.warn('[auth] signOut server error (local session cleared):', error.message)
   }
 
   return {

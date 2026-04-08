@@ -510,7 +510,6 @@ const showMonthGrowth = computed(() =>
 
     <template #body>
       <div class="flex flex-col gap-6">
-
         <!-- ═══ KPI Strip ═══ -->
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4 kpi-strip">
           <div class="ap-fade-in">
@@ -594,7 +593,6 @@ const showMonthGrowth = computed(() =>
 
         <!-- ═══ Main Row — Trend Chart + Action Center ═══ -->
         <div class="grid gap-5 lg:grid-cols-3">
-
           <!-- Invoice Trend -->
           <div class="lg:col-span-2 ap-fade-in ap-delay-4 flex flex-col overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm">
             <div class="flex flex-col gap-4 border-b border-black/[0.06] dark:border-white/[0.06] px-5 py-4 xl:flex-row xl:items-center xl:justify-between">
@@ -715,7 +713,6 @@ const showMonthGrowth = computed(() =>
 
           <!-- Action Center + Distribution -->
           <div class="ap-fade-in ap-delay-5 flex flex-col gap-5">
-
             <!-- Quick Actions -->
             <div class="overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm p-5">
               <div class="mb-4 flex items-center gap-1.5">
@@ -736,7 +733,9 @@ const showMonthGrowth = computed(() =>
                   </div>
                   <div class="min-w-0 flex-1">
                     <span class="font-medium text-highlighted text-[13px]">Place New Order</span>
-                    <p class="text-[11px] text-muted mt-0.5">Create a new case order</p>
+                    <p class="text-[11px] text-muted mt-0.5">
+                      Create a new case order
+                    </p>
                   </div>
                   <UIcon name="i-lucide-chevron-right" class="text-xs text-muted/50 transition-all duration-200 group-hover:text-[var(--ap-accent)] group-hover:translate-x-0.5" />
                 </button>
@@ -750,7 +749,9 @@ const showMonthGrowth = computed(() =>
                   </div>
                   <div class="min-w-0 flex-1">
                     <span class="font-medium text-highlighted text-[13px]">Create Invoice</span>
-                    <p class="text-[11px] text-muted mt-0.5">Generate a new invoice</p>
+                    <p class="text-[11px] text-muted mt-0.5">
+                      Generate a new invoice
+                    </p>
                   </div>
                   <UIcon name="i-lucide-chevron-right" class="text-xs text-muted/50 transition-all duration-200 group-hover:text-amber-400 group-hover:translate-x-0.5" />
                 </button>
@@ -763,7 +764,9 @@ const showMonthGrowth = computed(() =>
                   </div>
                   <div class="min-w-0 flex-1">
                     <span class="font-medium text-highlighted text-[13px]">View Retainers</span>
-                    <p class="text-[11px] text-muted mt-0.5">Browse your case retainers</p>
+                    <p class="text-[11px] text-muted mt-0.5">
+                      Browse your case retainers
+                    </p>
                   </div>
                   <UIcon name="i-lucide-chevron-right" class="text-xs text-muted/50 transition-all duration-200 group-hover:text-orange-400 group-hover:translate-x-0.5" />
                 </button>
@@ -833,7 +836,6 @@ const showMonthGrowth = computed(() =>
 
         <!-- ═══ Tabbed Workbench ═══ -->
         <div class="ap-fade-in ap-delay-6 overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm">
-
           <!-- Tab Header -->
           <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/[0.06] px-5">
             <div class="flex items-center gap-4">
@@ -879,7 +881,7 @@ const showMonthGrowth = computed(() =>
               @click="router.push(
                 activeWorkbenchTab === 'retainers' ? '/retainers'
                 : activeWorkbenchTab === 'orders' ? '/fulfillment'
-                : '/invoicing'
+                  : '/invoicing'
               )"
             >
               See All
@@ -899,17 +901,27 @@ const showMonthGrowth = computed(() =>
                 <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--ap-accent)]/10 mb-3">
                   <UIcon name="i-lucide-inbox" class="text-xl text-[var(--ap-accent)]/50" />
                 </div>
-                <p class="text-sm text-muted">No retainers found</p>
+                <p class="text-sm text-muted">
+                  No retainers found
+                </p>
               </div>
             </div>
             <div v-else class="overflow-auto dash-scroll">
               <table class="w-full">
                 <thead>
                   <tr class="border-b border-black/[0.04] dark:border-white/[0.04] bg-black/[0.01] dark:bg-white/[0.01]">
-                    <th class="px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted">Client</th>
-                    <th class="hidden px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted sm:table-cell">Phone</th>
-                    <th class="hidden px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted sm:table-cell">Status</th>
-                    <th class="px-5 py-2.5 text-center text-[10px] font-semibold uppercase tracking-widest text-muted">Invoice</th>
+                    <th class="px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted">
+                      Client
+                    </th>
+                    <th class="hidden px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted sm:table-cell">
+                      Phone
+                    </th>
+                    <th class="hidden px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-muted sm:table-cell">
+                      Status
+                    </th>
+                    <th class="px-5 py-2.5 text-center text-[10px] font-semibold uppercase tracking-widest text-muted">
+                      Invoice
+                    </th>
                     <th class="px-5 py-2.5 text-right text-[10px] font-semibold uppercase tracking-widest text-muted" />
                   </tr>
                 </thead>
@@ -983,7 +995,9 @@ const showMonthGrowth = computed(() =>
                 <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--ap-accent)]/10 mb-3">
                   <UIcon name="i-lucide-shopping-cart" class="text-xl text-[var(--ap-accent)]/50" />
                 </div>
-                <p class="text-sm text-muted">No orders placed yet</p>
+                <p class="text-sm text-muted">
+                  No orders placed yet
+                </p>
               </div>
             </div>
             <div v-else class="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -1042,7 +1056,9 @@ const showMonthGrowth = computed(() =>
                 <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/10 mb-3">
                   <UIcon name="i-lucide-receipt" class="text-xl text-amber-400/50" />
                 </div>
-                <p class="text-sm text-muted">No invoices yet</p>
+                <p class="text-sm text-muted">
+                  No invoices yet
+                </p>
                 <UButton
                   v-if="isAdminOrSuper"
                   color="primary"
@@ -1101,7 +1117,6 @@ const showMonthGrowth = computed(() =>
             </div>
           </template>
         </div>
-
       </div>
     </template>
   </UDashboardPanel>
