@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router'
 import usSvgFallbackRaw from '../assets/us.svg?raw'
 
 import { useAuth } from '../composables/useAuth'
@@ -64,13 +64,28 @@ const COLOR_NEUTRAL = '#d1d5db'
 const COLOR_GREEN = '#22c55e'
 const COLOR_YELLOW = '#eab308'
 const COLOR_RED = '#ef4444'
+// General Coverage palette
+const COLOR_GC_NOT_OPEN = '#94a3b8'
 const TEMPORARILY_UNAVAILABLE_STATE_CODES = ['CA'] as const
 const TEMPORARILY_UNAVAILABLE_STATE_SET = new Set<string>(TEMPORARILY_UNAVAILABLE_STATE_CODES)
 
 // ── Temporary: Commercial orders paused ──
 const COMMERCIAL_ORDERS_PAUSED = true
 
-const normalizeStateCode = (stateCode: string) => String(stateCode || '').trim().toUpperCase()
+const VALID_STATE_CODE_SET = new Set(US_STATES.map((state) => state.code))
+
+const normalizeStateCode = (stateCode: unknown) => String(stateCode || '').trim().toUpperCase()
+
+const normalizeValidStateCodes = (stateCodes: unknown) => {
+  if (!Array.isArray(stateCodes)) return [] as string[]
+
+  const codes = new Set<string>()
+  stateCodes.forEach((stateCode) => {
+    const code = normalizeStateCode(stateCode)
+    if (VALID_STATE_CODE_SET.has(code)) codes.add(code)
+  })
+  return Array.from(codes)
+}
 
 const isTemporarilyUnavailableState = (stateCode: string) => {
   return TEMPORARILY_UNAVAILABLE_STATE_SET.has(normalizeStateCode(stateCode))
@@ -356,6 +371,8 @@ const refreshAll = async () => {
   try {
     await refreshMyOrders()
     await refreshMyClosedOrders()
+    await loadBlockedStates()
+    await refreshGeneralCoverage()
     rebuildStatesFromMyOrders()
     applyMapColors()
   } finally {
@@ -390,10 +407,14 @@ watch(mapFilter, () => {
 
 const blockMode = ref(false)
 const blockedStateCodes = ref<string[]>([])
+const urgencyOrdersEnabled = ref(true)
+const urgencyOrderAccessModalOpen = ref(false)
 
 const blockedStateSet = computed(() => {
-  return new Set(blockedStateCodes.value.map((c) => String(c || '').trim().toUpperCase()).filter(Boolean))
+  return new Set(normalizeValidStateCodes(blockedStateCodes.value))
 })
+
+const canUseUrgencyOrders = computed(() => urgencyOrdersEnabled.value)
 
 const isStateUnavailableForOrdering = (stateCode: string) => {
   const code = normalizeStateCode(stateCode)
@@ -429,6 +450,7 @@ const loadBlockedStates = async () => {
   const userId = auth.state.value.user?.id ?? null
   if (!userId) {
     blockedStateCodes.value = []
+    urgencyOrdersEnabled.value = true
     maxOrderStates.value = DEFAULT_MAX_ORDER_STATES
     return
   }
@@ -436,11 +458,16 @@ const loadBlockedStates = async () => {
   try {
     const profile = await getAttorneyProfile(userId)
     const raw = (profile as unknown as Record<string, unknown>)?.blocked_states
-    const codes = Array.isArray(raw) ? (raw as string[]) : null
+    const codes = Array.isArray(raw) ? normalizeValidStateCodes(raw) : null
     if (codes) {
       blockedStateCodes.value = codes
       saveBlockedStatesToLocalStorage(codes)
+    } else {
+      blockedStateCodes.value = loadBlockedStatesFromLocalStorage()
     }
+
+    const rawUrgencyOrdersEnabled = (profile as unknown as Record<string, unknown>)?.urgency_orders_enabled
+    urgencyOrdersEnabled.value = rawUrgencyOrdersEnabled === false ? false : true
 
     const rawLimit = (profile as unknown as Record<string, unknown>)?.order_limit
     const n = Number(rawLimit)
@@ -450,9 +477,9 @@ const loadBlockedStates = async () => {
       maxOrderStates.value = DEFAULT_MAX_ORDER_STATES
     }
 
-    if (codes) return
+    return
   } catch {
-    // ignore
+    urgencyOrdersEnabled.value = true
   }
 
   blockedStateCodes.value = loadBlockedStatesFromLocalStorage()
@@ -679,6 +706,11 @@ const resetOrderForm = () => {
 }
 
 const openCreateOrder = () => {
+  if (!canUseUrgencyOrders.value) {
+    blockUrgencyOrderAccess()
+    return
+  }
+
   pendingStateCode.value = null
   createOrderOpen.value = true
   createOrderStep.value = 1
@@ -687,6 +719,11 @@ const openCreateOrder = () => {
 }
 
 const openCreateOrderForState = (stateCode: string) => {
+  if (!canUseUrgencyOrders.value) {
+    blockUrgencyOrderAccess()
+    return
+  }
+
   const code = String(stateCode || '').trim().toUpperCase()
   if (!code || isTemporarilyUnavailableState(code)) return
   pendingStateCode.value = code
@@ -816,6 +853,10 @@ const orderStateOptions = computed(() => {
 const submitCreateOrder = async () => {
   const userId = auth.state.value.user?.id ?? null
   if (!userId) return false
+  if (!canUseUrgencyOrders.value) {
+    blockUrgencyOrderAccess()
+    return false
+  }
 
   const stateCode = String(orderForm.value.stateCode || '').trim().toUpperCase()
   if (!stateCode) return false
@@ -906,9 +947,132 @@ const handleCreateOrderSubmit = async (close: () => void) => {
   }
 }
 
+// ═══ ORDER MAP VIEW SELECTOR ═══
+// Drives which section (map + legend + cards) is displayed. General Coverage
+// is the default selection when a user first visits the Order Map page.
+type OrderMapView = 'general_coverage' | 'urgency_order'
+
+const orderMapViewOptions = [
+  { label: 'General Coverage', value: 'general_coverage' },
+  { label: 'Urgency Order', value: 'urgency_order' }
+]
+
+const orderMapViewSelectUi = {
+  base: 'bg-primary text-white ring-primary hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-primary disabled:bg-primary/40 disabled:text-white/70',
+  value: 'font-semibold text-white',
+  trailingIcon: 'text-white'
+}
+
+const orderMapViewQueryValue: Record<OrderMapView, string> = {
+  general_coverage: 'general-coverage',
+  urgency_order: 'urgency-order'
+}
+
+const URGENCY_ORDER_ACCESS_MESSAGE = 'This account does not have permission to select Urgency Orders yet. You must complete General Coverage orders first to be eligible for Urgency Orders. Contact your account manager if you have any questions.'
+
+const firstQueryValue = (value: unknown) => Array.isArray(value) ? value[0] : value
+
+const parseOrderMapView = (value: unknown): OrderMapView => {
+  const raw = String(firstQueryValue(value) || '').trim().toLowerCase()
+  if (['urgency-order', 'urgency_order', 'urgency', 'orders'].includes(raw)) return 'urgency_order'
+  return 'general_coverage'
+}
+
+const showUrgencyOrderAccessModal = () => {
+  urgencyOrderAccessModalOpen.value = true
+}
+
+const replaceRouteWithGeneralCoverage = async (removeCreateOrderAction = false) => {
+  const query: Record<string, unknown> = {
+    ...route.query,
+    view: orderMapViewQueryValue.general_coverage
+  }
+
+  if (removeCreateOrderAction) {
+    delete query.action
+  }
+
+  await router.replace({ path: route.path, query: query as LocationQueryRaw })
+}
+
+const blockUrgencyOrderAccess = (removeCreateOrderAction = false) => {
+  blockMode.value = false
+  createOrderOpen.value = false
+  handleStateLeave()
+  showUrgencyOrderAccessModal()
+  void replaceRouteWithGeneralCoverage(removeCreateOrderAction)
+}
+
+const enforceUrgencyOrderAccessForRoute = async () => {
+  if (canUseUrgencyOrders.value) return false
+
+  const requestedUrgencyView = parseOrderMapView(route.query.view) === 'urgency_order'
+  const requestedCreateOrder = firstQueryValue(route.query.action) === 'create-order'
+  if (!requestedUrgencyView && !requestedCreateOrder) return false
+
+  blockMode.value = false
+  createOrderOpen.value = false
+  handleStateLeave()
+  showUrgencyOrderAccessModal()
+  await replaceRouteWithGeneralCoverage(requestedCreateOrder)
+  return true
+}
+
+const orderMapView = computed<OrderMapView>({
+  get: () => {
+    const view = parseOrderMapView(route.query.view)
+    if (view === 'urgency_order' && !canUseUrgencyOrders.value) return 'general_coverage'
+    return view
+  },
+  set: (view) => {
+    if (view === 'urgency_order' && !canUseUrgencyOrders.value) {
+      blockUrgencyOrderAccess()
+      return
+    }
+
+    const query = {
+      ...route.query,
+      view: orderMapViewQueryValue[view]
+    }
+
+    void router.replace({ path: route.path, query })
+  }
+})
+
+const isCoverageView = computed(() => orderMapView.value === 'general_coverage')
+const isUrgencyView = computed(() => orderMapView.value === 'urgency_order')
+
 // ═══ GENERAL COVERAGE ═══
-const ordersSectionView = ref<'orders' | 'coverage'>('orders')
 const existingGeneralCoverage = ref<GeneralCoverageRow | null>(null)
+
+const normalizeCoverageStateCodes = (stateCodes: unknown) => {
+  return normalizeValidStateCodes(stateCodes).filter((code) => !isTemporarilyUnavailableState(code))
+}
+
+const coveredStateSet = computed(() => {
+  const set = new Set<string>()
+  const codes = normalizeCoverageStateCodes(existingGeneralCoverage.value?.covered_states ?? [])
+  codes.forEach((c) => {
+    const code = normalizeStateCode(String(c))
+    if (code && VALID_STATE_CODE_SET.has(code)) set.add(code)
+  })
+  return set
+})
+
+const coveredStateCount = computed(() => coveredStateSet.value.size)
+
+const coverageStateCodes = computed(() => Array.from(coveredStateSet.value))
+
+const coverageHighTrafficCount = computed(() => coverageStateCodes.value.length)
+const coverageModerateTrafficCount = computed(() => 0)
+const coverageClosedCount = computed(() => 0)
+
+const getCoverageStateFillColor = (stateCode: string) => {
+  const code = normalizeStateCode(stateCode)
+  if (!code) return COLOR_GC_NOT_OPEN
+  if (isTemporarilyUnavailableState(code)) return `url(#${TEMPORARILY_UNAVAILABLE_PATTERN_ID})`
+  return coveredStateSet.value.has(code) ? COLOR_GREEN : COLOR_GC_NOT_OPEN
+}
 const hasGeneralCoverage = computed(() => !!existingGeneralCoverage.value)
 
 const generalCoverageOpen = ref(false)
@@ -927,8 +1091,17 @@ const gcVerifyError = computed(() => {
   return `Type ${orderVerifyPhrase} to continue.`
 })
 
+const GC_CASE_CATEGORY_CONSUMER = 'Consumer Cases'
+const GC_CASE_CATEGORY_CONSUMER_COMMERCIAL = 'Consumer and Commercial Cases'
+
+const gcCaseCategoryOptions = [
+  { label: 'Consumer Cases', value: GC_CASE_CATEGORY_CONSUMER },
+  { label: 'Consumer and Commercial Cases', value: GC_CASE_CATEGORY_CONSUMER_COMMERCIAL }
+]
+
 const gcForm = ref({
   coveredStates: [] as string[],
+  caseCategory: GC_CASE_CATEGORY_CONSUMER as string,
   injurySeverity: [] as string[],
   liabilityStatus: 'clear_only' as 'clear_only' | 'disputed_ok',
   insuranceStatus: 'insured_only' as 'insured_only' | 'uninsured_ok',
@@ -948,12 +1121,14 @@ const gcStateOptions = computed(() => {
   return US_STATES
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name))
+    .filter((s) => !isTemporarilyUnavailableState(s.code))
     .map((s) => ({ label: `${s.name} (${s.code})`, value: s.code }))
 })
 
 const resetGcForm = () => {
   gcForm.value = {
     coveredStates: [],
+    caseCategory: GC_CASE_CATEGORY_CONSUMER,
     injurySeverity: [],
     liabilityStatus: 'clear_only',
     insuranceStatus: 'insured_only',
@@ -965,7 +1140,8 @@ const resetGcForm = () => {
 
 const populateGcFormFromExisting = (gc: GeneralCoverageRow) => {
   gcForm.value = {
-    coveredStates: [...gc.covered_states],
+    coveredStates: normalizeCoverageStateCodes(gc.covered_states),
+    caseCategory: gc.case_category || GC_CASE_CATEGORY_CONSUMER,
     injurySeverity: [...gc.injury_severity],
     liabilityStatus: gc.liability_status as 'clear_only' | 'disputed_ok',
     insuranceStatus: gc.insurance_status as 'insured_only' | 'uninsured_ok',
@@ -1018,14 +1194,15 @@ const goToGcStep2 = () => {
 const submitGeneralCoverage = async () => {
   const userId = auth.state.value.user?.id ?? null
   if (!userId) return false
-  if (!gcForm.value.coveredStates.length) return false
+  const coveredStates = normalizeCoverageStateCodes(gcForm.value.coveredStates)
+  if (!coveredStates.length) return false
 
   await ensureAttorneyProfileExists(userId)
 
   const result = await upsertGeneralCoverage({
     attorney_id: userId,
-    covered_states: gcForm.value.coveredStates,
-    case_category: 'Consumer Cases',
+    covered_states: coveredStates,
+    case_category: gcForm.value.caseCategory,
     injury_severity: gcForm.value.injurySeverity,
     liability_status: gcForm.value.liabilityStatus,
     insurance_status: gcForm.value.insuranceStatus,
@@ -1118,6 +1295,8 @@ const applyMapColors = () => {
   ensureHatchPattern(svg as SVGSVGElement, BLOCKED_PATTERN_ID, '#f3f4f6', '#9ca3af')
   ensureHatchPattern(svg as SVGSVGElement, TEMPORARILY_UNAVAILABLE_PATTERN_ID, '#fff7ed', '#f97316')
 
+  const coverageView = isCoverageView.value
+
   const paths = svg.querySelectorAll(MAP_PATH_SELECTOR)
   paths.forEach((p) => {
     const path = p as SVGPathElement
@@ -1125,30 +1304,40 @@ const applyMapColors = () => {
     if (!code) return
     const normalizedCode = normalizeStateCode(code)
     const state = stateByCode.value.get(normalizedCode)
-    const isBlocked = blockedStateSet.value.has(normalizedCode)
+    const isBlocked = !coverageView && blockedStateSet.value.has(normalizedCode)
     const isTemporarilyUnavailable = isTemporarilyUnavailableState(normalizedCode)
     const isUnavailable = isBlocked || isTemporarilyUnavailable
 
     const openOrders = Number(state?.openOrders) || 0
-    const matchesFilter = mapFilter.value === 'all'
-      ? true
-      : mapFilter.value === 'no_orders'
-        ? !isUnavailable && openOrders === 0
-        : mapFilter.value === 'has_orders'
-          ? !isUnavailable && openOrders > 0
-          : isUnavailable
 
-    const fill = isTemporarilyUnavailable
-      ? `url(#${TEMPORARILY_UNAVAILABLE_PATTERN_ID})`
-      : isBlocked
-        ? `url(#${BLOCKED_PATTERN_ID})`
-      : state
-        ? getStateFillColor(state.code)
-        : COLOR_NEUTRAL
+    // Urgency filters never affect General Coverage; the two map modes are independent.
+    const matchesFilter = coverageView
+      ? true
+      : mapFilter.value === 'all'
+        ? true
+        : mapFilter.value === 'no_orders'
+          ? !isUnavailable && openOrders === 0
+          : mapFilter.value === 'has_orders'
+            ? !isUnavailable && openOrders > 0
+            : isUnavailable
+
+    let fill: string
+    if (coverageView) {
+      fill = getCoverageStateFillColor(normalizedCode)
+    } else if (isTemporarilyUnavailable) {
+      fill = `url(#${TEMPORARILY_UNAVAILABLE_PATTERN_ID})`
+    } else if (isBlocked) {
+      fill = `url(#${BLOCKED_PATTERN_ID})`
+    } else if (state) {
+      fill = getStateFillColor(state.code)
+    } else {
+      fill = COLOR_NEUTRAL
+    }
 
     const stroke = '#0b0b0b'
     const strokeWidth = '0.8'
-    const isInteractive = !isBlocked && (!isTemporarilyUnavailable || openOrders > 0)
+    // Clicks in General Coverage are view-only — no state is interactive.
+    const isInteractive = !coverageView && !isBlocked && (!isTemporarilyUnavailable || openOrders > 0)
 
     path.style.setProperty('fill', fill, 'important')
     path.style.setProperty('stroke', stroke, 'important')
@@ -1225,7 +1414,7 @@ const handleStateEnter = (evt: Event) => {
   const state = stateByCode.value.get(normalizedCode) ?? null
   if (!state) return
 
-  tooltip.value.blocked = blockedStateSet.value.has(normalizedCode)
+  tooltip.value.blocked = isUrgencyView.value && blockedStateSet.value.has(normalizedCode)
 
   tooltip.value.state = state
   tooltip.value.myOrder = myOrderByStateCode.value.get(normalizedCode) ?? null
@@ -1269,19 +1458,22 @@ const handleStateClick = (evt: Event) => {
   const state = stateByCode.value.get(normalizedCode) ?? null
   if (!state) return
 
+  // Block-toggle is an Urgency Order tool only.
+  if (isUrgencyView.value && blockMode.value) {
+    const next = new Set(blockedStateSet.value)
+    if (next.has(normalizedCode)) next.delete(normalizedCode)
+    else next.add(normalizedCode)
+    blockedStateCodes.value = Array.from(next)
+    return
+  }
+
+  if (isCoverageView.value) return
+
   const stateOrders = openOrdersForStateCode(normalizedCode)
   if (isTemporarilyUnavailableState(normalizedCode)) {
     if (stateOrders.length > 0) {
       router.push(`/orders/${stateOrders[0].id}?state=${normalizedCode}`)
     }
-    return
-  }
-
-  if (blockMode.value) {
-    const next = new Set(blockedStateSet.value)
-    if (next.has(normalizedCode)) next.delete(normalizedCode)
-    else next.add(normalizedCode)
-    blockedStateCodes.value = Array.from(next)
     return
   }
 
@@ -1380,6 +1572,7 @@ onMounted(() => {
       loading.value = false
     }
 
+    await enforceUrgencyOrderAccessForRoute()
     await mountSvg()
     bindSvgEvents()
     applyMapColors()
@@ -1390,10 +1583,17 @@ onMounted(() => {
       mapRoot.value.classList.add('ap-blur-in')
     }
 
-    // Auto-open create order modal when navigated from Product Portal
-    if (route.query.action === 'create-order' && !isAccountInactive.value) {
+    // Auto-open create order modal when navigated from Product Portal or a deep link.
+    if (firstQueryValue(route.query.action) === 'create-order' && !isAccountInactive.value) {
+      if (await enforceUrgencyOrderAccessForRoute()) return
+
+      const restQuery = Object.fromEntries(Object.entries(route.query).filter(([key]) => key !== 'action'))
+      const query = {
+        ...restQuery,
+        view: orderMapViewQueryValue.urgency_order
+      }
+      await router.replace({ path: route.path, query })
       openCreateOrder()
-      router.replace({ path: route.path, query: {} })
     }
   }
 
@@ -1416,6 +1616,25 @@ watch(myOpenOrders, () => {
 watch(myClosedOrders, () => {
   applyMapColors()
 })
+
+watch(orderMapView, (view) => {
+  if (view === 'general_coverage') {
+    blockMode.value = false
+  }
+  handleStateLeave()
+  applyMapColors()
+})
+
+watch(
+  () => [route.query.view, route.query.action, urgencyOrdersEnabled.value],
+  () => {
+    void enforceUrgencyOrderAccessForRoute()
+  }
+)
+
+watch(existingGeneralCoverage, () => {
+  if (isCoverageView.value) applyMapColors()
+})
 </script>
 
 <template>
@@ -1433,94 +1652,6 @@ watch(myClosedOrders, () => {
               :description="orderMapHints.createOrder.description"
               :guide-target="orderMapHints.createOrder.guideTarget"
             />
-
-            <UTooltip v-if="isAccountInactive" text="Locked until Onboarding is Completed">
-              <span class="inline-flex opacity-50 cursor-not-allowed">
-                <UButton
-                  color="neutral"
-                  :variant="blockMode ? 'solid' : 'outline'"
-                  :icon="blockMode ? 'i-lucide-check' : 'i-lucide-ban'"
-                  disabled
-                >
-                  {{ blockMode ? 'Done blocking' : 'Block states' }}
-                </UButton>
-              </span>
-            </UTooltip>
-            <UButton
-              v-else
-              :color="blockMode ? 'primary' : 'neutral'"
-              :variant="blockMode ? 'solid' : 'outline'"
-              :icon="blockMode ? 'i-lucide-check' : 'i-lucide-ban'"
-              @click="() => { blockMode = !blockMode }"
-            >
-              {{ blockMode ? 'Done blocking' : 'Block states' }}
-            </UButton>
-
-            <UTooltip v-if="isAccountInactive" text="Locked until Onboarding is Completed">
-              <span class="inline-flex opacity-50 cursor-not-allowed">
-                <UButton
-                  color="primary"
-                  variant="solid"
-                  icon="i-lucide-plus"
-                  disabled
-                >
-                  Create Order
-                </UButton>
-              </span>
-            </UTooltip>
-            <UTooltip v-else-if="isAtMaxOrderStates && orderStateOptions.length === 0" :text="`You have active orders in ${activeOrderStateCount} states (max ${MAX_ORDER_STATES}) and all are at full capacity. Contact your account manager to increase your state limit.`">
-              <span class="inline-flex opacity-50 cursor-not-allowed">
-                <UButton
-                  color="primary"
-                  variant="solid"
-                  icon="i-lucide-plus"
-                  disabled
-                >
-                  Create Order
-                </UButton>
-              </span>
-            </UTooltip>
-            <UTooltip v-else-if="isAtMaxOrderStates && orderStateOptions.length > 0" :text="`State limit reached (${activeOrderStateCount}/${MAX_ORDER_STATES}). You can only add orders in your existing states.`">
-              <UButton
-                color="primary"
-                variant="solid"
-                icon="i-lucide-plus"
-                @click="openCreateOrder"
-              >
-                Create Order
-              </UButton>
-            </UTooltip>
-            <UButton
-              v-else
-              color="primary"
-              variant="solid"
-              icon="i-lucide-plus"
-              @click="openCreateOrder"
-            >
-              Create Order
-            </UButton>
-
-            <UTooltip v-if="isAccountInactive" text="Locked until Onboarding is Completed">
-              <span class="inline-flex opacity-50 cursor-not-allowed">
-                <UButton
-                  color="primary"
-                  variant="solid"
-                  icon="i-lucide-plus"
-                  disabled
-                >
-                  Create General Coverage
-                </UButton>
-              </span>
-            </UTooltip>
-            <UButton
-              v-else
-              color="primary"
-              variant="solid"
-              :icon="hasGeneralCoverage ? 'i-lucide-pencil' : 'i-lucide-plus'"
-              @click="openGeneralCoverage"
-            >
-              {{ hasGeneralCoverage ? 'Edit General Coverage' : 'Create General Coverage' }}
-            </UButton>
 
             <UTooltip v-if="isAccountInactive" text="Locked until Onboarding is Completed">
               <span class="inline-flex opacity-50 cursor-not-allowed">
@@ -1545,6 +1676,118 @@ watch(myClosedOrders, () => {
             >
               Refresh
             </UButton>
+
+            <template v-if="isUrgencyView">
+              <UTooltip v-if="isAccountInactive" text="Locked until Onboarding is Completed">
+                <span class="inline-flex opacity-50 cursor-not-allowed">
+                  <UButton
+                    color="neutral"
+                    :variant="blockMode ? 'solid' : 'outline'"
+                    :icon="blockMode ? 'i-lucide-check' : 'i-lucide-ban'"
+                    disabled
+                  >
+                    {{ blockMode ? 'Done blocking' : 'Block states' }}
+                  </UButton>
+                </span>
+              </UTooltip>
+              <UButton
+                v-else
+                :color="blockMode ? 'primary' : 'neutral'"
+                :variant="blockMode ? 'solid' : 'outline'"
+                :icon="blockMode ? 'i-lucide-check' : 'i-lucide-ban'"
+                @click="() => { blockMode = !blockMode }"
+              >
+                {{ blockMode ? 'Done blocking' : 'Block states' }}
+              </UButton>
+            </template>
+
+            <template v-if="isUrgencyView">
+              <UTooltip v-if="isAccountInactive" text="Locked until Onboarding is Completed">
+                <span class="inline-flex opacity-50 cursor-not-allowed">
+                  <UButton
+                    color="primary"
+                    variant="solid"
+                    icon="i-lucide-plus"
+                    disabled
+                  >
+                    Create Urgency Order
+                  </UButton>
+                </span>
+              </UTooltip>
+              <UTooltip
+                v-else-if="isAtMaxOrderStates && orderStateOptions.length === 0"
+                :text="`You have active orders in ${activeOrderStateCount} states (max ${MAX_ORDER_STATES}) and all are at full capacity. Contact your account manager to increase your state limit.`"
+              >
+                <span class="inline-flex opacity-50 cursor-not-allowed">
+                  <UButton
+                    color="primary"
+                    variant="solid"
+                    icon="i-lucide-plus"
+                    disabled
+                  >
+                    Create Urgency Order
+                  </UButton>
+                </span>
+              </UTooltip>
+              <UTooltip
+                v-else-if="isAtMaxOrderStates && orderStateOptions.length > 0"
+                :text="`State limit reached (${activeOrderStateCount}/${MAX_ORDER_STATES}). You can only add orders in your existing states.`"
+              >
+                <UButton
+                  color="primary"
+                  variant="solid"
+                  icon="i-lucide-plus"
+                  @click="openCreateOrder"
+                >
+                  Create Urgency Order
+                </UButton>
+              </UTooltip>
+              <UButton
+                v-else
+                color="primary"
+                variant="solid"
+                icon="i-lucide-plus"
+                @click="openCreateOrder"
+              >
+                Create Urgency Order
+              </UButton>
+            </template>
+
+            <template v-else>
+              <UTooltip v-if="isAccountInactive" text="Locked until Onboarding is Completed">
+                <span class="inline-flex opacity-50 cursor-not-allowed">
+                  <UButton
+                    color="primary"
+                    variant="solid"
+                    icon="i-lucide-plus"
+                    disabled
+                  >
+                    Create General Coverage
+                  </UButton>
+                </span>
+              </UTooltip>
+              <UButton
+                v-else
+                color="primary"
+                variant="solid"
+                :icon="hasGeneralCoverage ? 'i-lucide-pencil' : 'i-lucide-plus'"
+                @click="openGeneralCoverage"
+              >
+                {{ hasGeneralCoverage ? 'Edit General Coverage' : 'Create General Coverage' }}
+              </UButton>
+            </template>
+
+            <USelect
+              v-model="orderMapView"
+              :items="orderMapViewOptions"
+              value-key="value"
+              label-key="label"
+              class="min-w-44"
+              color="primary"
+              variant="subtle"
+              :ui="orderMapViewSelectUi"
+              :disabled="isAccountInactive"
+            />
           </div>
         </template>
       </UDashboardNavbar>
@@ -1552,6 +1795,32 @@ watch(myClosedOrders, () => {
 
     <template #body>
       <div class="relative flex flex-col gap-5">
+        <UModal
+          :open="urgencyOrderAccessModalOpen"
+          title="Urgency Orders unavailable"
+          :dismissible="true"
+          @update:open="(value: boolean) => { urgencyOrderAccessModalOpen = value }"
+        >
+          <template #body>
+            <div class="space-y-4">
+              <div class="flex items-start gap-3">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10">
+                  <UIcon name="i-lucide-lock" class="text-lg text-amber-500" />
+                </div>
+                <p class="text-sm leading-6 text-muted">
+                  {{ URGENCY_ORDER_ACCESS_MESSAGE }}
+                </p>
+              </div>
+
+              <div class="flex justify-end">
+                <UButton color="primary" variant="solid" @click="urgencyOrderAccessModalOpen = false">
+                  Got it
+                </UButton>
+              </div>
+            </div>
+          </template>
+        </UModal>
+
         <!-- Locked Overlay for Inactive Accounts -->
         <div
           v-if="isAccountInactive"
@@ -1589,7 +1858,7 @@ watch(myClosedOrders, () => {
         </div>
         <!-- ═══ 5-State Limit Banner ═══ -->
         <div
-          v-if="isAtMaxOrderStates && !isAccountInactive"
+          v-if="isUrgencyView && isAtMaxOrderStates && !isAccountInactive"
           class="ap-fade-in ap-delay-1 flex items-center gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/[0.06] px-5 py-3.5"
         >
           <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/10">
@@ -1617,7 +1886,7 @@ watch(myClosedOrders, () => {
         </div>
 
         <UAlert
-          v-if="blockMode"
+          v-if="isUrgencyView && blockMode"
           color="neutral"
           variant="subtle"
           title="Blocking mode"
@@ -2019,14 +2288,14 @@ watch(myClosedOrders, () => {
                     </div>
                   </UFormField>
 
-                  <UFormField label="Case category">
+                  <UFormField label="Case category" required>
                     <USelect
-                      model-value="Consumer Cases"
-                      :items="[{ label: 'Consumer Cases', value: 'Consumer Cases' }]"
+                      v-model="gcForm.caseCategory"
+                      :items="gcCaseCategoryOptions"
                       class="w-full"
                       value-key="value"
                       label-key="label"
-                      disabled
+                      placeholder="Select case category"
                     />
                   </UFormField>
 
@@ -2189,7 +2458,7 @@ watch(myClosedOrders, () => {
             />
 
             <!-- Stats overlay — absolute on desktop, below map on mobile -->
-            <div class="hidden md:block absolute top-3 left-3 z-[5] w-32 overflow-hidden rounded-xl border border-black/[0.06] bg-white/90 dark:border-white/[0.08] dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm">
+            <div v-if="isUrgencyView" class="hidden md:block absolute top-3 left-3 z-[5] w-32 overflow-hidden rounded-xl border border-black/[0.06] bg-white/90 dark:border-white/[0.08] dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm">
               <div class="flex flex-col divide-y divide-black/[0.06] dark:divide-white/[0.08]">
                 <div class="ap-fade-in-left relative px-3 py-2.5 pl-5" style="animation-delay: 400ms">
                   <div class="absolute inset-y-0 left-0 w-1 bg-orange-500 dark:bg-orange-600" />
@@ -2214,9 +2483,38 @@ watch(myClosedOrders, () => {
               </div>
             </div>
 
+            <!-- General Coverage stats overlay -->
+            <div v-else class="hidden md:block absolute top-3 left-3 z-[5] w-40 overflow-hidden rounded-xl border border-black/[0.06] bg-white/90 dark:border-white/[0.08] dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm">
+              <div class="flex flex-col divide-y divide-black/[0.06] dark:divide-white/[0.08]">
+                <div class="ap-fade-in-left relative px-3 py-2.5 pl-5" style="animation-delay: 400ms">
+                  <div class="absolute inset-y-0 left-0 w-1 bg-[var(--ap-accent)]" />
+                  <div class="text-[10px] font-medium uppercase tracking-wider text-[var(--ap-accent)]">Covered States</div>
+                  <div class="mt-0.5 text-lg font-bold text-[var(--ap-accent)] tabular-nums">{{ coveredStateCount }}</div>
+                </div>
+                <div class="ap-fade-in-left relative px-3 py-2.5 pl-5" style="animation-delay: 500ms">
+                  <div class="absolute inset-y-0 left-0 w-1 bg-green-400" />
+                  <div class="text-[10px] font-medium uppercase tracking-wider text-green-500 dark:text-green-400">High Traffic</div>
+                  <div class="mt-0.5 text-lg font-bold text-green-500 dark:text-green-400 tabular-nums">
+                    {{ coverageHighTrafficCount }}
+                  </div>
+                </div>
+                <div class="ap-fade-in-left relative px-3 py-2.5 pl-5" style="animation-delay: 600ms">
+                  <div class="absolute inset-y-0 left-0 w-1 bg-yellow-400" />
+                  <div class="text-[10px] font-medium uppercase tracking-wider text-yellow-500 dark:text-yellow-400">Moderate Traffic</div>
+                  <div class="mt-0.5 text-lg font-bold text-yellow-500 dark:text-yellow-400 tabular-nums">{{ coverageModerateTrafficCount }}</div>
+                </div>
+                <div class="ap-fade-in-left relative px-3 py-2.5 pl-5" style="animation-delay: 700ms">
+                  <div class="absolute inset-y-0 left-0 w-1 bg-red-400" />
+                  <div class="text-[10px] font-medium uppercase tracking-wider text-red-400 dark:text-red-400">Closed</div>
+                  <div class="mt-0.5 text-lg font-bold text-red-500 dark:text-red-400 tabular-nums">{{ coverageClosedCount }}</div>
+                </div>
+              </div>
+            </div>
+
             <!-- Legend & Filter overlay -->
             <div class="ap-fade-in ap-delay-4 absolute bottom-0 left-1/2 z-[5] -translate-x-1/2 flex flex-wrap md:flex-nowrap items-center gap-x-2 gap-y-1.5 md:gap-x-4 md:whitespace-nowrap rounded-xl border border-black/[0.06] bg-white/90 dark:border-white/[0.08] dark:bg-[#1a1a1a]/60 px-2.5 py-2 md:px-4 md:py-2.5 shadow-lg backdrop-blur-sm max-w-[calc(100%-1.5rem)] md:max-w-none">
-              <div class="flex flex-wrap md:flex-nowrap items-center gap-2 md:gap-3">
+              <!-- Urgency Order legend -->
+              <div v-if="isUrgencyView" class="flex flex-wrap md:flex-nowrap items-center gap-2 md:gap-3">
                 <div class="flex items-center gap-1.5">
                   <div class="size-2.5 rounded-full bg-gray-300" />
                   <span class="text-[10px] text-gray-500 dark:text-gray-400">No orders</span>
@@ -2248,7 +2546,42 @@ watch(myClosedOrders, () => {
                   <span class="text-[10px] text-gray-500 dark:text-gray-400">Temporarily unavailable</span>
                 </div>
               </div>
-              <div class="flex items-center gap-2">
+
+              <!-- General Coverage legend -->
+              <div v-else class="flex flex-wrap md:flex-nowrap items-center gap-2 md:gap-3">
+                <div class="flex items-center gap-1.5">
+                  <div class="size-2.5 rounded-full" style="background-color: #94a3b8;" />
+                  <span class="text-[10px] text-gray-500 dark:text-gray-400">Not open</span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <div class="size-2.5 rounded-full bg-green-500" />
+                  <span class="text-[10px] text-gray-500 dark:text-gray-400">High traffic</span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <div class="size-2.5 rounded-full bg-yellow-500" />
+                  <span class="text-[10px] text-gray-500 dark:text-gray-400">Moderate traffic</span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <div class="size-2.5 rounded-full bg-red-500" />
+                  <span class="text-[10px] text-gray-500 dark:text-gray-400">Closed</span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <div
+                    class="size-2.5 rounded-full"
+                    style="background: repeating-linear-gradient(45deg, #9ca3af 0 2px, #f3f4f6 2px 6px);"
+                  />
+                  <span class="text-[10px] text-gray-500 dark:text-gray-400">Not licensed</span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <div
+                    class="size-2.5 rounded-full"
+                    style="background: repeating-linear-gradient(45deg, #f97316 0 3px, #fff7ed 3px 7px);"
+                  />
+                  <span class="text-[10px] text-gray-500 dark:text-gray-400">Temporarily unavailable</span>
+                </div>
+              </div>
+
+              <div v-if="isUrgencyView" class="flex items-center gap-2">
                 <span
                   class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-semibold"
                   :class="isAtMaxOrderStates
@@ -2258,7 +2591,18 @@ watch(myClosedOrders, () => {
                   <UIcon :name="isAtMaxOrderStates ? 'i-lucide-alert-triangle' : 'i-lucide-map-pin'" class="text-[9px]" />
                   {{ activeOrderStateCount }}/{{ MAX_ORDER_STATES }}
                 </span>
-                <USelect v-model="mapFilter" :items="mapFilterOptions" size="xs" class="min-w-28 md:min-w-36" />
+                <USelect
+                  v-model="mapFilter"
+                  :items="mapFilterOptions"
+                  size="xs"
+                  class="min-w-28 md:min-w-36"
+                />
+              </div>
+              <div v-else class="flex items-center gap-2">
+                <span class="inline-flex items-center gap-1 rounded-md border border-black/[0.06] dark:border-white/[0.08] bg-black/[0.04] dark:bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold text-gray-500 dark:text-gray-400">
+                  <UIcon name="i-lucide-map-pin" class="text-[9px]" />
+                  {{ coveredStateCount }} covered
+                </span>
               </div>
             </div>
 
@@ -2271,58 +2615,95 @@ watch(myClosedOrders, () => {
               <div class="text-sm font-semibold text-highlighted">
                 {{ tooltip.state.name }} ({{ tooltip.state.code }})
               </div>
-              <div class="mt-1.5 flex items-center gap-2">
-                <UBadge
-                  :color="getMyOrderBadgeColor(tooltip.state.code)"
-                  variant="subtle"
-                  :label="getMyOrderBadgeLabel(tooltip.state.code)"
-                  size="xs"
-                />
 
-                <UBadge
-                  v-if="tooltip.blocked"
-                  color="neutral"
-                  variant="subtle"
-                  label="Blocked"
-                  size="xs"
-                />
+              <template v-if="isUrgencyView">
+                <div class="mt-1.5 flex items-center gap-2">
+                  <UBadge
+                    :color="getMyOrderBadgeColor(tooltip.state.code)"
+                    variant="subtle"
+                    :label="getMyOrderBadgeLabel(tooltip.state.code)"
+                    size="xs"
+                  />
 
-                <UBadge
-                  v-if="tooltip.myOrder"
-                  color="primary"
-                  variant="subtle"
-                  label="Your order active"
-                  size="xs"
-                />
-              </div>
-              <div class="mt-2 space-y-1 text-[11px] text-muted">
-                <div>My open orders in state: {{ tooltip.state.openOrders }}</div>
-                <div v-if="tooltip.myOrder">
-                  Your quota: {{ tooltip.myOrder.quota_filled }}/{{ tooltip.myOrder.quota_total }}
+                  <UBadge
+                    v-if="tooltip.blocked"
+                    color="neutral"
+                    variant="subtle"
+                    label="Blocked"
+                    size="xs"
+                  />
+
+                  <UBadge
+                    v-if="tooltip.myOrder"
+                    color="primary"
+                    variant="subtle"
+                    label="Your order active"
+                    size="xs"
+                  />
                 </div>
-                <div v-if="tooltip.myOrder">
-                  Expires: {{ String(tooltip.myOrder.expires_at || '').slice(0, 10) }}
+                <div class="mt-2 space-y-1 text-[11px] text-muted">
+                  <div>My open orders in state: {{ tooltip.state.openOrders }}</div>
+                  <div v-if="tooltip.myOrder">
+                    Your quota: {{ tooltip.myOrder.quota_filled }}/{{ tooltip.myOrder.quota_total }}
+                  </div>
+                  <div v-if="tooltip.myOrder">
+                    Expires: {{ String(tooltip.myOrder.expires_at || '').slice(0, 10) }}
+                  </div>
                 </div>
-              </div>
-              <!-- State limit warning for states with no orders -->
-              <div
-                v-if="!tooltip.blocked && tooltip.state.openOrders === 0 && isAtMaxOrderStates"
-                class="mt-2 rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-medium text-amber-400"
-              >
-                Cannot order here — state limit reached ({{ activeOrderStateCount }}/{{ MAX_ORDER_STATES }}). Contact your account manager to increase this limit.
-              </div>
-              <!-- Per-state capacity info for states with orders -->
-              <div
-                v-else-if="!tooltip.blocked && tooltip.state.openOrders >= 2"
-                class="mt-2 rounded-lg bg-blue-500/10 px-2.5 py-1.5 text-[11px] font-medium text-blue-400"
-              >
-                This state is at full capacity (2/2 orders — one per case category).
-              </div>
+                <!-- State limit warning for states with no orders -->
+                <div
+                  v-if="!tooltip.blocked && tooltip.state.openOrders === 0 && isAtMaxOrderStates"
+                  class="mt-2 rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-medium text-amber-400"
+                >
+                  Cannot order here — state limit reached ({{ activeOrderStateCount }}/{{ MAX_ORDER_STATES }}). Contact your account manager to increase this limit.
+                </div>
+                <!-- Per-state capacity info for states with orders -->
+                <div
+                  v-else-if="!tooltip.blocked && tooltip.state.openOrders >= 2"
+                  class="mt-2 rounded-lg bg-blue-500/10 px-2.5 py-1.5 text-[11px] font-medium text-blue-400"
+                >
+                  This state is at full capacity (2/2 orders — one per case category).
+                </div>
+              </template>
+
+              <template v-else>
+                <div class="mt-1.5 flex items-center gap-2">
+                  <UBadge
+                    v-if="isTemporarilyUnavailableState(tooltip.state.code)"
+                    color="warning"
+                    variant="subtle"
+                    label="Temporarily unavailable"
+                    size="xs"
+                  />
+                  <UBadge
+                    v-else-if="!coveredStateSet.has(tooltip.state.code)"
+                    color="neutral"
+                    variant="subtle"
+                    label="Not open"
+                    size="xs"
+                  />
+                  <UBadge
+                    v-else
+                    color="success"
+                    variant="subtle"
+                    label="High traffic"
+                    size="xs"
+                  />
+                </div>
+                <div class="mt-2 space-y-1 text-[11px] text-muted">
+                  <div v-if="existingGeneralCoverage">
+                    Case category: {{ existingGeneralCoverage.case_category }}
+                  </div>
+                  <div v-else>
+                    No general coverage set yet.
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
 
-          <!-- Stats row — visible only on mobile, below the map -->
-          <div class="flex md:hidden gap-2 mt-3">
+          <!-- Stats row — visible only on mobile, below the map (Urgency view) -->
+          <div v-if="isUrgencyView" class="flex md:hidden gap-2 mt-3">
             <div class="ap-fade-in-left flex-1 relative overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 px-3 py-2.5 pl-5 shadow-sm backdrop-blur-sm" style="animation-delay: 400ms">
               <div class="absolute inset-y-0 left-0 w-1 bg-orange-500 dark:bg-orange-600" />
               <div class="text-[10px] font-medium uppercase tracking-wider text-orange-500 dark:text-orange-600">Total</div>
@@ -2344,6 +2725,30 @@ watch(myClosedOrders, () => {
               <div class="mt-0.5 text-lg font-bold text-red-500 dark:text-red-400 tabular-nums">{{ statsCompleted }}</div>
             </div>
           </div>
+
+          <!-- Stats row — mobile, General Coverage -->
+          <div v-if="isCoverageView" class="grid grid-cols-2 md:hidden gap-2 mt-3">
+            <div class="ap-fade-in-left flex-1 relative overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 px-3 py-2.5 pl-5 shadow-sm backdrop-blur-sm" style="animation-delay: 400ms">
+              <div class="absolute inset-y-0 left-0 w-1 bg-[var(--ap-accent)]" />
+              <div class="text-[10px] font-medium uppercase tracking-wider text-[var(--ap-accent)]">Covered States</div>
+              <div class="mt-0.5 text-lg font-bold text-[var(--ap-accent)] tabular-nums">{{ coveredStateCount }}</div>
+            </div>
+            <div class="ap-fade-in-left flex-1 relative overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 px-3 py-2.5 pl-5 shadow-sm backdrop-blur-sm" style="animation-delay: 500ms">
+              <div class="absolute inset-y-0 left-0 w-1 bg-green-400" />
+              <div class="text-[10px] font-medium uppercase tracking-wider text-green-500 dark:text-green-400">High Traffic</div>
+              <div class="mt-0.5 text-lg font-bold text-green-500 dark:text-green-400 tabular-nums">{{ coverageHighTrafficCount }}</div>
+            </div>
+            <div class="ap-fade-in-left flex-1 relative overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 px-3 py-2.5 pl-5 shadow-sm backdrop-blur-sm" style="animation-delay: 600ms">
+              <div class="absolute inset-y-0 left-0 w-1 bg-yellow-400" />
+              <div class="text-[10px] font-medium uppercase tracking-wider text-yellow-500 dark:text-yellow-400">Moderate Traffic</div>
+              <div class="mt-0.5 text-lg font-bold text-yellow-500 dark:text-yellow-400 tabular-nums">{{ coverageModerateTrafficCount }}</div>
+            </div>
+            <div class="ap-fade-in-left flex-1 relative overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 px-3 py-2.5 pl-5 shadow-sm backdrop-blur-sm" style="animation-delay: 700ms">
+              <div class="absolute inset-y-0 left-0 w-1 bg-red-400" />
+              <div class="text-[10px] font-medium uppercase tracking-wider text-red-400">Closed</div>
+              <div class="mt-0.5 text-lg font-bold text-red-500 dark:text-red-400 tabular-nums">{{ coverageClosedCount }}</div>
+            </div>
+          </div>
         </div>
 
         <!-- ═══ Orders Section ═══ -->
@@ -2353,35 +2758,26 @@ watch(myClosedOrders, () => {
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div class="flex items-center gap-3">
                 <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--ap-accent)]/10">
-                  <UIcon :name="ordersSectionView === 'orders' ? 'i-lucide-shopping-cart' : 'i-lucide-shield'" class="text-sm text-[var(--ap-accent)]" />
+                  <UIcon :name="isUrgencyView ? 'i-lucide-shopping-cart' : 'i-lucide-shield'" class="text-sm text-[var(--ap-accent)]" />
                 </div>
                 <div>
                   <div class="flex items-center gap-1.5">
-                    <USelect
-                      v-model="ordersSectionView"
-                      :items="[
-                        { label: 'My Orders', value: 'orders' },
-                        { label: 'My General Coverage', value: 'coverage' }
-                      ]"
-                      value-key="value"
-                      label-key="label"
-                      size="xs"
-                      variant="ghost"
-                      :ui="{ base: 'text-sm font-semibold text-highlighted cursor-pointer' }"
-                    />
+                    <span class="text-sm font-semibold text-highlighted">
+                      {{ isUrgencyView ? 'My Urgency Orders' : 'My General Coverage' }}
+                    </span>
                     <ProductGuideHint
-                      v-if="ordersSectionView === 'orders'"
+                      v-if="isUrgencyView"
                       :title="orderMapHints.myOrders.title"
                       :description="orderMapHints.myOrders.description"
                       :guide-target="orderMapHints.myOrders.guideTarget"
                     />
                   </div>
                   <p class="mt-0.5 text-xs text-muted">
-                    {{ ordersSectionView === 'orders' ? 'Manage and track all your active and closed orders.' : 'View and manage your general coverage preferences.' }}
+                    {{ isUrgencyView ? 'Manage and track all your active and closed orders.' : 'View and manage your general coverage preferences.' }}
                   </p>
                 </div>
               </div>
-              <div v-if="ordersSectionView === 'orders'" class="flex items-center gap-2">
+              <div v-if="isUrgencyView" class="flex items-center gap-2">
                 <ProductGuideHint
                   :title="orderMapHints.filters.title"
                   :description="orderMapHints.filters.description"
@@ -2426,7 +2822,7 @@ watch(myClosedOrders, () => {
           </div>
 
           <!-- ═══ My Orders View ═══ -->
-          <template v-if="ordersSectionView === 'orders'">
+          <template v-if="isUrgencyView">
           <!-- Collapsible Filter Panel -->
           <div
             class="ap-collapse"
@@ -2752,12 +3148,13 @@ watch(myClosedOrders, () => {
                     <div class="text-[11px] font-medium uppercase tracking-wider text-muted">Covered States</div>
                     <div class="mt-1.5 flex flex-wrap gap-1">
                       <span
-                        v-for="code in existingGeneralCoverage.covered_states"
+                        v-for="code in coverageStateCodes"
                         :key="code"
                         class="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
                       >
                         {{ code }}
                       </span>
+                      <span v-if="!coverageStateCodes.length" class="text-sm text-muted">-</span>
                     </div>
                   </div>
 
