@@ -591,7 +591,7 @@ const showMonthGrowth = computed(() =>
           </div>
         </div>
 
-        <!-- ═══ Main Row — Trend Chart + Action Center ═══ -->
+        <!-- ═══ Main Row -Trend Chart + Action Center ═══ -->
         <div class="grid gap-5 lg:grid-cols-3">
           <!-- Invoice Trend -->
           <div class="lg:col-span-2 ap-fade-in ap-delay-4 flex flex-col overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm">
