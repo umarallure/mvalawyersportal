@@ -8,7 +8,7 @@ export type InvoiceItem = {
   unit_price: number
   amount: number
 }
-
+ 
 export type InvoiceType = 'lawyer' | 'publisher'
 
 export type DealPaymentStatus =
