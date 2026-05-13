@@ -64,51 +64,51 @@ const consumerTierCards: TierCard[] = [
     stripClass: 'tier-transfer-strip',
     hoverBorder: 'hover:border-white/20 dark:hover:border-white/25',
     rows: [
-      { label: 'Accident Occurred', value: '12+ Months Ago', icon: 'i-lucide-calendar-clock' },
-      { label: 'Type of Injury', value: 'Minor to Moderate', icon: 'i-lucide-heart-pulse' },
       { label: 'Documentation', value: 'Minor Documentation Covered', sub: 'Signed Retainer', icon: 'i-lucide-file-x' },
+      { label: 'Type of Injury', value: 'Minor to Moderate', icon: 'i-lucide-heart-pulse' },
+      { label: 'Accident Occurred', value: '0–12 Months Ago', icon: 'i-lucide-calendar-clock' },
       { label: 'Liability', value: '100% Accepted', sub: 'Or Very Strong Proof', icon: 'i-lucide-scale' }
     ]
   },
   {
     name: 'Tier 2 Bronze',
-    price: '$3,500',
+    price: '$3,000',
     priceColor: 'tier-bronze-price',
     headerGradient: 'tier-bronze-header',
     stripClass: 'tier-bronze-strip',
     hoverBorder: 'hover:border-[#CD7F32]/40',
     rows: [
-      { label: 'Accident Occurred', value: '6–12 Months Ago', icon: 'i-lucide-calendar-clock' },
-      { label: 'Type of Injury', value: 'Moderate to Severe', icon: 'i-lucide-heart-pulse' },
       { label: 'Documentation', value: 'Majority Documentation Covered', sub: 'Signed Retainer, Police Report', icon: 'i-lucide-file-check' },
+      { label: 'Type of Injury', value: 'Moderate to Severe', icon: 'i-lucide-heart-pulse' },
+      { label: 'Accident Occurred', value: '0–12 Months Ago', icon: 'i-lucide-calendar-clock' },
       { label: 'Liability', value: '100% Accepted', sub: 'Or Very Strong Proof', icon: 'i-lucide-scale' }
     ]
   },
   {
     name: 'Tier 3 Silver',
-    price: '$4,500',
+    price: '$3,500',
     priceColor: 'tier-silver-price',
     headerGradient: 'tier-silver-header',
     stripClass: 'tier-silver-strip',
     hoverBorder: 'hover:border-[#94a3b8]/40',
     rows: [
-      { label: 'Accident Occurred', value: '3–6 Months Ago', icon: 'i-lucide-calendar-clock' },
-      { label: 'Type of Injury', value: 'Moderate to Severe', icon: 'i-lucide-heart-pulse' },
       { label: 'Documentation', value: 'All Documentation Covered', sub: 'Signed Retainer, Proof of Medical Treatment, Police Report', icon: 'i-lucide-file-check-2' },
+      { label: 'Type of Injury', value: 'Moderate to Severe', icon: 'i-lucide-heart-pulse' },
+      { label: 'Accident Occurred', value: '0–12 Months Ago', icon: 'i-lucide-calendar-clock' },
       { label: 'Liability', value: '100% Accepted', sub: 'Or Very Strong Proof', icon: 'i-lucide-scale' }
     ]
   },
   {
     name: 'Tier 4 Gold',
-    price: '$6,000',
+    price: '$5,000',
     priceColor: 'tier-gold-price',
     headerGradient: 'tier-gold-header',
     stripClass: 'tier-gold-strip',
     hoverBorder: 'hover:border-[#D4AF37]/40',
     rows: [
-      { label: 'Accident Occurred', value: '0–3 Months Ago', icon: 'i-lucide-calendar-clock' },
-      { label: 'Type of Injury', value: 'Moderate to Catastrophic', icon: 'i-lucide-heart-pulse' },
       { label: 'Documentation', value: 'All Documentation Covered', sub: 'Insurance, Proof of Medical Treatment, Police Report', icon: 'i-lucide-file-badge' },
+      { label: 'Type of Injury', value: 'Moderate to Catastrophic', icon: 'i-lucide-heart-pulse' },
+      { label: 'Accident Occurred', value: '0–12 Months Ago', icon: 'i-lucide-calendar-clock' },
       { label: 'Liability', value: '100% Accepted', sub: 'Or Very Strong Proof', icon: 'i-lucide-scale' }
     ]
   }
@@ -165,7 +165,7 @@ const placeOrder = () => {
           <div>
             <div class="flex items-center gap-1.5">
               <h2 class="text-lg font-semibold text-highlighted">
-              {{ selectedCategory === 'consumer' ? 'Consumer Cases — Pricing Per Case' : 'Commercial Cases — Pricing Per Case' }}
+                {{ selectedCategory === 'consumer' ? 'Consumer Cases — Pricing Per Case' : 'Commercial Cases — Pricing Per Case' }}
               </h2>
               <ProductGuideHint
                 :title="productOfferingHints.overview.title"
@@ -174,7 +174,7 @@ const placeOrder = () => {
               />
             </div>
             <p class="mt-1 text-sm text-muted">
-              Each tier reflects the case value based on recency, liability strength, injury severity, and documentation quality.
+              Each tier reflects the case value based on liability strength, injury severity, documentation quality, and a shared 0–12 month accident window.
             </p>
           </div>
           <div class="flex items-center gap-2">
@@ -184,14 +184,14 @@ const placeOrder = () => {
               :guide-target="productOfferingHints.categoryToggle.guideTarget"
             />
             <USelect
-            :model-value="selectedCategory"
-            :items="[
-              { label: 'Consumer Cases', value: 'consumer' },
-              { label: 'Commercial Cases', value: 'commercial' }
-            ]"
-            value-key="value"
-            label-key="label"
-            class="w-48 shrink-0"
+              :model-value="selectedCategory"
+              :items="[
+                { label: 'Consumer Cases', value: 'consumer' },
+                { label: 'Commercial Cases', value: 'commercial' }
+              ]"
+              value-key="value"
+              label-key="label"
+              class="w-48 shrink-0"
               @update:model-value="selectedCategory = $event as 'consumer' | 'commercial'"
             />
           </div>

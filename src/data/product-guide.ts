@@ -760,7 +760,7 @@ export const productGuideSections: GuideSection[] = [
           {
             label: 'Tier 4 Gold',
             icon: 'i-lucide-award',
-            description: 'The premium consumer tier for the freshest and strongest cases.'
+            description: 'The premium consumer tier for the strongest qualifying cases.'
           },
           {
             label: 'Commercial card',
@@ -774,16 +774,16 @@ export const productGuideSections: GuideSection[] = [
         title: 'Evaluation Criteria',
         summary: 'Every tier card uses the same four criteria so firms can compare value consistently across the catalog.',
         bullets: [
-          'Accident Occurred sets the recency expectation for that tier.',
-          'Type of Injury frames the expected severity range.',
           'Documentation explains how complete the supporting file should be.',
+          'Type of Injury frames the expected severity range.',
+          'Accident Occurred sets the 0–12 month date-of-accident window.',
           'Liability captures how strong the claim should be before purchase.'
         ],
         components: [
           {
-            label: 'Accident Occurred',
-            icon: 'i-lucide-calendar-clock',
-            description: 'Shows how recent the qualifying incident should be.'
+            label: 'Documentation',
+            icon: 'i-lucide-file-check',
+            description: 'Lists the level of proof or paperwork expected with the case.'
           },
           {
             label: 'Type of Injury',
@@ -791,9 +791,9 @@ export const productGuideSections: GuideSection[] = [
             description: 'Describes the medical severity expected for the tier.'
           },
           {
-            label: 'Documentation',
-            icon: 'i-lucide-file-check',
-            description: 'Lists the level of proof or paperwork expected with the case.'
+            label: 'Accident Occurred',
+            icon: 'i-lucide-calendar-clock',
+            description: 'Shows that the qualifying incident should be within the last 12 months.'
           },
           {
             label: 'Liability',

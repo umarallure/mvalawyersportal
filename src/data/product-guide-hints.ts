@@ -250,7 +250,7 @@ export const productGuideHints = {
     },
     transferTier: {
       title: 'Tier 1 Transfer',
-      description: 'The entry-level consumer tier with the lowest price point and the oldest qualifying cases.',
+      description: 'The entry-level consumer tier with the lowest price point.',
       guideTarget: { sectionId: 'product-offering', subsectionId: 'product-offering-tiers' }
     },
     bronzeTier: {
@@ -260,12 +260,12 @@ export const productGuideHints = {
     },
     silverTier: {
       title: 'Tier 3 Silver',
-      description: 'A higher-intent consumer tier with stronger documentation and recency requirements.',
+      description: 'A higher-intent consumer tier with stronger documentation requirements.',
       guideTarget: { sectionId: 'product-offering', subsectionId: 'product-offering-tiers' }
     },
     goldTier: {
       title: 'Tier 4 Gold',
-      description: 'The premium consumer tier focused on the freshest and strongest qualifying cases.',
+      description: 'The premium consumer tier focused on the strongest qualifying cases.',
       guideTarget: { sectionId: 'product-offering', subsectionId: 'product-offering-tiers' }
     },
     commercialTier: {

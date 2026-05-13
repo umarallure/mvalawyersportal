@@ -128,12 +128,12 @@ const links = computed(() => [[
   // Product Portal is temporarily hidden from lawyers.
   ...(!isAccounts.value ? [
     // TODO: re-enable Product Offering with the /product-portal route.
-    // {
-    //   label: 'Product Offering',
-    //   icon: 'i-lucide-tag',
-    //   to: '/product-portal',
-    //   onSelect: () => { open.value = false }
-    // },
+     {
+       label: 'Product Offering',
+       icon: 'i-lucide-tag',
+       to: '/product-portal',
+       onSelect: () => { open.value = false }
+     },
     {
       label: 'Product Guide',
       icon: 'i-lucide-book-open',
