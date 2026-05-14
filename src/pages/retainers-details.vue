@@ -305,7 +305,7 @@ const basicInfoFields = computed(() => {
     ['insured_name', 'Client Name'],
     ['client_phone_number', 'Phone Number'],
     ['email', 'Email'],
-    ['street_address', 'Address'],
+    ['accident_location', 'Address'],
     ['city', 'City'],
     ['state', 'State'],
     ['zip_code', 'Zip Code']
