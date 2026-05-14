@@ -32,6 +32,8 @@ const isAdminOrSuper = computed(() => {
   return role === 'admin' || role === 'super_admin' || role === 'accounts'
 })
 
+const isSuperAdmin = computed(() => auth.state.value.profile?.role === 'super_admin')
+
 const loading = ref(false)
 const error = ref<string | null>(null)
 const row = ref<DailyDealFlow | null>(null)
@@ -441,6 +443,7 @@ const accidentDetailsFields = computed(() => {
               <LeadDocumentsTab
                 v-if="row.submission_id"
                 :submission-id="String(row.submission_id || '')"
+                :allow-document-upload="isSuperAdmin"
               />
               <UAlert
                 v-else
