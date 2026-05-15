@@ -92,7 +92,7 @@ const consumerTierCards: TierCard[] = [
     stripClass: 'tier-silver-strip',
     hoverBorder: 'hover:border-[#94a3b8]/40',
     rows: [
-      { label: 'Documentation', value: 'All Documentation Covered', sub: 'Signed Retainer, Police Report, Proof of Medical Treatment,', icon: 'i-lucide-file-check-2' },
+      { label: 'Documentation', value: 'All Documentation Covered', sub: 'Signed Retainer, Police Report, Proof of Medical Treatment', icon: 'i-lucide-file-check-2' },
       { label: 'Type of Injury', value: 'Moderate to Severe', icon: 'i-lucide-heart-pulse' },
       { label: 'Accident Occurred', value: '0–12 Months Ago', icon: 'i-lucide-calendar-clock' },
       { label: 'Liability', value: '100% Accepted', sub: 'Or Very Strong Proof', icon: 'i-lucide-scale' }
