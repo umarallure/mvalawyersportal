@@ -8,6 +8,7 @@ import { useAuth } from '../composables/useAuth'
 
 type DailyDealFlow = Record<string, unknown> & {
   id: string
+  daily_deal_flow_id?: string | null
   submission_id: string
   insured_name?: string | null
   client_phone_number?: string | null
@@ -72,7 +73,7 @@ const payToPublisher = async () => {
     }
     const params = new URLSearchParams({ mode: 'publisher', quick: '1' })
     if (centerId) params.set('center_id', centerId)
-    params.set('deal_id', row.value.id)
+    params.set('deal_id', getCurrentDealId())
     router.push(`/invoicing/create?${params.toString()}`)
   } finally {
     actionLoading.value = false
@@ -83,7 +84,7 @@ const getPaidByLawyer = () => {
   if (!row.value) return
   const params = new URLSearchParams({ mode: 'lawyer', quick: '1' })
   if (row.value.assigned_attorney_id) params.set('lawyer_id', row.value.assigned_attorney_id)
-  params.set('deal_id', row.value.id)
+  params.set('deal_id', getCurrentDealId())
   router.push(`/invoicing/create?${params.toString()}`)
 }
 
@@ -102,6 +103,41 @@ const goBack = () => {
   router.push('/retainers')
 }
 
+const stringOrNull = (value: unknown) => {
+  if (value === null || value === undefined || value === '') return null
+  return String(value)
+}
+
+const mapLeadToDetailRow = (leadRow: AnyRow, dealFlowRow?: AnyRow | null): DailyDealFlow => {
+  const name = leadRow.customer_full_name ?? leadRow.insured_name ?? null
+  const phone = leadRow.phone_number ?? leadRow.client_phone_number ?? null
+  const submissionId = stringOrNull(leadRow.submission_id ?? dealFlowRow?.submission_id) ?? ''
+  const leadVendor = stringOrNull(leadRow.lead_vendor ?? dealFlowRow?.lead_vendor)
+  const createdAt = stringOrNull(leadRow.created_at ?? dealFlowRow?.created_at)
+  const updatedAt = stringOrNull(leadRow.updated_at ?? dealFlowRow?.updated_at)
+
+  return {
+    ...(dealFlowRow ?? {}),
+    ...leadRow,
+    id: String(leadRow.id ?? ''),
+    daily_deal_flow_id: stringOrNull(dealFlowRow?.id),
+    submission_id: submissionId,
+    insured_name: name ? String(name) : null,
+    client_phone_number: phone ? String(phone) : null,
+    assigned_attorney_id: stringOrNull(leadRow.assigned_attorney_id ?? dealFlowRow?.assigned_attorney_id),
+    lead_vendor: leadVendor,
+    invoice_id: stringOrNull(dealFlowRow?.invoice_id),
+    publisher_invoice_id: stringOrNull(dealFlowRow?.publisher_invoice_id),
+    created_at: createdAt,
+    updated_at: updatedAt
+  }
+}
+
+const getCurrentDealId = () => {
+  if (!row.value) return ''
+  return String(row.value.daily_deal_flow_id ?? row.value.id ?? '')
+}
+
 const load = async () => {
   loading.value = true
   error.value = null
@@ -112,59 +148,14 @@ const load = async () => {
     const userId = auth.state.value.profile?.user_id
     const userRole = auth.state.value.profile?.role
 
-    // For lawyers, build name keywords for fallback matching
-    let nameKeywords: string[] = []
-    if (userRole === 'lawyer' && userId) {
-      const { data: attorneyProfile } = await supabase
-        .from('attorney_profiles')
-        .select('full_name')
-        .eq('user_id', userId)
-        .maybeSingle()
-
-      const fullName = attorneyProfile?.full_name?.trim() || null
-      const displayName = auth.state.value.profile?.display_name?.trim() || null
-      const email = auth.state.value.profile?.email || null
-      const emailName = email ? email.split('@')[0].replace(/[^a-zA-Z]/g, ' ').trim() : null
-
-      const rawName = fullName || displayName || emailName || ''
-      nameKeywords = rawName
-        .split(/[\s\-_]+/)
-        .map((w: string) => w.trim().toLowerCase())
-        .filter((w: string) => w.length >= 3)
-    }
-
-    let data = null
+    let leadsQb = supabase
+      .from('leads')
+      .select('*')
+      .eq('id', id.value)
 
     if (userRole === 'lawyer' && userId) {
-      // First try by assigned_attorney_id
-      const { data: byId, error: byIdErr } = await supabase
-        .from('daily_deal_flow')
-        .select('*')
-        .eq('id', id.value)
-        .eq('assigned_attorney_id', userId)
-        .maybeSingle()
-
-      if (byIdErr) throw byIdErr
-      data = byId
-
-      // Fallback: match by any name keyword in submitted_attorney
-      if (!data && nameKeywords.length > 0) {
-        const orFilter = nameKeywords
-          .map((kw: string) => `submitted_attorney.ilike.%${kw}%`)
-          .join(',')
-
-        const { data: byName, error: byNameErr } = await supabase
-          .from('daily_deal_flow')
-          .select('*')
-          .eq('id', id.value)
-          .or(orFilter)
-          .maybeSingle()
-
-        if (byNameErr) throw byNameErr
-        data = byName
-      }
+      leadsQb = leadsQb.eq('assigned_attorney_id', userId)
     } else if (!userRole) {
-      // If no role, filter by lead vendor matching user's center
       const { data: userData, error: userErr } = await supabase
         .from('app_users')
         .select('center_id')
@@ -183,15 +174,7 @@ const load = async () => {
         if (centerErr) throw centerErr
 
         if (centerData?.lead_vendor) {
-          const { data: vendorData, error: vendorErr } = await supabase
-            .from('daily_deal_flow')
-            .select('*')
-            .eq('id', id.value)
-            .eq('lead_vendor', centerData.lead_vendor)
-            .maybeSingle()
-
-          if (vendorErr) throw vendorErr
-          data = vendorData
+          leadsQb = leadsQb.eq('lead_vendor', centerData.lead_vendor)
         } else {
           error.value = 'Lead not found'
           row.value = null
@@ -202,50 +185,105 @@ const load = async () => {
         row.value = null
         return
       }
-    } else {
-      // Admin and agent roles can view all leads (no filter)
-      const { data: allData, error: allErr } = await supabase
-        .from('daily_deal_flow')
-        .select('*')
-        .eq('id', id.value)
-        .maybeSingle()
-
-      if (allErr) throw allErr
-      data = allData
     }
 
-    if (!data) {
-      let leadsQb = supabase
-        .from('leads')
-        .select('*')
-        .eq('id', id.value)
+    const { data: leadById, error: leadByIdErr } = await leadsQb.maybeSingle()
+    if (leadByIdErr) throw leadByIdErr
 
-      if (userRole === 'lawyer' && userId) {
-        leadsQb = leadsQb.eq('assigned_attorney_id', userId)
+    if (leadById) {
+      const lead = (leadById ?? {}) as AnyRow
+      const submissionId = stringOrNull(lead.submission_id)
+      let dealFlowRow: AnyRow | null = null
+
+      if (submissionId) {
+        const { data: flowData } = await supabase
+          .from('daily_deal_flow')
+          .select('*')
+          .eq('submission_id', submissionId)
+          .maybeSingle()
+
+        dealFlowRow = (flowData ?? null) as AnyRow | null
       }
 
-      const { data: leadRow, error: leadErr } = await leadsQb.maybeSingle()
-      if (leadErr) throw leadErr
+      row.value = mapLeadToDetailRow(lead, dealFlowRow)
+      return
+    }
 
-      if (!leadRow) {
+    let flowQb = supabase
+      .from('daily_deal_flow')
+      .select('*')
+      .eq('id', id.value)
+
+    if (!userRole) {
+      const { data: userData, error: userErr } = await supabase
+        .from('app_users')
+        .select('center_id')
+        .eq('user_id', userId || '')
+        .maybeSingle()
+
+      if (userErr) throw userErr
+
+      if (userData?.center_id) {
+        const { data: centerData, error: centerErr } = await supabase
+          .from('centers')
+          .select('lead_vendor')
+          .eq('id', userData.center_id)
+          .maybeSingle()
+
+        if (centerErr) throw centerErr
+
+        if (centerData?.lead_vendor) {
+          flowQb = flowQb.eq('lead_vendor', centerData.lead_vendor)
+        } else {
+          error.value = 'Lead not found'
+          row.value = null
+          return
+        }
+      } else {
         error.value = 'Lead not found'
         row.value = null
         return
       }
-
-      const lead = (leadRow ?? {}) as AnyRow
-      const name = lead.customer_full_name ?? lead.insured_name ?? null
-      const phone = lead.phone_number ?? lead.client_phone_number ?? null
-
-      row.value = {
-        ...lead,
-        insured_name: name ? String(name) : null,
-        client_phone_number: phone ? String(phone) : null,
-        submission_id: String(lead.submission_id ?? '')
-      } as DailyDealFlow
-    } else {
-      row.value = data as DailyDealFlow
     }
+
+    const { data: flowData, error: flowErr } = await flowQb.maybeSingle()
+    if (flowErr) throw flowErr
+
+    if (!flowData) {
+      error.value = 'Lead not found'
+      row.value = null
+      return
+    }
+
+    const flow = (flowData ?? {}) as AnyRow
+    const submissionId = stringOrNull(flow.submission_id)
+
+    if (submissionId) {
+      let leadBySubmissionQb = supabase
+        .from('leads')
+        .select('*')
+        .eq('submission_id', submissionId)
+
+      if (userRole === 'lawyer' && userId) {
+        leadBySubmissionQb = leadBySubmissionQb.eq('assigned_attorney_id', userId)
+      }
+
+      const { data: leadBySubmission, error: leadBySubmissionErr } = await leadBySubmissionQb.maybeSingle()
+      if (leadBySubmissionErr) throw leadBySubmissionErr
+
+      if (leadBySubmission) {
+        row.value = mapLeadToDetailRow((leadBySubmission ?? {}) as AnyRow, flow)
+        return
+      }
+    }
+
+    if (userRole === 'lawyer') {
+      error.value = 'Lead not found'
+      row.value = null
+      return
+    }
+
+    row.value = flow as DailyDealFlow
 
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Failed to load lead'
@@ -307,7 +345,7 @@ const basicInfoFields = computed(() => {
     ['insured_name', 'Client Name'],
     ['client_phone_number', 'Phone Number'],
     ['email', 'Email'],
-    ['accident_location', 'Address'],
+    ['street_address', 'Address'],
     ['city', 'City'],
     ['state', 'State'],
     ['zip_code', 'Zip Code']

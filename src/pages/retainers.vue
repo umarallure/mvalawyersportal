@@ -60,6 +60,21 @@ type DailyDealFlow = {
 
 type LeadRow = Record<string, unknown>
 
+const LEADS_SELECT_COLUMNS = [
+  'id',
+  'submission_id',
+  'submission_date',
+  'customer_full_name',
+  'phone_number',
+  'lead_vendor',
+  'state',
+  'status',
+  'assigned_attorney_id',
+  'agent',
+  'insurance_company',
+  'created_at'
+].join(',')
+
 const router = useRouter()
 const auth = useAuth()
 const toast = useToast()
@@ -87,9 +102,6 @@ const filterExpiry = ref<string>('all')
 
 // ── Custom date range calendar ──
 const calendarDf = new DateFormatter('en-US', { dateStyle: 'medium' })
-
-const toCalendarDate = (date: Date) =>
-  new CalendarDate(date.getFullYear(), date.getMonth() + 1, date.getDate())
 
 const calendarRange = ref<{ start: CalendarDate | undefined; end: CalendarDate | undefined }>({
   start: undefined,
@@ -233,6 +245,33 @@ const coerceCard = (row: DailyDealFlow): CustomerCard => {
   }
 }
 
+const mapLeadRowToFlow = (value: unknown): DailyDealFlow | null => {
+  const row = (value ?? {}) as LeadRow
+  const id = String(row.id ?? '').trim()
+  const submissionId = String(row.submission_id ?? '').trim()
+
+  if (!id || !submissionId) return null
+
+  const createdAt = row.created_at ? String(row.created_at) : null
+  const submissionDate = row.submission_date ? String(row.submission_date) : null
+
+  return {
+    id,
+    submission_id: submissionId,
+    insured_name: row.customer_full_name ? String(row.customer_full_name) : null,
+    client_phone_number: row.phone_number ? String(row.phone_number) : null,
+    lead_vendor: row.lead_vendor ? String(row.lead_vendor) : null,
+    state: row.state ? String(row.state) : null,
+    date: submissionDate ?? createdAt,
+    status: row.status ? String(row.status) : null,
+    assigned_attorney_id: row.assigned_attorney_id ? String(row.assigned_attorney_id) : null,
+    agent: row.agent ? String(row.agent) : null,
+    carrier: row.insurance_company ? String(row.insurance_company) : null,
+    created_at: createdAt,
+    source: 'leads'
+  }
+}
+
 const load = async () => {
   loading.value = true
 
@@ -242,64 +281,20 @@ const load = async () => {
     const userId = auth.state.value.profile?.user_id ?? null
     const userRole = auth.state.value.profile?.role ?? null
 
-    // For lawyers, build a list of name keywords for fallback matching
-    let nameKeywords: string[] = []
-    if (userRole === 'lawyer' && userId) {
-      const { data: attorneyProfile } = await supabase
-        .from('attorney_profiles')
-        .select('full_name')
-        .eq('user_id', userId)
-        .maybeSingle()
-
-      const fullName = attorneyProfile?.full_name?.trim() || null
-      const displayName = auth.state.value.profile?.display_name?.trim() || null
-      const email = auth.state.value.profile?.email || null
-      // Extract name from email prefix (e.g. "bradleydworkin" from "bradleydworkin@...")
-      const emailName = email ? email.split('@')[0].replace(/[^a-zA-Z]/g, ' ').trim() : null
-
-      // Collect name keywords from all sources
-      const rawName = fullName || displayName || emailName || ''
-      nameKeywords = rawName
-        .split(/[\s\-_]+/)
-        .map((w: string) => w.trim().toLowerCase())
-        .filter((w: string) => w.length >= 3)
-    }
-
-    const selectCols = 'id,submission_id,insured_name,client_phone_number,lead_vendor,state,date,status,submitted_attorney_status,assigned_attorney_id,submitted_attorney,agent,carrier,created_at'
-
     let dealFlows: DailyDealFlow[] = []
 
     if (userRole === 'lawyer' && userId) {
-      // First try matching by assigned_attorney_id
-      const { data: byId, error: byIdErr } = await supabase
-        .from('daily_deal_flow')
-        .select(selectCols)
-        .ilike('submitted_attorney_status', '%submitted%')
+      const { data: leadsData, error: leadsErr } = await supabase
+        .from('leads')
+        .select(LEADS_SELECT_COLUMNS)
         .eq('assigned_attorney_id', userId)
         .order('created_at', { ascending: false })
         .limit(1000)
 
-      if (byIdErr) throw byIdErr
-      dealFlows = (byId ?? []) as DailyDealFlow[]
-
-      // Fallback: match by any name keyword in submitted_attorney field
-      if (dealFlows.length === 0 && nameKeywords.length > 0) {
-        // Build OR filter for each keyword: submitted_attorney.ilike.%keyword1%,submitted_attorney.ilike.%keyword2%
-        const orFilter = nameKeywords
-          .map((kw: string) => `submitted_attorney.ilike.%${kw}%`)
-          .join(',')
-
-        const { data: byName, error: byNameErr } = await supabase
-          .from('daily_deal_flow')
-          .select(selectCols)
-          .ilike('submitted_attorney_status', '%submitted%')
-          .or(orFilter)
-          .order('created_at', { ascending: false })
-          .limit(1000)
-
-        if (byNameErr) throw byNameErr
-        dealFlows = (byName ?? []) as DailyDealFlow[]
-      }
+      if (leadsErr) throw leadsErr
+      dealFlows = (leadsData ?? [])
+        .map(mapLeadRowToFlow)
+        .filter((row): row is DailyDealFlow => Boolean(row))
     } else if (!userRole && userId) {
       const { data: userData } = await supabase
         .from('app_users')
@@ -316,15 +311,16 @@ const load = async () => {
 
         if (centerData?.lead_vendor) {
           const { data, error: supaError } = await supabase
-            .from('daily_deal_flow')
-            .select(selectCols)
-            .ilike('submitted_attorney_status', '%submitted%')
+            .from('leads')
+            .select(LEADS_SELECT_COLUMNS)
             .eq('lead_vendor', centerData.lead_vendor)
             .order('created_at', { ascending: false })
             .limit(1000)
 
           if (supaError) throw supaError
-          dealFlows = (data ?? []) as DailyDealFlow[]
+          dealFlows = (data ?? [])
+            .map(mapLeadRowToFlow)
+            .filter((row): row is DailyDealFlow => Boolean(row))
         } else {
           rows.value = []
           leads.value = []
@@ -338,58 +334,15 @@ const load = async () => {
     } else {
       // Admin/agent: fetch all
       const { data, error: supaError } = await supabase
-        .from('daily_deal_flow')
-        .select(selectCols)
-        .ilike('submitted_attorney_status', '%submitted%')
+        .from('leads')
+        .select(LEADS_SELECT_COLUMNS)
         .order('created_at', { ascending: false })
         .limit(1000)
 
       if (supaError) throw supaError
-      dealFlows = (data ?? []) as DailyDealFlow[]
-    }
-
-    dealFlows.forEach((r) => {
-      r.source = 'daily_deal_flow'
-    })
-
-    // Fallback to leads table for lawyers with no daily_deal_flow data
-    if (userRole === 'lawyer' && userId && dealFlows.length === 0) {
-      const { data: leadsData, error: leadsErr } = await supabase
-        .from('leads')
-        .select('*')
-        .eq('assigned_attorney_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(1000)
-
-      if (leadsErr) throw leadsErr
-
-      const mapped = (leadsData ?? []).map((r: unknown): DailyDealFlow => {
-        const row = (r ?? {}) as LeadRow
-        const createdAt = (row.created_at ? String(row.created_at) : null)
-        const date = (row.submission_date ? String(row.submission_date) : createdAt)
-        return {
-          id: String(row.id ?? ''),
-          submission_id: String(row.submission_id ?? ''),
-          insured_name: (row.customer_full_name ? String(row.customer_full_name) : null),
-          client_phone_number: (row.phone_number ? String(row.phone_number) : null),
-          lead_vendor: (row.lead_vendor ? String(row.lead_vendor) : null),
-          state: (row.state ? String(row.state) : null),
-          date,
-          status: (row.status ? String(row.status) : null),
-          submitted_attorney_status: (row.submitted_attorney_status ? String(row.submitted_attorney_status) : null),
-          assigned_attorney_id: (row.assigned_attorney_id ? String(row.assigned_attorney_id) : null),
-          agent: null,
-          carrier: null,
-          created_at: createdAt,
-          source: 'leads'
-        }
-      }).filter((r) => {
-        if (!r.id || !r.submission_id) return false
-        const s = String(r.submitted_attorney_status ?? '').toLowerCase()
-        return s.includes('submitted')
-      })
-
-      dealFlows = mapped
+      dealFlows = (data ?? [])
+        .map(mapLeadRowToFlow)
+        .filter((row): row is DailyDealFlow => Boolean(row))
     }
 
     // Resolve attorney names for admin+
@@ -527,14 +480,7 @@ const filterExpiryOptions = [
   { label: 'No expiry date', value: 'no_expiry' },
 ]
 
-const filterLanguageOptions = computed(() => {
-  const langs = new Set<string>()
-  leads.value.forEach(l => {
-    // Language is not currently on CustomerCard; placeholder for future data
-  })
-  // Default options matching Order Map
-  return [{ label: 'English', value: 'English' }]
-})
+const filterLanguageOptions = computed(() => [{ label: 'English', value: 'English' }])
 
 const activeFilterCount = computed(() => {
   let count = 0
@@ -755,10 +701,17 @@ const confirmMove = async () => {
 
   try {
     if (targetDbStatus !== undefined) {
-      const { error } = await supabase
-        .from('daily_deal_flow')
-        .update({ status: targetDbStatus })
-        .eq('id', leadId)
+      const updateResult = leads.value[idx].source === 'leads'
+        ? await supabase
+          .from('leads')
+          .update({ status: targetDbStatus })
+          .eq('id', leadId)
+        : await supabase
+          .from('daily_deal_flow')
+          .update({ status: targetDbStatus })
+          .eq('id', leadId)
+
+      const { error } = updateResult
 
       if (error) throw error
 
