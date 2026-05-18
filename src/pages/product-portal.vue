@@ -4,9 +4,11 @@ import { useRouter } from 'vue-router'
 
 import ProductGuideHint from '../components/product-guide/ProductGuideHint.vue'
 import { productGuideHints } from '../data/product-guide-hints'
+import { PRODUCT_OFFERING_TIERS_BY_KEY, formatProductOfferingPrice } from '../lib/product-offering-tiers'
 
 const router = useRouter()
 const productOfferingHints = productGuideHints.productOffering
+const productTiers = PRODUCT_OFFERING_TIERS_BY_KEY
 
 // ── Case category toggle ──
 const selectedCategory = ref<'consumer' | 'commercial'>('consumer')
@@ -57,56 +59,56 @@ type TierCard = {
 
 const consumerTierCards: TierCard[] = [
   {
-    name: 'Tier 1 Transfer',
-    price: '$2,500',
+    name: productTiers.tier_1.name,
+    price: formatProductOfferingPrice(productTiers.tier_1.price),
     priceColor: 'tier-transfer-price',
     headerGradient: 'tier-transfer-header',
     stripClass: 'tier-transfer-strip',
     hoverBorder: 'hover:border-white/20 dark:hover:border-white/25',
     rows: [
-      { label: 'Documentation', value: 'Minor Documentation Covered', sub: 'Signed Retainer', icon: 'i-lucide-file-x' },
+      { label: 'Documentation', value: 'Minor Documentation Covered', sub: productTiers.tier_1.documentation, icon: 'i-lucide-file-x' },
       { label: 'Type of Injury', value: 'Minor to Moderate', icon: 'i-lucide-heart-pulse' },
       { label: 'Accident Occurred', value: '0–12 Months Ago', icon: 'i-lucide-calendar-clock' },
       { label: 'Liability', value: '100% Accepted', sub: 'Or Very Strong Proof', icon: 'i-lucide-scale' }
     ]
   },
   {
-    name: 'Tier 2 Bronze',
-    price: '$3,000',
+    name: productTiers.tier_2.name,
+    price: formatProductOfferingPrice(productTiers.tier_2.price),
     priceColor: 'tier-bronze-price',
     headerGradient: 'tier-bronze-header',
     stripClass: 'tier-bronze-strip',
     hoverBorder: 'hover:border-[#CD7F32]/40',
     rows: [
-      { label: 'Documentation', value: 'Majority Documentation Covered', sub: 'Signed Retainer, Police Report', icon: 'i-lucide-file-check' },
+      { label: 'Documentation', value: 'Majority Documentation Covered', sub: productTiers.tier_2.documentation, icon: 'i-lucide-file-check' },
       { label: 'Type of Injury', value: 'Moderate to Severe', icon: 'i-lucide-heart-pulse' },
       { label: 'Accident Occurred', value: '0–12 Months Ago', icon: 'i-lucide-calendar-clock' },
       { label: 'Liability', value: '100% Accepted', sub: 'Or Very Strong Proof', icon: 'i-lucide-scale' }
     ]
   },
   {
-    name: 'Tier 3 Silver',
-    price: '$3,500',
+    name: productTiers.tier_3.name,
+    price: formatProductOfferingPrice(productTiers.tier_3.price),
     priceColor: 'tier-silver-price',
     headerGradient: 'tier-silver-header',
     stripClass: 'tier-silver-strip',
     hoverBorder: 'hover:border-[#94a3b8]/40',
     rows: [
-      { label: 'Documentation', value: 'All Documentation Covered', sub: 'Signed Retainer, Police Report, Proof of Medical Treatment', icon: 'i-lucide-file-check-2' },
+      { label: 'Documentation', value: 'All Documentation Covered', sub: productTiers.tier_3.documentation, icon: 'i-lucide-file-check-2' },
       { label: 'Type of Injury', value: 'Moderate to Severe', icon: 'i-lucide-heart-pulse' },
       { label: 'Accident Occurred', value: '0–12 Months Ago', icon: 'i-lucide-calendar-clock' },
       { label: 'Liability', value: '100% Accepted', sub: 'Or Very Strong Proof', icon: 'i-lucide-scale' }
     ]
   },
   {
-    name: 'Tier 4 Gold',
-    price: '$5,000',
+    name: productTiers.tier_4.name,
+    price: formatProductOfferingPrice(productTiers.tier_4.price),
     priceColor: 'tier-gold-price',
     headerGradient: 'tier-gold-header',
     stripClass: 'tier-gold-strip',
     hoverBorder: 'hover:border-[#D4AF37]/40',
     rows: [
-      { label: 'Documentation', value: 'All Documentation Covered', sub: 'Signed Retainer, Police Report, Proof of Medical Treatment, Insurance', icon: 'i-lucide-file-badge' },
+      { label: 'Documentation', value: 'All Documentation Covered', sub: productTiers.tier_4.documentation, icon: 'i-lucide-file-badge' },
       { label: 'Type of Injury', value: 'Moderate to Catastrophic', icon: 'i-lucide-heart-pulse' },
       { label: 'Accident Occurred', value: '0–12 Months Ago', icon: 'i-lucide-calendar-clock' },
       { label: 'Liability', value: '100% Accepted', sub: 'Or Very Strong Proof', icon: 'i-lucide-scale' }
