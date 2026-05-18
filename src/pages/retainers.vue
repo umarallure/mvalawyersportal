@@ -8,6 +8,12 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../composables/useAuth'
 import { useDragGhost } from '../composables/useDragGhost'
 import { productGuideHints } from '../data/product-guide-hints'
+import {
+  PRODUCT_OFFERING_TIERS_BY_KEY,
+  formatProductOfferingPrice,
+  isProductOfferingTierKey,
+  type ProductOfferingTierKey
+} from '../lib/product-offering-tiers'
 
 type CustomerStageKey = 'new_customers_for_review' | '24_hour_approval' | 'customer_approved' | 'customer_rejected'
 
@@ -37,6 +43,8 @@ type CustomerCard = {
   stage: CustomerStageKey
   leadVendor: string
   assignedAttorneyName: string
+  productTier: ProductOfferingTierKey | null
+  productTierPrice: number | null
   source: 'daily_deal_flow' | 'leads'
 }
 
@@ -55,6 +63,8 @@ type DailyDealFlow = {
   agent: string | null
   carrier: string | null
   created_at: string | null
+  product_tier?: ProductOfferingTierKey | null
+  product_tier_price?: number | null
   source?: 'daily_deal_flow' | 'leads'
 }
 
@@ -72,6 +82,8 @@ const LEADS_SELECT_COLUMNS = [
   'assigned_attorney_id',
   'agent',
   'insurance_company',
+  'product_tier',
+  'product_tier_price',
   'created_at'
 ].join(',')
 
@@ -169,6 +181,17 @@ const dragFromStage = ref<CustomerStageKey | null>(null)
 
 const normalize = (v: unknown) => String(v ?? '').trim().toLowerCase()
 
+const toProductTierKey = (value: unknown): ProductOfferingTierKey | null => {
+  const key = String(value ?? '').trim()
+  return isProductOfferingTierKey(key) ? key : null
+}
+
+const toProductTierPrice = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === '') return null
+  const price = Number(value)
+  return Number.isFinite(price) ? price : null
+}
+
 const toStage = (row: DailyDealFlow): CustomerStageKey => {
   const s = normalize(row.status)
 
@@ -241,6 +264,8 @@ const coerceCard = (row: DailyDealFlow): CustomerCard => {
     stage: toStage(row),
     leadVendor: row.lead_vendor ?? '—',
     assignedAttorneyName: row.assigned_attorney_name ?? '—',
+    productTier: row.product_tier ?? null,
+    productTierPrice: row.product_tier_price ?? null,
     source: row.source ?? 'daily_deal_flow'
   }
 }
@@ -268,6 +293,8 @@ const mapLeadRowToFlow = (value: unknown): DailyDealFlow | null => {
     agent: row.agent ? String(row.agent) : null,
     carrier: row.insurance_company ? String(row.insurance_company) : null,
     created_at: createdAt,
+    product_tier: toProductTierKey(row.product_tier),
+    product_tier_price: toProductTierPrice(row.product_tier_price),
     source: 'leads'
   }
 }
@@ -573,6 +600,26 @@ const matchesDateFilter = (rawDate: string | null): boolean => {
   return true
 }
 
+const getLeadTier = (lead: CustomerCard) => {
+  return lead.productTier ? PRODUCT_OFFERING_TIERS_BY_KEY[lead.productTier] : null
+}
+
+const getLeadTierLabel = (lead: CustomerCard) => {
+  return getLeadTier(lead)?.name ?? ''
+}
+
+const getLeadTierPriceLabel = (lead: CustomerCard) => {
+  const price = lead.productTierPrice ?? getLeadTier(lead)?.price ?? null
+  return price === null ? '' : formatProductOfferingPrice(price)
+}
+
+const getLeadTierTitle = (lead: CustomerCard) => {
+  const tier = getLeadTier(lead)
+  const price = getLeadTierPriceLabel(lead)
+  if (!tier) return ''
+  return `${tier.name}${price ? ` - ${price}` : ''}: ${tier.documentation}`
+}
+
 const filteredLeads = computed(() => {
   const q = query.value.trim().toLowerCase()
   const stageFilter = selectedStage.value
@@ -583,7 +630,17 @@ const filteredLeads = computed(() => {
     if (activeStates.length > 0 && !activeStates.includes(l.state)) return false
     if (!matchesDateFilter(l.rawDate)) return false
     if (!q) return true
-    return [l.clientName, l.phone, l.submissionId, l.status, l.leadVendor, l.assignedAttorneyName, l.state]
+    return [
+      l.clientName,
+      l.phone,
+      l.submissionId,
+      l.status,
+      l.leadVendor,
+      l.assignedAttorneyName,
+      l.state,
+      getLeadTierLabel(l),
+      getLeadTierPriceLabel(l)
+    ]
       .some(v => String(v ?? '').toLowerCase().includes(q))
   })
 })
@@ -1325,6 +1382,19 @@ const stageCardAccentStyle = (key: CustomerStageKey) => {
                       <UIcon name="i-lucide-map-pin" class="size-3" />
                       <span class="font-medium">{{ lead.state }}</span>
                     </div>
+                  </div>
+
+                  <!-- Product Tier -->
+                  <div
+                    v-if="lead.productTier"
+                    class="mt-2 flex items-center justify-between gap-2 rounded-md border border-black/[0.06] bg-black/[0.02] px-2 py-1.5 text-[11px] dark:border-white/[0.08] dark:bg-white/[0.04]"
+                    :title="getLeadTierTitle(lead)"
+                  >
+                    <div class="flex min-w-0 items-center gap-1.5">
+                      <UIcon name="i-lucide-tag" class="size-3 shrink-0 text-[var(--ap-accent)]" />
+                      <span class="truncate font-medium text-highlighted">{{ getLeadTierLabel(lead) }}</span>
+                    </div>
+                    <span class="shrink-0 font-semibold text-[var(--ap-accent)]">{{ getLeadTierPriceLabel(lead) }}</span>
                   </div>
                 </div>
 
