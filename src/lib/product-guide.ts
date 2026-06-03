@@ -3,6 +3,10 @@ import { supabase } from './supabase'
 const GUIDE_IMAGE_TARGET_HEIGHT = 1080
 const GUIDE_IMAGE_RESIZE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
+// The product_guide tables are shared with the broker portal (same Supabase
+// project). This portal only reads and writes its own rows.
+export const PRODUCT_GUIDE_PORTAL_KEY = 'lawyer'
+
 export type GuideSection = {
   id: string
   guide_key: string | null
@@ -37,6 +41,7 @@ export async function listSections(): Promise<GuideSectionWithTopics[]> {
   const { data, error } = await supabase
     .from('product_guide_sections')
     .select('*, topics:product_guide_topics(*)')
+    .eq('portal_key', PRODUCT_GUIDE_PORTAL_KEY)
     .order('sort_order')
     .order('sort_order', { referencedTable: 'product_guide_topics' })
 
@@ -53,6 +58,7 @@ export async function createSection(input: {
   const { data, error } = await supabase
     .from('product_guide_sections')
     .insert({
+      portal_key: PRODUCT_GUIDE_PORTAL_KEY,
       guide_key: input.guide_key ?? null,
       title: input.title,
       icon: input.icon || 'i-lucide-book-open',
@@ -110,6 +116,7 @@ export async function createTopic(input: {
     .from('product_guide_topics')
     .insert({
       section_id: input.section_id,
+      portal_key: PRODUCT_GUIDE_PORTAL_KEY,
       guide_key: input.guide_key ?? null,
       title: input.title,
       overview: input.overview,
