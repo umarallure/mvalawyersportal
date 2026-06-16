@@ -61,6 +61,22 @@ html {
   scrollbar-gutter: stable;
 }
 
+html.ap-login-route {
+  scrollbar-gutter: auto;
+}
+
+html.ap-login-route,
+html.ap-login-route body {
+  background: #000000;
+}
+
+@media (min-width: 1024px) {
+  html.ap-login-route,
+  html.ap-login-route body {
+    overflow: hidden;
+  }
+}
+
 /* Prevent content shift when scrollbar appears/disappears inside dashboard panels */
 [id$="-panel-settings"] > [data-slot="body"] {
   scrollbar-gutter: stable;

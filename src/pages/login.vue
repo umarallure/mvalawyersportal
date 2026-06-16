@@ -102,8 +102,8 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <div class="flex min-h-screen w-full bg-black text-white">
-    <section class="flex w-full flex-col px-6 py-10 sm:px-10 lg:w-1/2 lg:px-16 xl:px-24">
+  <div class="flex min-h-screen w-full bg-black text-white lg:h-screen lg:min-h-0 lg:overflow-hidden">
+    <section class="flex w-full flex-col px-6 py-10 sm:px-10 lg:min-h-0 lg:w-1/2 lg:overflow-y-auto lg:px-16 xl:px-24">
       <header>
         <RouterLink to="/login" class="inline-flex items-center" aria-label="Accident Payments">
           <img src="/assets/logo.svg" alt="Accident Payments" class="h-8 w-auto">
@@ -203,9 +203,15 @@ const handleSubmit = async () => {
       </footer>
     </section>
 
-    <section class="relative hidden p-3 lg:block lg:w-1/2">
+    <section class="relative hidden p-3 lg:block lg:h-full lg:w-1/2">
       <div class="relative h-full w-full overflow-hidden rounded-[28px] ring-1 ring-white/10">
-        <img src="/assets/bg.jpg" alt="" class="absolute inset-0 h-full w-full object-cover">
+        <img
+          src="/assets/bg.jpg"
+          alt=""
+          fetchpriority="high"
+          decoding="sync"
+          class="absolute inset-0 h-full w-full select-none object-cover object-center"
+        >
         <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/45 to-black/30" />
 
         <div class="absolute left-5 top-5 z-20 flex items-center gap-2.5 rounded-full border border-white/15 bg-black/40 px-3.5 py-1.5 text-xs font-medium text-white/85 backdrop-blur-md">

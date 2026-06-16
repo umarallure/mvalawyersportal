@@ -32,6 +32,22 @@ const isPublicPage = computed(() =>
   route.matched.some(record => record.meta.public === true) ||
   publicLayoutPaths.has(route.path)
 )
+const isLoginPage = computed(() => {
+  if (route.path === '/login') return true
+  if (typeof window === 'undefined') return false
+
+  const pendingLoginPath = window.location.pathname === '/login' || window.location.pathname === '/'
+  return pendingLoginPath && (route.path === '/' || route.path === '')
+})
+
+watch(
+  isLoginPage,
+  (active) => {
+    if (typeof document === 'undefined') return
+    document.documentElement.classList.toggle('ap-login-route', active)
+  },
+  { immediate: true, flush: 'sync' }
+)
 
 function withHubSpotReady(callback: () => void) {
   if (typeof window === 'undefined') return
