@@ -27,9 +27,10 @@ const sidebarCollapsed = ref(false)
 const chatOpen = ref(false)
 let collapsedBeforeGuide = false
 
+const publicLayoutPaths = new Set(['/', '/get-started'])
 const isPublicPage = computed(() =>
-  ['/login', '/', '/get-started', '/launch-auth', '/managed-auth/callback'].includes(route.path) ||
-  route.path.endsWith('/pdf')
+  route.matched.some(record => record.meta.public === true) ||
+  publicLayoutPaths.has(route.path)
 )
 
 function withHubSpotReady(callback: () => void) {
@@ -330,7 +331,9 @@ if (cookie.value !== 'accepted') {
                 <UIcon name="i-lucide-shield-check" class="size-4" />
               </div>
               <div class="space-y-1">
-                <p class="text-sm font-semibold text-amber-50">Managed lawyer session</p>
+                <p class="text-sm font-semibold text-amber-50">
+                  Managed lawyer session
+                </p>
                 <p class="text-xs leading-5 text-amber-100/75">
                   {{ managedBannerLabel }}
                 </p>

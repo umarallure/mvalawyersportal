@@ -11,9 +11,11 @@ const app = createApp(App)
 
 const router = createRouter({
   routes: [
-    { path: '/', component: () => import('./pages/index.vue'), meta: { public: true } },
+    { path: '/', redirect: '/login' },
     { path: '/get-started', component: () => import('./pages/get-started.vue') },
     { path: '/login', component: () => import('./pages/login.vue'), meta: { public: true } },
+    { path: '/privacy-policy', component: () => import('./pages/privacy-policy.vue'), meta: { public: true } },
+    { path: '/terms', component: () => import('./pages/terms.vue'), meta: { public: true } },
     { path: '/launch-auth', component: () => import('./pages/launch-auth.vue'), meta: { public: true } },
     { path: '/managed-auth/callback', component: () => import('./pages/managed-auth-callback.vue'), meta: { public: true } },
     { path: '/dashboard', component: () => import('./pages/dashboard.vue') },
@@ -62,7 +64,7 @@ router.beforeEach(async (to, from) => {
 
   await auth.init()
 
-  const isPublic = Boolean(to.meta.public)
+  const isPublic = to.matched.some(record => record.meta.public === true)
   const isLoggedIn = Boolean(auth.state.value.user)
   const requiresSuperAdmin = Boolean(to.meta.requiresSuperAdmin)
   const requiresAdmin = Boolean(to.meta.requiresAdmin)
