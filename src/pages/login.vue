@@ -184,7 +184,7 @@ const handleSubmit = async () => {
           <div class="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4">
             <p class="text-sm leading-relaxed text-white/55">
               <span class="font-medium text-white/80">Need access?</span>
-              Contact Accident Payments or your portal administrator to have your firm workspace provisioned.
+              Contact your administrator to have your workspace provisioned.
             </p>
           </div>
         </div>
