@@ -373,7 +373,7 @@ onMounted(load)
         </template>
 
         <template #right>
-          <div class="flex items-center gap-2">
+          <div class="ap-mobile-navbar-actions flex items-center gap-2">
             <div class="hidden items-center gap-1.5 rounded-full border border-[var(--ap-accent)]/20 bg-[var(--ap-accent)]/8 px-3 py-1 sm:flex">
               <span class="h-1.5 w-1.5 rounded-full bg-[var(--ap-accent)] animate-pulse" />
               <span class="text-xs font-medium text-[var(--ap-accent)]">{{ totalSettlements }} settlements</span>
@@ -393,7 +393,7 @@ onMounted(load)
     </template>
 
     <template #body>
-      <div class="flex h-full min-h-0 flex-col gap-5">
+      <div class="ap-mobile-workspace flex h-full min-h-0 flex-col gap-5">
         <!-- Summary Cards -->
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <div class="rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4">
@@ -467,9 +467,9 @@ onMounted(load)
         </div>
 
         <!-- Toolbar -->
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div class="flex flex-1 flex-wrap items-center gap-2.5">
-            <div class="relative max-w-xs flex-1">
+        <div class="ap-mobile-toolbar-row flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="ap-mobile-toolbar-primary flex flex-1 flex-wrap items-center gap-2.5">
+            <div class="ap-mobile-control relative max-w-xs flex-1">
               <UInput
                 v-model="query"
                 class="w-full [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)] [&_input]:pl-10 [&_input]:backdrop-blur-sm"
@@ -482,26 +482,26 @@ onMounted(load)
               v-model="attorneyFilter"
               :items="attorneyOptions"
               placeholder="Attorney: All"
-              class="w-48 [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
+              class="ap-mobile-control w-48 [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
             />
 
             <USelect
               v-model="statusFilter"
               :items="statusOptions"
               placeholder="Stage: All"
-              class="w-48 [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
+              class="ap-mobile-control w-48 [&_button]:rounded-xl [&_button]:border-[var(--ap-card-border)] [&_button]:bg-[var(--ap-card-hover)]"
             />
 
             <UInput
               v-model="filterDateStart"
               type="date"
-              class="w-38 [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)]"
+              class="ap-mobile-control w-38 [&_input]:rounded-xl [&_input]:border-[var(--ap-card-border)] [&_input]:bg-[var(--ap-card-hover)]"
               placeholder="Created start"
               title="Created date start"
             />
           </div>
 
-          <div class="flex items-center gap-1 rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-0.5">
+          <div class="ap-mobile-toolbar-actions flex items-center gap-1 rounded-xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-0.5">
             <button
               class="inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-all"
               :class="viewMode === 'table' ? 'bg-[var(--ap-accent)]/15 text-[var(--ap-accent)]' : 'text-muted hover:text-default'"
@@ -768,13 +768,13 @@ onMounted(load)
           <div
             v-else
             ref="kanbanBoardEl"
-            class="flex flex-1 min-h-0 gap-4 overflow-x-auto pb-2 kanban-scroll"
+            class="ap-mobile-board-shell flex flex-1 min-h-0 gap-4 overflow-x-auto pb-2 kanban-scroll"
             @dragover="onBoardDragOver"
           >
             <div
               v-for="col in kanbanColumns"
               :key="col.key"
-              class="flex w-72 shrink-0 flex-col rounded-2xl border border-t-[3px] border-[var(--ap-card-border)] transition-all duration-200"
+              class="ap-mobile-board-column flex w-72 shrink-0 flex-col rounded-2xl border border-t-[3px] border-[var(--ap-card-border)] transition-all duration-200"
               :class="[
                 col.borderClass,
                 dragOverColumn === col.key ? 'ring-2 ring-[var(--ap-accent)]/30 bg-[var(--ap-accent)]/[0.02]' : 'bg-[var(--ap-card-bg)]',

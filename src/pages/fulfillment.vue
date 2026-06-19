@@ -2,8 +2,10 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
+import BoardDragHint from '../components/BoardDragHint.vue'
 import ProductGuideHint from '../components/product-guide/ProductGuideHint.vue'
 import { useAuth } from '../composables/useAuth'
+import { useBoardTouchDrag } from '../composables/useBoardTouchDrag'
 import { useDragGhost } from '../composables/useDragGhost'
 import { productGuideHints } from '../data/product-guide-hints'
 import { listOrdersForLawyer } from '../lib/orders'
@@ -448,6 +450,16 @@ const onDropToStage = async (targetStage: StageKey) => {
     onDragEndLead()
   }
 }
+
+// Touch drag-and-drop (mobile) — mirrors the native HTML5 drag path above.
+const { onCardTouchStart } = useBoardTouchDrag<FulfillmentOrder>({
+  onStart: (order) => {
+    dragLeadId.value = order.id
+    dragFromStage.value = order.stage
+  },
+  onDrop: (stage) => { void onDropToStage(stage as StageKey) },
+  onCancel: () => { onDragEndLead() }
+})
 </script>
 
 <template>
@@ -473,9 +485,9 @@ const onDropToStage = async (targetStage: StageKey) => {
     </template>
 
     <template #body>
-      <div class="flex h-full min-h-0 flex-col gap-5">
+      <div class="ap-mobile-workspace flex h-full min-h-0 flex-col gap-5">
         <!-- ═══ Stat Cards ═══ -->
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div class="ap-mobile-kpi-grid ap-mobile-kpi-grid--five grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <div class="ap-fade-in group relative overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm transition-all duration-300 hover:shadow-xl">
             <div class="absolute inset-y-0 left-0 w-1 bg-orange-500 dark:bg-orange-600" />
             <div class="flex items-center justify-between px-5 py-4 pl-5">
@@ -579,11 +591,11 @@ const onDropToStage = async (targetStage: StageKey) => {
 
         <!-- ═══ Filters ═══ -->
         <div class="ap-fade-in ap-delay-5 overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm">
-          <div class="flex flex-wrap items-center gap-3 px-5 py-3">
-            <div class="flex flex-wrap items-center gap-3 min-w-0">
+          <div class="ap-mobile-toolbar-row flex flex-wrap items-center gap-3 px-5 py-3">
+            <div class="ap-mobile-toolbar-primary flex flex-wrap items-center gap-3 min-w-0">
               <UInput
                 v-model="query"
-                class="max-w-xs"
+                class="ap-mobile-control max-w-xs"
                 icon="i-lucide-search"
                 placeholder="Search leads..."
                 size="sm"
@@ -595,7 +607,7 @@ const onDropToStage = async (targetStage: StageKey) => {
               />
             </div>
 
-            <div class="ml-auto flex flex-wrap items-center justify-end gap-2.5 text-right">
+            <div class="ap-mobile-toolbar-actions ml-auto flex flex-wrap items-center justify-end gap-2.5 text-right">
               <p
                 aria-live="polite"
                 class="text-sm font-medium text-muted tabular-nums"
@@ -688,14 +700,17 @@ const onDropToStage = async (targetStage: StageKey) => {
           </div>
         </div>
 
+        <BoardDragHint class="shrink-0" />
+
         <!-- ═══ Kanban Board ═══ -->
-        <div class="min-h-0 flex-1 overflow-hidden">
-          <div class="flex h-full gap-4">
+        <div class="ap-mobile-board-shell min-h-0 flex-1 overflow-hidden">
+          <div class="ap-mobile-board-track flex h-full gap-4">
             <div
               v-for="(stage, stageIdx) in STAGES"
               :key="stage.key"
-              class="ap-fade-in flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm"
+              class="ap-mobile-board-column ap-fade-in flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm"
               :style="{ animationDelay: `${500 + stageIdx * 100}ms` }"
+              :data-board-stage="stage.key"
               @dragover.prevent
               @drop.prevent="onDropToStage(stage.key)"
             >
@@ -733,6 +748,7 @@ const onDropToStage = async (targetStage: StageKey) => {
                   draggable="true"
                   @dragstart="onDragStartLead($event, order)"
                   @dragend="onDragEndLead"
+                  @touchstart="onCardTouchStart($event, order)"
                   @click="openLead(order)"
                 >
                   <div class="flex items-start justify-between gap-2">

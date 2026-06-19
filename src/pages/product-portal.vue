@@ -161,12 +161,12 @@ const placeOrder = () => {
     </template>
 
     <template #body>
-      <div class="space-y-6">
+      <div class="product-offering-page space-y-6">
         <!-- Header -->
-        <div class="ap-fade-in flex items-start justify-between gap-4">
-          <div>
+        <div class="product-offering-header ap-fade-in flex items-start justify-between gap-4">
+          <div class="product-offering-copy">
             <div class="flex items-center gap-1.5">
-              <h2 class="text-lg font-semibold text-highlighted">
+              <h2 class="product-offering-title text-lg font-semibold text-highlighted">
                 {{ selectedCategory === 'consumer' ? 'Consumer Cases — Pricing Per Case' : 'Commercial Cases — Pricing Per Case' }}
               </h2>
               <ProductGuideHint
@@ -175,11 +175,11 @@ const placeOrder = () => {
                 :guide-target="productOfferingHints.overview.guideTarget"
               />
             </div>
-            <p class="mt-1 text-sm text-muted">
+            <p class="product-offering-description mt-1 text-sm text-muted">
               Each tier reflects the case value based on liability strength, injury severity, documentation quality, and a shared 0–12 month accident window.
             </p>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="product-offering-controls flex items-center gap-2">
             <ProductGuideHint
               :title="productOfferingHints.categoryToggle.title"
               :description="productOfferingHints.categoryToggle.description"
@@ -193,7 +193,7 @@ const placeOrder = () => {
               ]"
               value-key="value"
               label-key="label"
-              class="w-48 shrink-0"
+              class="product-offering-select w-48 shrink-0"
               @update:model-value="selectedCategory = $event as 'consumer' | 'commercial'"
             />
           </div>
@@ -213,7 +213,7 @@ const placeOrder = () => {
         <!-- ═══ Tier Cards Grid ═══ -->
         <div
           :class="[
-            'grid gap-4',
+            'product-offering-grid grid gap-4',
             selectedCategory === 'consumer'
               ? 'sm:grid-cols-2 xl:grid-cols-4'
               : 'max-w-sm'
@@ -229,7 +229,7 @@ const placeOrder = () => {
             @mouseleave="onTiltLeave"
           >
             <div
-              class="group/card flex h-full flex-col rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm transition-[box-shadow,background-color] duration-300 hover:shadow-xl hover:bg-white dark:hover:bg-[#1f1f1f]"
+              class="product-offering-card group/card flex h-full flex-col rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm transition-[box-shadow,background-color] duration-300 hover:shadow-xl hover:bg-white dark:hover:bg-[#1f1f1f]"
               :class="tier.hoverBorder"
             >
               <!-- Card Header — centered text -->
@@ -251,7 +251,7 @@ const placeOrder = () => {
               <div class="h-[2px]" :class="tier.stripClass" />
 
               <!-- Price -->
-              <div class="flex items-baseline justify-center gap-1 px-4 pt-5 pb-1">
+              <div class="product-offering-price flex items-baseline justify-center gap-1 px-4 pt-5 pb-1">
                 <span
                   class="text-3xl font-bold"
                   :class="tier.priceColor || 'tier-4-price'"
@@ -262,11 +262,11 @@ const placeOrder = () => {
               </div>
 
               <!-- Rows -->
-              <div class="flex-1 space-y-1 px-4 py-4">
+              <div class="product-offering-rows flex-1 space-y-1 px-4 py-4">
                 <div
                   v-for="row in tier.rows"
                   :key="row.label"
-                  class="flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors duration-150 hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
+                  class="product-offering-row flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors duration-150 hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
                 >
                   <UIcon :name="row.icon" class="mt-0.5 size-4 shrink-0 text-muted" />
                   <div class="min-w-0">
@@ -284,7 +284,7 @@ const placeOrder = () => {
               </div>
 
               <!-- CTA Button -->
-              <div class="flex items-center gap-2 px-4 pb-4">
+              <div class="product-offering-cta flex items-center gap-2 px-4 pb-4">
                 <button
                   class="tier-btn group/btn flex flex-1 items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-all duration-200"
                   :class="[
@@ -490,5 +490,74 @@ const placeOrder = () => {
   background: rgba(174, 64, 16, 0.08);
   border-color: rgba(174, 64, 16, 0.18);
   color: var(--ap-accent);
+}
+
+@media (max-width: 639px) {
+  .product-offering-page {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .product-offering-header {
+    flex-direction: column;
+    gap: 0.875rem;
+  }
+
+  .product-offering-copy,
+  .product-offering-controls {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .product-offering-title {
+    font-size: 1rem;
+    line-height: 1.35;
+  }
+
+  .product-offering-description {
+    font-size: 0.8125rem;
+    line-height: 1.55;
+  }
+
+  .product-offering-controls {
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  .product-offering-grid {
+    gap: 0.875rem;
+  }
+
+  .tier-tilt {
+    transform: none !important;
+  }
+
+  .product-offering-card {
+    border-radius: 0.875rem;
+  }
+
+  .product-offering-price {
+    padding-top: 1rem;
+  }
+
+  .product-offering-price span:first-child {
+    font-size: 1.875rem;
+    line-height: 2.25rem;
+  }
+
+  .product-offering-rows {
+    padding: 0.75rem;
+  }
+
+  .product-offering-row {
+    gap: 0.625rem;
+    padding: 0.625rem;
+  }
+
+  .product-offering-cta {
+    padding-inline: 0.75rem;
+    padding-bottom: 0.875rem;
+  }
 }
 </style>

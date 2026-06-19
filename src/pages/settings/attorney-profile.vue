@@ -604,7 +604,7 @@ onBeforeRouteLeave((to) => {
             <label class="text-xs font-medium text-highlighted">
               Office Address <span class="text-red-400/80">*</span>
             </label>
-            <div class="grid grid-cols-3 gap-2.5">
+            <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
               <UInput
                 v-model="addressStreet"
                 placeholder="Street Address"

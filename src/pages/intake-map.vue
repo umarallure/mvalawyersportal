@@ -1646,7 +1646,7 @@ watch(existingGeneralCoverage, () => {
         </template>
 
         <template #right>
-          <div class="flex items-center gap-2">
+          <div class="order-map-header-actions hidden items-center gap-2 lg:flex">
             <ProductGuideHint
               :title="orderMapHints.createOrder.title"
               :description="orderMapHints.createOrder.description"
@@ -1795,6 +1795,121 @@ watch(existingGeneralCoverage, () => {
 
     <template #body>
       <div class="relative flex flex-col gap-5">
+        <div class="order-map-mobile-actions lg:hidden rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-3">
+          <div class="flex items-center gap-2">
+            <ProductGuideHint
+              :title="orderMapHints.createOrder.title"
+              :description="orderMapHints.createOrder.description"
+              :guide-target="orderMapHints.createOrder.guideTarget"
+            />
+            <USelect
+              v-model="orderMapView"
+              :items="orderMapViewOptions"
+              value-key="value"
+              label-key="label"
+              class="min-w-0 flex-1"
+              color="primary"
+              variant="subtle"
+              :ui="orderMapViewSelectUi"
+              :disabled="isAccountInactive"
+            />
+          </div>
+
+          <div class="mt-3 grid grid-cols-2 gap-2">
+            <UButton
+              v-if="isAccountInactive"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-refresh-cw"
+              :loading="loading"
+              disabled
+              block
+            >
+              Refresh
+            </UButton>
+            <UButton
+              v-else
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-refresh-cw"
+              :loading="loading"
+              block
+              @click="refreshAll"
+            >
+              Refresh
+            </UButton>
+
+            <template v-if="isUrgencyView">
+              <UButton
+                v-if="isAccountInactive"
+                color="neutral"
+                :variant="blockMode ? 'solid' : 'outline'"
+                :icon="blockMode ? 'i-lucide-check' : 'i-lucide-ban'"
+                disabled
+                block
+              >
+                {{ blockMode ? 'Done' : 'Block' }}
+              </UButton>
+              <UButton
+                v-else
+                :color="blockMode ? 'primary' : 'neutral'"
+                :variant="blockMode ? 'solid' : 'outline'"
+                :icon="blockMode ? 'i-lucide-check' : 'i-lucide-ban'"
+                block
+                @click="() => { blockMode = !blockMode }"
+              >
+                {{ blockMode ? 'Done' : 'Block' }}
+              </UButton>
+
+              <UButton
+                v-if="isAccountInactive || (isAtMaxOrderStates && orderStateOptions.length === 0)"
+                color="primary"
+                variant="solid"
+                icon="i-lucide-plus"
+                disabled
+                block
+                class="col-span-2"
+              >
+                Create Urgency Order
+              </UButton>
+              <UButton
+                v-else
+                color="primary"
+                variant="solid"
+                icon="i-lucide-plus"
+                block
+                class="col-span-2"
+                @click="openCreateOrder"
+              >
+                Create Urgency Order
+              </UButton>
+            </template>
+
+            <template v-else>
+              <UButton
+                v-if="isAccountInactive"
+                color="primary"
+                variant="solid"
+                icon="i-lucide-plus"
+                disabled
+                block
+              >
+                Create
+              </UButton>
+              <UButton
+                v-else
+                color="primary"
+                variant="solid"
+                :icon="hasGeneralCoverage ? 'i-lucide-pencil' : 'i-lucide-plus'"
+                block
+                @click="openGeneralCoverage"
+              >
+                {{ hasGeneralCoverage ? 'Edit Coverage' : 'Create Coverage' }}
+              </UButton>
+            </template>
+          </div>
+        </div>
+
         <UModal
           :open="urgencyOrderAccessModalOpen"
           title="Urgency Orders unavailable"
@@ -2438,9 +2553,9 @@ watch(existingGeneralCoverage, () => {
         </UModal>
 
         <!-- ═══ Map with integrated legend ═══ -->
-        <div class="ap-fade-in ap-delay-2 rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4 overflow-hidden">
-          <div class="relative">
-            <div class="absolute right-3 top-3 z-[5] rounded-xl border border-black/[0.06] bg-white/90 px-2 py-1.5 shadow-lg backdrop-blur-sm dark:border-white/[0.08] dark:bg-[#1a1a1a]/60">
+        <div class="order-map-card ap-fade-in ap-delay-2 rounded-2xl border border-[var(--ap-card-border)] bg-[var(--ap-card-bg)] p-4 overflow-hidden">
+          <div class="order-map-stage relative">
+            <div class="order-map-guide-chip absolute right-3 top-3 z-[5] rounded-xl border border-black/[0.06] bg-white/90 px-2 py-1.5 shadow-lg backdrop-blur-sm dark:border-white/[0.08] dark:bg-[#1a1a1a]/60">
               <div class="flex items-center gap-1.5">
                 <span class="text-[10px] font-semibold uppercase tracking-wider text-muted">Guide</span>
                 <ProductGuideHint
@@ -2453,7 +2568,7 @@ watch(existingGeneralCoverage, () => {
 
             <div
               ref="mapRoot"
-              class="w-full rounded-xl overflow-hidden opacity-0"
+              class="order-map-root w-full rounded-xl overflow-hidden opacity-0"
               style="height: 520px;"
             />
 
@@ -2512,9 +2627,18 @@ watch(existingGeneralCoverage, () => {
             </div>
 
             <!-- Legend & Filter overlay -->
-            <div class="ap-fade-in ap-delay-4 absolute bottom-0 left-1/2 z-[5] -translate-x-1/2 flex flex-wrap md:flex-nowrap items-center gap-x-2 gap-y-1.5 md:gap-x-4 md:whitespace-nowrap rounded-xl border border-black/[0.06] bg-white/90 dark:border-white/[0.08] dark:bg-[#1a1a1a]/60 px-2.5 py-2 md:px-4 md:py-2.5 shadow-lg backdrop-blur-sm max-w-[calc(100%-1.5rem)] md:max-w-none">
+            <div class="order-map-legend ap-fade-in ap-delay-4 relative z-[5] mt-4 flex w-full flex-col items-stretch gap-3 rounded-xl border border-black/[0.06] bg-white/90 px-3.5 py-3.5 backdrop-blur-sm dark:border-white/[0.08] dark:bg-[#1a1a1a]/60 lg:absolute lg:bottom-0 lg:left-1/2 lg:mt-0 lg:w-auto lg:max-w-none lg:-translate-x-1/2 lg:flex-row lg:flex-nowrap lg:items-center lg:gap-x-4 lg:gap-y-1.5 lg:whitespace-nowrap lg:px-4 lg:py-2.5 lg:shadow-lg">
+              <div class="order-map-legend-heading flex items-center justify-between border-b border-[var(--ap-card-border)] pb-3 lg:hidden">
+                <div>
+                  <div class="text-xs font-semibold text-highlighted">Map legend</div>
+                  <div class="mt-0.5 text-[11px] text-muted">
+                    {{ isUrgencyView ? 'Urgency order status' : 'General coverage status' }}
+                  </div>
+                </div>
+              </div>
+
               <!-- Urgency Order legend -->
-              <div v-if="isUrgencyView" class="flex flex-wrap md:flex-nowrap items-center gap-2 md:gap-3">
+              <div v-if="isUrgencyView" class="order-map-legend-list grid w-full grid-cols-2 gap-2 lg:flex lg:w-auto lg:flex-nowrap lg:items-center lg:gap-3">
                 <div class="flex items-center gap-1.5">
                   <div class="size-2.5 rounded-full bg-gray-300" />
                   <span class="text-[10px] text-gray-500 dark:text-gray-400">No orders</span>
@@ -2548,7 +2672,7 @@ watch(existingGeneralCoverage, () => {
               </div>
 
               <!-- General Coverage legend -->
-              <div v-else class="flex flex-wrap md:flex-nowrap items-center gap-2 md:gap-3">
+              <div v-else class="order-map-legend-list grid w-full grid-cols-2 gap-2 lg:flex lg:w-auto lg:flex-nowrap lg:items-center lg:gap-3">
                 <div class="flex items-center gap-1.5">
                   <div class="size-2.5 rounded-full" style="background-color: #94a3b8;" />
                   <span class="text-[10px] text-gray-500 dark:text-gray-400">Not open</span>
@@ -2581,7 +2705,7 @@ watch(existingGeneralCoverage, () => {
                 </div>
               </div>
 
-              <div v-if="isUrgencyView" class="flex items-center gap-2">
+              <div v-if="isUrgencyView" class="order-map-legend-controls flex w-full items-center justify-between gap-2 border-t border-[var(--ap-card-border)] pt-3 lg:w-auto lg:justify-start lg:border-t-0 lg:pt-0">
                 <span
                   class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-semibold"
                   :class="isAtMaxOrderStates
@@ -2595,10 +2719,10 @@ watch(existingGeneralCoverage, () => {
                   v-model="mapFilter"
                   :items="mapFilterOptions"
                   size="xs"
-                  class="min-w-28 md:min-w-36"
+                  class="order-map-filter-select min-w-28 md:min-w-36"
                 />
               </div>
-              <div v-else class="flex items-center gap-2">
+              <div v-else class="order-map-legend-controls flex w-full items-center justify-between gap-2 border-t border-[var(--ap-card-border)] pt-3 lg:w-auto lg:justify-start lg:border-t-0 lg:pt-0">
                 <span class="inline-flex items-center gap-1 rounded-md border border-black/[0.06] dark:border-white/[0.08] bg-black/[0.04] dark:bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold text-gray-500 dark:text-gray-400">
                   <UIcon name="i-lucide-map-pin" class="text-[9px]" />
                   {{ coveredStateCount }} covered
@@ -2703,7 +2827,7 @@ watch(existingGeneralCoverage, () => {
           </div>
 
           <!-- Stats row — visible only on mobile, below the map (Urgency view) -->
-          <div v-if="isUrgencyView" class="flex md:hidden gap-2 mt-3">
+          <div v-if="isUrgencyView" class="order-map-mobile-stats grid grid-cols-2 md:hidden gap-2 mt-3">
             <div class="ap-fade-in-left flex-1 relative overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 px-3 py-2.5 pl-5 shadow-sm backdrop-blur-sm" style="animation-delay: 400ms">
               <div class="absolute inset-y-0 left-0 w-1 bg-orange-500 dark:bg-orange-600" />
               <div class="text-[10px] font-medium uppercase tracking-wider text-orange-500 dark:text-orange-600">Total</div>
@@ -3233,3 +3357,35 @@ watch(existingGeneralCoverage, () => {
     </template>
   </UDashboardPanel>
 </template>
+
+<style scoped>
+/* Legend layout (stacked card on mobile/tablet, floating bar on desktop) lives
+   in the template classes. Scoped rules below only cover things that must beat a
+   Tailwind utility or an inline style, which in this build requires !important. */
+@media (max-width: 1023px) {
+  .order-map-legend-list span {
+    white-space: normal;
+    line-height: 1.25;
+  }
+}
+
+@media (max-width: 767px) {
+  .order-map-mobile-actions {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Override the inline height: 520px so the map fits a phone screen */
+  .order-map-root {
+    height: min(74vw, 21rem) !important;
+    min-height: 17.5rem;
+    border-radius: 0.75rem;
+  }
+
+  .order-map-mobile-stats > div {
+    min-width: 0;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+}
+</style>

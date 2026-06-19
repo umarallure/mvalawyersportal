@@ -3,9 +3,11 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { DateFormatter, getLocalTimeZone, CalendarDate, today } from '@internationalized/date'
 
+import BoardDragHint from '../components/BoardDragHint.vue'
 import ProductGuideHint from '../components/product-guide/ProductGuideHint.vue'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../composables/useAuth'
+import { useBoardTouchDrag } from '../composables/useBoardTouchDrag'
 import { useDragGhost } from '../composables/useDragGhost'
 import { productGuideHints } from '../data/product-guide-hints'
 import {
@@ -718,6 +720,16 @@ const onDropToStage = (targetStage: CustomerStageKey) => {
   moveConfirmOpen.value = true
 }
 
+// Touch drag-and-drop (mobile) — mirrors the native HTML5 drag path above.
+const { onCardTouchStart } = useBoardTouchDrag<CustomerCard>({
+  onStart: (lead) => {
+    dragLeadId.value = lead.id
+    dragFromStage.value = lead.stage
+  },
+  onDrop: (stage) => { onDropToStage(stage as CustomerStageKey) },
+  onCancel: () => { onDragEndLead() }
+})
+
 const handleMoveConfirmUpdate = (v: boolean) => {
   moveConfirmOpen.value = v
   if (!v) {
@@ -868,7 +880,7 @@ const stageCardAccentStyle = (key: CustomerStageKey) => {
     </template>
 
     <template #body>
-      <div class="flex h-full min-h-0 flex-col gap-5">
+      <div class="ap-mobile-workspace flex h-full min-h-0 flex-col gap-5">
         <!-- Move Confirmation Modal -->
         <UModal
           :open="moveConfirmOpen"
@@ -920,7 +932,7 @@ const stageCardAccentStyle = (key: CustomerStageKey) => {
         </UModal>
 
         <!-- Stat Cards -->
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="ap-mobile-kpi-grid grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div class="ap-fade-in group relative overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm transition-all duration-300 hover:shadow-xl">
             <div class="absolute inset-y-0 left-0 w-1 bg-blue-400" />
             <div class="flex items-center justify-between px-5 py-4 pl-5">
@@ -1005,11 +1017,11 @@ const stageCardAccentStyle = (key: CustomerStageKey) => {
         <!-- Filters -->
         <div class="ap-fade-in ap-delay-4 overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm">
           <!-- Filter Header -->
-          <div class="flex flex-wrap items-center gap-3 px-5 py-3">
-            <div class="flex flex-wrap items-center gap-3 min-w-0">
+          <div class="ap-mobile-toolbar-row flex flex-wrap items-center gap-3 px-5 py-3">
+            <div class="ap-mobile-toolbar-primary flex flex-wrap items-center gap-3 min-w-0">
               <UInput
                 v-model="query"
-                class="max-w-xs"
+                class="ap-mobile-control max-w-xs"
                 icon="i-lucide-search"
                 placeholder="Search customers..."
                 size="sm"
@@ -1028,7 +1040,7 @@ const stageCardAccentStyle = (key: CustomerStageKey) => {
                 value-key="value"
                 label-key="label"
                 size="sm"
-                class="w-44"
+                class="ap-mobile-control w-44"
               />
 
               <!-- Custom date range picker -->
@@ -1090,7 +1102,7 @@ const stageCardAccentStyle = (key: CustomerStageKey) => {
               </UPopover>
             </div>
 
-            <div class="ml-auto flex flex-wrap items-center justify-end gap-2.5 text-right">
+            <div class="ap-mobile-toolbar-actions ml-auto flex flex-wrap items-center justify-end gap-2.5 text-right">
               <p
                 aria-live="polite"
                 class="text-sm font-medium text-muted tabular-nums"
@@ -1130,7 +1142,7 @@ const stageCardAccentStyle = (key: CustomerStageKey) => {
           >
             <div>
               <div class="border-t border-black/[0.06] dark:border-white/[0.08] bg-black/[0.015] dark:bg-white/[0.02] px-5 py-4">
-              <div class="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+              <div class="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-4">
               <!-- States -->
               <div>
                 <label class="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-muted">States</label>
@@ -1311,14 +1323,17 @@ const stageCardAccentStyle = (key: CustomerStageKey) => {
           </div>
         </div>
 
+        <BoardDragHint class="shrink-0" />
+
         <!-- Kanban Board -->
-        <div class="min-h-0 flex-1 overflow-hidden">
-          <div class="flex h-full gap-4">
+        <div class="ap-mobile-board-shell min-h-0 flex-1 overflow-hidden">
+          <div class="ap-mobile-board-track flex h-full gap-4">
             <div
               v-for="(stage, stageIdx) in STAGES"
               :key="stage.key"
-              class="ap-fade-in flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm"
+              class="ap-mobile-board-column ap-fade-in flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm"
               :style="{ animationDelay: `${600 + stageIdx * 100}ms` }"
+              :data-board-stage="stage.key"
               @dragover.prevent
               @drop.prevent="onDropToStage(stage.key)"
             >
@@ -1359,6 +1374,7 @@ const stageCardAccentStyle = (key: CustomerStageKey) => {
                   draggable="true"
                   @dragstart="onDragStartLead($event, lead)"
                   @dragend="onDragEndLead"
+                  @touchstart="onCardTouchStart($event, lead)"
                   @click="openLead(lead)"
                 >
                   <!-- Client Name & Initials -->

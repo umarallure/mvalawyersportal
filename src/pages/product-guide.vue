@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { useAuth } from '../composables/useAuth'
@@ -105,15 +105,59 @@ const topicNumber = (sectionId: string, topicId: string) => {
   return `${sIdx + 1}.${tIdx + 1}`
 }
 
+const scrollMobileContentIntoView = async () => {
+  if (typeof window === 'undefined' || !window.matchMedia('(max-width: 639px)').matches) return
+  await nextTick()
+  document.getElementById('product-guide-content')?.scrollIntoView({
+    block: 'start',
+    behavior: 'smooth'
+  })
+}
+
 const selectSection = (id: string) => {
   activeSectionId.value = id
   activeTopicId.value = null
+  void scrollMobileContentIntoView()
 }
 
 const selectTopic = (sectionId: string, topicId: string) => {
   activeSectionId.value = sectionId
   activeTopicId.value = topicId
+  void scrollMobileContentIntoView()
 }
+
+const mobileGuideOptions = computed(() =>
+  filteredSections.value.flatMap((section) => [
+    {
+      label: `${sectionNumber(section.id)}. ${section.title}`,
+      value: `section:${section.id}`,
+      sectionId: section.id,
+      topicId: null
+    },
+    ...section.topics.map((topic) => ({
+      label: `${topicNumber(section.id, topic.id)} ${topic.title}`,
+      value: `topic:${topic.id}`,
+      sectionId: section.id,
+      topicId: topic.id
+    }))
+  ])
+)
+
+const mobileGuideSelection = computed({
+  get: () => {
+    if (activeTopicId.value) return `topic:${activeTopicId.value}`
+    return activeSection.value ? `section:${activeSection.value.id}` : ''
+  },
+  set: (value: string) => {
+    const option = mobileGuideOptions.value.find((item) => item.value === value)
+    if (!option) return
+    if (option.topicId) {
+      selectTopic(option.sectionId, option.topicId)
+      return
+    }
+    selectSection(option.sectionId)
+  }
+})
 
 // ── Modal state ──
 const sectionModalOpen = ref(false)
@@ -446,7 +490,7 @@ onMounted(() => guide.load())
 </script>
 
 <template>
-  <UDashboardPanel id="product-guide" class="!overflow-hidden">
+  <UDashboardPanel id="product-guide" class="product-guide-panel !overflow-hidden">
     <template #header>
       <UDashboardNavbar title="Product Guide">
         <template #leading>
@@ -454,7 +498,7 @@ onMounted(() => guide.load())
         </template>
 
         <template #right>
-          <div v-if="isAdmin" class="flex items-center gap-2">
+          <div v-if="isAdmin" class="ap-mobile-navbar-actions flex items-center gap-2">
             <UButton
               v-if="!guide.sections.value.length"
               size="sm"
@@ -491,9 +535,35 @@ onMounted(() => guide.load())
     </template>
 
     <template #body>
-      <div class="flex h-full gap-5 overflow-hidden lg:gap-4">
+      <div class="product-guide-layout flex h-full gap-5 overflow-hidden lg:gap-4">
+        <div class="product-guide-mobile-nav flex flex-col gap-3 rounded-xl border border-[var(--ap-card-border)] bg-white/90 p-3 dark:bg-[#1a1a1a]/60 sm:hidden">
+          <UInput
+            v-model="searchQuery"
+            icon="i-lucide-search"
+            placeholder="Search topics..."
+            size="sm"
+            class="w-full"
+          />
+
+          <USelect
+            v-if="mobileGuideOptions.length"
+            v-model="mobileGuideSelection"
+            :items="mobileGuideOptions"
+            value-key="value"
+            label-key="label"
+            size="sm"
+            class="w-full"
+          />
+
+          <div
+            v-else
+            class="rounded-lg border border-dashed border-[var(--ap-card-border)] px-3 py-4 text-center text-xs text-muted"
+          >
+            {{ searchQuery ? `No results for "${searchQuery}"` : 'No sections yet' }}
+          </div>
+        </div>
         <!-- ── Left sidebar: single card ── -->
-        <aside class="flex w-72 shrink-0 flex-col overflow-hidden rounded-xl border border-[var(--ap-card-border)] bg-white/90 dark:bg-[#1a1a1a]/60">
+        <aside class="hidden w-72 shrink-0 flex-col overflow-hidden rounded-xl border border-[var(--ap-card-border)] bg-white/90 dark:bg-[#1a1a1a]/60 sm:flex">
           <!-- Search -->
           <div class="border-b border-[var(--ap-card-border)] p-3">
             <UInput
@@ -647,7 +717,7 @@ onMounted(() => guide.load())
         </aside>
 
         <!-- ── Right content area ── -->
-        <div class="min-w-0 flex-1 overflow-y-auto pr-1">
+        <div id="product-guide-content" class="product-guide-content min-w-0 flex-1 overflow-y-auto pr-1">
           <!-- Loading -->
           <div v-if="guide.loading.value" class="flex h-full items-center justify-center">
             <UIcon name="i-lucide-loader-2" class="animate-spin text-xl text-muted" />
@@ -695,9 +765,9 @@ onMounted(() => guide.load())
           </div>
 
           <!-- Active topic view -->
-          <article v-else-if="activeTopic" class="mx-auto max-w-4xl">
+          <article v-else-if="activeTopic" class="product-guide-article mx-auto max-w-4xl">
             <!-- Breadcrumbs -->
-            <div class="flex items-center gap-1.5 text-[13px] text-muted">
+            <div class="product-guide-breadcrumbs flex items-center gap-1.5 text-[13px] text-muted">
               <span>Product Guide</span>
               <UIcon name="i-lucide-chevron-right" class="text-[10px]" />
               <button
@@ -712,7 +782,7 @@ onMounted(() => guide.load())
             </div>
 
             <!-- Topic header -->
-            <div class="mt-5 flex items-start justify-between gap-4">
+            <div class="product-guide-heading mt-5 flex items-start justify-between gap-4">
               <div>
                 <p class="text-[13px] font-medium tabular-nums text-[var(--ap-accent)]">{{ topicNumber(activeSection!.id, activeTopic.id) }}</p>
                 <h1 class="mt-1 text-2xl font-bold text-highlighted">{{ activeTopic.title }}</h1>
@@ -745,7 +815,7 @@ onMounted(() => guide.load())
             >
               <div
                 v-if="activeTopic.media_type === 'image'"
-                class="flex h-72 items-center justify-center bg-[var(--ap-card-hover)]/60 p-4 md:h-[26rem]"
+                class="product-guide-media-frame flex h-72 items-center justify-center bg-[var(--ap-card-hover)]/60 p-4 md:h-[26rem]"
               >
                 <img
                   :src="activeTopic.media_url"
@@ -787,16 +857,16 @@ onMounted(() => guide.load())
           </article>
 
           <!-- Section overview (no topic selected) -->
-          <article v-else-if="activeSection" class="mx-auto max-w-4xl">
+          <article v-else-if="activeSection" class="product-guide-article mx-auto max-w-4xl">
             <!-- Breadcrumbs -->
-            <div class="flex items-center gap-1.5 text-[13px] text-muted">
+            <div class="product-guide-breadcrumbs flex items-center gap-1.5 text-[13px] text-muted">
               <span>Product Guide</span>
               <UIcon name="i-lucide-chevron-right" class="text-[10px]" />
               <span class="text-highlighted">{{ sectionNumber(activeSection.id) }}. {{ activeSection.title }}</span>
             </div>
 
             <!-- Section header -->
-            <div class="mt-5 flex items-start justify-between gap-4">
+            <div class="product-guide-heading mt-5 flex items-start justify-between gap-4">
               <div class="flex items-center gap-3">
                 <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--ap-accent)]/10 text-sm font-bold text-[var(--ap-accent)]">
                   {{ sectionNumber(activeSection.id) }}
@@ -898,3 +968,54 @@ onMounted(() => guide.load())
     @confirm="handleDelete"
   />
 </template>
+
+<style scoped>
+@media (max-width: 639px) {
+  .product-guide-panel {
+    overflow: visible !important;
+  }
+
+  .product-guide-layout {
+    height: auto;
+    min-height: 100%;
+    flex-direction: column;
+    overflow: visible;
+    gap: 1rem;
+  }
+
+  .product-guide-mobile-nav {
+    flex: none;
+  }
+
+  .product-guide-content {
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .product-guide-article {
+    width: 100%;
+    max-width: none;
+  }
+
+  .product-guide-breadcrumbs {
+    flex-wrap: wrap;
+    row-gap: 0.375rem;
+    line-height: 1.5;
+  }
+
+  .product-guide-heading {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .product-guide-heading h1 {
+    font-size: 1.375rem;
+    line-height: 1.25;
+  }
+
+  .product-guide-media-frame {
+    height: 14rem !important;
+    padding: 0.75rem;
+  }
+}
+</style>

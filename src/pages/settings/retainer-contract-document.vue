@@ -17,6 +17,8 @@ import {
   updateDocumentNotes,
   US_STATES_OPTIONS,
   getStateName,
+  ALL_STATES_DOCUMENT_VALUE,
+  ALL_STATES_DOCUMENT_LABEL,
   type RetainerContractDocument
 } from '../../lib/attorney-profile'
 
@@ -43,9 +45,12 @@ const editingNotesId = ref<string | null>(null)
 const editingNotesValue = ref('')
 
 const usedStates = computed(() => new Set(documents.value.map(d => d.state)))
-const availableStates = computed(() => 
-  US_STATES_OPTIONS.filter(opt => !usedStates.value.has(opt.value))
-)
+const availableStates = computed(() => {
+  const stateOptions = US_STATES_OPTIONS.filter(opt => !usedStates.value.has(opt.value))
+  // Offer a single "All States" document at the top, until one already exists.
+  if (usedStates.value.has(ALL_STATES_DOCUMENT_VALUE)) return stateOptions
+  return [{ label: ALL_STATES_DOCUMENT_LABEL, value: ALL_STATES_DOCUMENT_VALUE }, ...stateOptions]
+})
 const canAddMore = computed(() => availableStates.value.length > 0)
 
 const maxFileSizeLabel = `${Math.round(RETAINER_CONTRACT_DOCUMENT_MAX_SIZE_BYTES / (1024 * 1024))}MB`
@@ -152,11 +157,20 @@ const saveNewDocument = async () => {
 }
 
 const openDocument = async (doc: RetainerContractDocument) => {
+  if (openingDocument.value) return
   openingDocument.value = true
+
+  // Open the tab synchronously inside the click gesture. On mobile, opening it
+  // after the async signed-URL fetch is treated as an unsolicited pop-up and
+  // blocked — so we open a blank tab now and redirect it once the URL is ready.
+  const previewWindow = window.open('', '_blank')
+
   try {
     const signedUrl = await getMultiStateDocumentSignedUrl(doc.document_path)
-    const previewWindow = window.open(signedUrl, '_blank', 'noopener,noreferrer')
-    if (!previewWindow) {
+    if (previewWindow) {
+      try { previewWindow.opener = null } catch { /* cross-origin, ignore */ }
+      previewWindow.location.replace(signedUrl)
+    } else {
       toast.add({
         title: 'Preview blocked',
         description: 'Please allow pop-ups for this site to open the document.',
@@ -165,6 +179,7 @@ const openDocument = async (doc: RetainerContractDocument) => {
       })
     }
   } catch (err) {
+    previewWindow?.close()
     const msg = err instanceof Error ? err.message : 'Unable to open document'
     toast.add({
       title: 'Error',

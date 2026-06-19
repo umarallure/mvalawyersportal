@@ -106,6 +106,10 @@ export const US_STATES_OPTIONS = US_STATES.map(state => ({
   value: state.code
 }))
 
+// Sentinel "state" used for a single retainer document that applies to every state.
+export const ALL_STATES_DOCUMENT_VALUE = 'ALL'
+export const ALL_STATES_DOCUMENT_LABEL = 'All States'
+
 export const RETAINER_CONTRACT_DOCUMENT_BUCKET = 'retainer-contract-documents'
 export const RETAINER_CONTRACT_DOCUMENT_MAX_SIZE_BYTES = 10 * 1024 * 1024
 export const RETAINER_CONTRACT_DOCUMENT_ALLOWED_MIME_TYPES = [
@@ -592,6 +596,7 @@ export async function getMultiStateDocumentSignedUrl(path: string, expiresInSeco
 }
 
 export function getStateName(stateCode: string): string {
+  if (stateCode === ALL_STATES_DOCUMENT_VALUE) return ALL_STATES_DOCUMENT_LABEL
   const state = US_STATES.find(s => s.code === stateCode)
   return state?.name || stateCode
 }

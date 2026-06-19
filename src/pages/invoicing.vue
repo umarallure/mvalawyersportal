@@ -3,8 +3,10 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { DateFormatter, getLocalTimeZone, CalendarDate, today } from '@internationalized/date'
 
+import BoardDragHint from '../components/BoardDragHint.vue'
 import ProductGuideHint from '../components/product-guide/ProductGuideHint.vue'
 import { useAuth } from '../composables/useAuth'
+import { useBoardTouchDrag } from '../composables/useBoardTouchDrag'
 import { useDragGhost } from '../composables/useDragGhost'
 import { productGuideHints } from '../data/product-guide-hints'
 import { deleteInvoice, listInvoices, markInvoiceAsPaid, requestChargeback, updateInvoice, type InvoiceRow, type InvoiceStatus } from '../lib/invoices'
@@ -655,6 +657,14 @@ const handleDrop = async (e: DragEvent, targetStatus: InvoiceStatus) => {
   }
 }
 
+// Touch drag-and-drop (mobile) — mirrors the native HTML5 drag path above.
+// The 'pending' column is not a drop target (its columns omit data-board-stage).
+const { onCardTouchStart } = useBoardTouchDrag<string>({
+  onStart: (invoiceId) => { dragInvoiceId.value = invoiceId },
+  onDrop: (stage) => { void handleDrop({ preventDefault() {} } as DragEvent, stage as InvoiceStatus) },
+  onCancel: () => { dragInvoiceId.value = null }
+})
+
 const load = async () => {
   const seq = ++loadSeq.value
   const modeAtStart = isPublisherMode.value
@@ -1063,7 +1073,7 @@ watch(pageCount, () => {
         </template>
 
         <template #right>
-          <div class="flex items-center gap-2">
+          <div class="ap-mobile-navbar-actions flex items-center gap-2">
             <ProductGuideHint
               v-if="isAdminOrSuper"
               :title="invoicingHints.createInvoice.title"
@@ -1096,9 +1106,9 @@ watch(pageCount, () => {
     </template>
 
     <template #body>
-      <div class="flex h-full min-h-0 flex-col gap-5">
+      <div class="ap-mobile-workspace flex h-full min-h-0 flex-col gap-5">
         <!-- Stats Cards -->
-        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <div class="ap-mobile-kpi-grid ap-mobile-kpi-grid--five grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <div class="ap-fade-in group relative overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm transition-all duration-300 hover:shadow-xl">
             <div class="absolute inset-y-0 left-0 w-1 bg-orange-500 dark:bg-orange-600" />
             <div class="flex items-center justify-between px-5 py-4 pl-5">
@@ -1202,11 +1212,11 @@ watch(pageCount, () => {
 
         <!-- Toolbar -->
         <div class="ap-fade-in ap-delay-5 overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm">
-          <div class="flex flex-wrap items-center gap-3 px-5 py-3">
-            <div class="flex flex-1 flex-wrap items-center gap-3 min-w-0">
+          <div class="ap-mobile-toolbar-row flex flex-wrap items-center gap-3 px-5 py-3">
+            <div class="ap-mobile-toolbar-primary flex flex-1 flex-wrap items-center gap-3 min-w-0">
               <UInput
                 v-model="query"
-                class="max-w-xs"
+                class="ap-mobile-control max-w-xs"
                 icon="i-lucide-search"
                 size="sm"
                 placeholder="Search invoices..."
@@ -1224,7 +1234,7 @@ watch(pageCount, () => {
                 value-key="value"
                 label-key="label"
                 size="sm"
-                class="w-44"
+                class="ap-mobile-control w-44"
               />
 
               <UPopover
@@ -1285,7 +1295,7 @@ watch(pageCount, () => {
               </UPopover>
             </div>
 
-            <div class="ml-auto flex flex-wrap items-center justify-end gap-2.5 text-right">
+            <div class="ap-mobile-toolbar-actions ml-auto flex flex-wrap items-center justify-end gap-2.5 text-right">
               <p
                 aria-live="polite"
                 class="text-sm font-medium text-muted tabular-nums"
@@ -1455,6 +1465,8 @@ watch(pageCount, () => {
           </template>
         </UModal>
 
+        <BoardDragHint v-if="viewMode === 'kanban'" class="shrink-0" />
+
         <!-- Loading -->
         <div v-if="loading && !invoices.length" class="flex flex-1 items-center justify-center p-12">
           <div class="flex flex-col items-center gap-3">
@@ -1487,14 +1499,15 @@ watch(pageCount, () => {
         </div>
 
         <!-- Kanban View -->
-        <div v-else-if="viewMode === 'kanban'" class="min-h-0 flex-1 overflow-hidden">
-          <div class="ap-fade-in ap-delay-5 flex h-full gap-4 pb-1 ap-overflow-defer">
+        <div v-else-if="viewMode === 'kanban'" class="ap-mobile-board-shell min-h-0 flex-1 overflow-hidden">
+          <div class="ap-mobile-board-track ap-fade-in ap-delay-5 flex h-full gap-4 pb-1 ap-overflow-defer">
             <div
               v-for="(status, statusIdx) in kanbanStatuses"
               :key="status"
-              class="ap-fade-in flex min-w-[280px] flex-1 flex-col overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm transition-colors"
+              class="ap-mobile-board-column ap-fade-in flex min-w-[280px] flex-1 flex-col overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm transition-colors"
               :class="dragInvoiceId ? 'border-dashed' : ''"
               :style="{ ...getKanbanAccentStyle(status), animationDelay: `${500 + statusIdx * 100}ms` }"
+              :data-board-stage="status === 'pending' ? undefined : status"
               @dragover="handleDragOver"
               @drop="status === 'pending' ? undefined : handleDrop($event, status)"
             >
@@ -1570,7 +1583,7 @@ watch(pageCount, () => {
                   <!-- Row 3: Action (pushed to bottom right) -->
                   <div class="mt-auto flex justify-end pt-2.5">
                     <button
-                      class="rounded-md border border-[var(--ap-accent)]/20 bg-[var(--ap-accent)]/10 px-2.5 py-1 text-[10px] font-semibold text-[var(--ap-accent)] opacity-0 transition-all hover:bg-[var(--ap-accent)]/20 group-hover:opacity-100"
+                      class="ap-mobile-card-action rounded-md border border-[var(--ap-accent)]/20 bg-[var(--ap-accent)]/10 px-2.5 py-1 text-[10px] font-semibold text-[var(--ap-accent)] opacity-0 transition-all hover:bg-[var(--ap-accent)]/20 group-hover:opacity-100"
                       title="Create Invoice"
                       @click.stop="openQualifiedDeal(deal)"
                     >
@@ -1588,6 +1601,7 @@ watch(pageCount, () => {
                   :class="dragInvoiceId === invoice.id ? 'scale-95 opacity-50' : ''"
                   @dragstart="handleDragStart($event, invoice.id)"
                   @dragend="handleDragEnd"
+                  @touchstart="onCardTouchStart($event, invoice.id)"
                   @click="openInvoicePdf(invoice)"
                 >
                   <!-- Row 1: Icon + Invoice # + Amount -->
@@ -1615,10 +1629,10 @@ watch(pageCount, () => {
                         {{ invoice.lead_names }}
                       </div>
                     </div>
-                    <div class="flex shrink-0 items-center gap-1.5">
+                    <div class="ap-mobile-card-actions flex shrink-0 items-center gap-1.5">
                       <button
                         v-if="getDisplayStatus(invoice) === 'in_review'"
-                        class="rounded-md border border-green-500/20 bg-green-500/10 px-2 py-0.5 text-[10px] font-semibold text-green-400 opacity-0 transition-all hover:bg-green-500/20 group-hover:opacity-100"
+                        class="ap-mobile-card-action rounded-md border border-green-500/20 bg-green-500/10 px-2 py-0.5 text-[10px] font-semibold text-green-400 opacity-0 transition-all hover:bg-green-500/20 group-hover:opacity-100"
                         title="Mark as Paid"
                         @click.stop="handleMarkAsPaid(invoice)"
                       >
@@ -1626,14 +1640,14 @@ watch(pageCount, () => {
                       </button>
                       <button
                         v-if="getDisplayStatus(invoice) === 'paid'"
-                        class="rounded-md border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-400 opacity-0 transition-all hover:bg-red-500/20 group-hover:opacity-100"
+                        class="ap-mobile-card-action rounded-md border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-400 opacity-0 transition-all hover:bg-red-500/20 group-hover:opacity-100"
                         title="Initiate Chargeback"
                         @click.stop="handleRequestChargeback(invoice)"
                       >
                         Initiate Chargeback
                       </button>
                       <button
-                        class="rounded-md p-1 text-muted opacity-0 transition-all hover:bg-black/[0.05] hover:text-highlighted group-hover:opacity-100 dark:hover:bg-white/[0.07]"
+                        class="ap-mobile-card-action rounded-md p-1 text-muted opacity-0 transition-all hover:bg-black/[0.05] hover:text-highlighted group-hover:opacity-100 dark:hover:bg-white/[0.07]"
                         title="View PDF"
                         @click.stop="openInvoicePdf(invoice)"
                       >
@@ -1660,10 +1674,10 @@ watch(pageCount, () => {
                     </div>
 
                     <!-- Actions row -->
-                    <div class="flex items-center justify-end gap-1.5">
+                    <div class="ap-mobile-card-actions flex items-center justify-end gap-1.5">
                       <button
                         v-if="isAdminOrSuper"
-                        class="rounded-md p-1 text-muted opacity-0 transition-all hover:bg-black/[0.05] hover:text-highlighted group-hover:opacity-100 dark:hover:bg-white/[0.07]"
+                        class="ap-mobile-card-action rounded-md p-1 text-muted opacity-0 transition-all hover:bg-black/[0.05] hover:text-highlighted group-hover:opacity-100 dark:hover:bg-white/[0.07]"
                         title="Edit invoice"
                         @click.stop="editInvoice(invoice)"
                       >
@@ -1671,7 +1685,7 @@ watch(pageCount, () => {
                       </button>
                       <button
                         v-if="isSuperAdmin"
-                        class="rounded-md p-1 text-muted opacity-0 transition-all hover:bg-black/[0.05] hover:text-red-300 group-hover:opacity-100 dark:hover:bg-white/[0.07]"
+                        class="ap-mobile-card-action rounded-md p-1 text-muted opacity-0 transition-all hover:bg-black/[0.05] hover:text-red-300 group-hover:opacity-100 dark:hover:bg-white/[0.07]"
                         title="Delete invoice"
                         @click.stop="requestDeleteInvoice(invoice)"
                       >
@@ -1695,7 +1709,7 @@ watch(pageCount, () => {
 
         <!-- List View -->
         <div v-else class="ap-fade-in ap-delay-6 relative flex flex-1 min-h-0 flex-col overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm">
-          <div class="flex-1 min-h-0 overflow-y-auto invoicing-scroll">
+          <div class="ap-mobile-table-scroll flex-1 min-h-0 overflow-y-auto invoicing-scroll">
             <table class="w-full">
               <thead class="sticky top-0 z-10">
                 <tr class="border-b border-black/[0.06] dark:border-white/[0.08] bg-white/80 dark:bg-[#151515]/80 backdrop-blur-xl">
