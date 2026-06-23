@@ -129,9 +129,10 @@ const recipientValue = computed({
 })
 
 const statusOptions = [
-  { label: 'In Review', value: 'in_review' },
-  { label: 'Paid', value: 'paid' },
-  { label: 'Chargeback', value: 'chargeback' }
+  { label: 'Billable', value: 'pending' },
+  { label: 'Pending Payment', value: 'in_review' },
+  { label: 'Late Payment', value: 'chargeback' },
+  { label: 'Successful Payment', value: 'paid' }
 ]
 
 watch(isPublisherMode, (isPub) => {
@@ -1175,9 +1176,8 @@ onMounted(async () => {
                     <span
                       class="inline-flex items-center rounded-lg px-2 py-0.5 text-xs font-medium"
                       :class="{
-                        'bg-blue-500/10 text-blue-400': form.status === 'billable',
-                        'bg-amber-500/10 text-amber-400': form.status === 'pending',
-                        'bg-violet-500/10 text-violet-400': form.status === 'in_review',
+                        'bg-blue-500/10 text-blue-400': form.status === 'billable' || form.status === 'pending',
+                        'bg-amber-500/10 text-amber-400': form.status === 'in_review',
                         'bg-green-500/10 text-green-400': form.status === 'paid',
                         'bg-red-500/10 text-red-400': form.status === 'chargeback'
                       }"

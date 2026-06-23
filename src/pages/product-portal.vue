@@ -146,7 +146,7 @@ const getTierGuideHint = (tierName: string) => {
 }
 
 const placeOrder = () => {
-  router.push({ path: '/intake-map', query: { action: 'create-order' } })
+  router.push({ path: '/intake-map' })
 }
 </script>
 
@@ -298,7 +298,7 @@ const placeOrder = () => {
                   :disabled="selectedCategory === 'commercial' && COMMERCIAL_ORDERS_PAUSED"
                   @click="placeOrder"
                 >
-                  <span>{{ selectedCategory === 'commercial' && COMMERCIAL_ORDERS_PAUSED ? 'Coming Soon' : 'Place Order' }}</span>
+                  <span>{{ selectedCategory === 'commercial' && COMMERCIAL_ORDERS_PAUSED ? 'Coming Soon' : 'Open Order Map' }}</span>
                   <UIcon
                     v-if="!(selectedCategory === 'commercial' && COMMERCIAL_ORDERS_PAUSED)"
                     name="i-lucide-arrow-right"

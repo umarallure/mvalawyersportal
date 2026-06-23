@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { DateFormatter, getLocalTimeZone, CalendarDate, today } from '@internationalized/date'
 
@@ -67,7 +67,7 @@ const filterDueDate = ref<'all' | 'today' | 'yesterday' | 'this_week'>('all')
 const selectedDateRange = ref('all')
 
 const calendarDf = new DateFormatter('en-US', { dateStyle: 'medium' })
-const calendarRange = ref<{ start: CalendarDate | undefined; end: CalendarDate | undefined }>({
+const calendarRange = shallowRef<{ start: CalendarDate | undefined; end: CalendarDate | undefined }>({
   start: undefined,
   end: undefined
 })
@@ -211,23 +211,13 @@ const vendorOptions = computed(() => {
   return [...new Set(names)].sort((a, b) => a.localeCompare(b))
 })
 
-const statusFilterItems = computed(() =>
-  isPublisherMode.value
-    ? [
-        { label: 'All Statuses', value: 'all' },
-        { label: 'Billable – Awaiting to be Paid', value: 'pending' },
-        { label: 'In Review', value: 'in_review' },
-        { label: 'Paid', value: 'paid' },
-        { label: 'Chargeback', value: 'chargeback' }
-      ]
-    : [
-        { label: 'All Statuses', value: 'all' },
-        { label: 'Billable (Approved)', value: 'pending' },
-        { label: 'Pending', value: 'in_review' },
-        { label: 'Paid (Successful Invoice)', value: 'paid' },
-        { label: 'Chargeback (14 Days Period)', value: 'chargeback' }
-      ]
-)
+const statusFilterItems = computed(() => [
+  { label: 'All Statuses', value: 'all' },
+  { label: 'Billable', value: 'pending' },
+  { label: 'Pending Payment', value: 'in_review' },
+  { label: 'Late Payment', value: 'chargeback' },
+  { label: 'Successful Payment', value: 'paid' }
+])
 
 const dueDateItems = [
   { label: 'All Due Dates', value: 'all' },
@@ -416,8 +406,8 @@ const pagedRows = computed(() => {
   return filteredInvoices.value.slice(start, start + PAGE_SIZE)
 })
 
-const PUBLISHER_KANBAN_STATUSES: InvoiceStatus[] = ['pending', 'in_review', 'paid', 'chargeback']
-const LAWYER_KANBAN_STATUSES: InvoiceStatus[] = ['pending', 'in_review', 'paid', 'chargeback']
+const PUBLISHER_KANBAN_STATUSES: InvoiceStatus[] = ['pending', 'in_review', 'chargeback', 'paid']
+const LAWYER_KANBAN_STATUSES: InvoiceStatus[] = ['pending', 'in_review', 'chargeback', 'paid']
 
 const kanbanStatuses = computed(() =>
   isPublisherMode.value ? PUBLISHER_KANBAN_STATUSES : LAWYER_KANBAN_STATUSES
@@ -469,55 +459,43 @@ const formatDate = (value: string | null) => {
   }
 }
 
-const getInitials = (value: string | null | undefined) => {
-  const parts = String(value ?? '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-
-  if (parts.length === 0) return 'NA'
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase()
-}
-
 const getStatusLabel = (status: InvoiceStatus) => {
-  if (status === 'billable') return isPublisherMode.value ? 'Billable' : 'Billable (Approved)'
-  if (status === 'pending') return isPublisherMode.value ? 'Billable – Awaiting to be Paid' : 'Billable (Approved)'
-  if (status === 'in_review') return isPublisherMode.value ? 'In Review' : 'Pending'
-  if (status === 'signed_awaiting') return 'Signed – Awaiting to be Paid'
+  if (status === 'billable') return 'Billable'
+  if (status === 'pending') return 'Billable'
+  if (status === 'in_review') return 'Pending Payment'
+  if (status === 'signed_awaiting') return 'Pending Payment'
   if (status === 'in_preview') return 'In Preview'
-  if (status === 'paid') return isPublisherMode.value ? 'Paid' : 'Paid (Successful Invoice)'
-  return isPublisherMode.value ? 'Chargeback' : 'Chargeback (14 Days Period)'
+  if (status === 'paid') return 'Successful Payment'
+  return 'Late Payment'
 }
 
 const getSummaryCardLabel = (status: InvoiceStatus) => {
-  if (!isPublisherMode.value) {
-    if (status === 'pending') return 'Billable'
-    if (status === 'paid') return 'Paid'
-    if (status === 'chargeback') return 'Chargeback'
-  }
-
+  if (status === 'pending') return 'Billable'
+  if (status === 'in_review') return 'Pending Payment'
+  if (status === 'chargeback') return 'Late Payment'
+  if (status === 'paid') return 'Successful Payment'
   return getStatusLabel(status)
 }
 
 const getEmptyStateText = (status: InvoiceStatus) => {
-  if (status === 'in_review') return 'No pending invoices.'
-  if (status === 'paid') return 'No paid invoices.'
-  if (status === 'chargeback') return 'No chargeback invoices.'
+  if (status === 'pending') return 'No billable invoices.'
+  if (status === 'in_review') return 'No pending payment invoices.'
+  if (status === 'chargeback') return 'No late payment invoices.'
+  if (status === 'paid') return 'No successful payment invoices.'
   return 'No invoices.'
 }
 
 const getKanbanGuideHint = (status: InvoiceStatus) => {
   if (status === 'pending') return invoicingHints.billableColumn
   if (status === 'in_review') return invoicingHints.pendingColumn
-  if (status === 'paid') return invoicingHints.paidColumn
-  return invoicingHints.chargebackColumn
+  if (status === 'chargeback') return invoicingHints.chargebackColumn
+  return invoicingHints.paidColumn
 }
 
 const getStatusIcon = (status: InvoiceStatus) => {
   if (status === 'billable') return 'i-lucide-file-plus'
-  if (status === 'pending') return isPublisherMode.value ? 'i-lucide-clock' : 'i-lucide-file-check'
-  if (status === 'in_review') return isPublisherMode.value ? 'i-lucide-eye' : 'i-lucide-clock'
+  if (status === 'pending') return 'i-lucide-file-check'
+  if (status === 'in_review') return 'i-lucide-clock'
   if (status === 'signed_awaiting') return 'i-lucide-pen-line'
   if (status === 'in_preview') return 'i-lucide-search'
   if (status === 'paid') return 'i-lucide-check-circle'
@@ -1014,7 +992,7 @@ const handleMarkAsPaid = async (invoice: InvoiceRow & { lawyer_name?: string | n
       invoices.value[idx] = { ...invoices.value[idx], ...updated }
     }
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to mark as paid'
+    error.value = e instanceof Error ? e.message : 'Failed to mark as successful payment'
   }
 }
 
@@ -1026,7 +1004,7 @@ const handleRequestChargeback = async (invoice: InvoiceRow & { lawyer_name?: str
       invoices.value[idx] = { ...invoices.value[idx], ...updated }
     }
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to request chargeback'
+    error.value = e instanceof Error ? e.message : 'Failed to mark late payment'
   }
 }
 
@@ -1170,26 +1148,6 @@ watch(pageCount, () => {
           </div>
 
           <div class="ap-fade-in ap-delay-3 group relative overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm transition-all duration-300 hover:shadow-xl">
-            <div class="absolute inset-y-0 left-0 w-1 bg-green-400" />
-            <div class="flex items-center justify-between px-5 py-4 pl-5">
-              <div>
-                <div class="flex items-start gap-1.5">
-                  <p class="text-[10px] font-medium uppercase tracking-wider text-green-500 dark:text-green-400">{{ getSummaryCardLabel('paid') }}</p>
-                  <ProductGuideHint
-                    :title="invoicingHints.paidCard.title"
-                    :description="invoicingHints.paidCard.description"
-                    :guide-target="invoicingHints.paidCard.guideTarget"
-                  />
-                </div>
-                <p class="mt-1 text-2xl font-bold text-green-500 dark:text-green-400 tabular-nums">{{ formatMoney(paidAmount) }}</p>
-              </div>
-              <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-green-500/10">
-                <UIcon name="i-lucide-check-circle" class="text-lg text-green-400" />
-              </div>
-            </div>
-          </div>
-
-          <div class="ap-fade-in ap-delay-4 group relative overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm transition-all duration-300 hover:shadow-xl">
             <div class="absolute inset-y-0 left-0 w-1 bg-red-400" />
             <div class="flex items-center justify-between px-5 py-4 pl-5">
               <div>
@@ -1205,6 +1163,26 @@ watch(pageCount, () => {
               </div>
               <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/10">
                 <UIcon name="i-lucide-alert-circle" class="text-lg text-red-400" />
+              </div>
+            </div>
+          </div>
+
+          <div class="ap-fade-in ap-delay-4 group relative overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white/90 dark:bg-[#1a1a1a]/60 shadow-lg backdrop-blur-sm transition-all duration-300 hover:shadow-xl">
+            <div class="absolute inset-y-0 left-0 w-1 bg-green-400" />
+            <div class="flex items-center justify-between px-5 py-4 pl-5">
+              <div>
+                <div class="flex items-start gap-1.5">
+                  <p class="text-[10px] font-medium uppercase tracking-wider text-green-500 dark:text-green-400">{{ getSummaryCardLabel('paid') }}</p>
+                  <ProductGuideHint
+                    :title="invoicingHints.paidCard.title"
+                    :description="invoicingHints.paidCard.description"
+                    :guide-target="invoicingHints.paidCard.guideTarget"
+                  />
+                </div>
+                <p class="mt-1 text-2xl font-bold text-green-500 dark:text-green-400 tabular-nums">{{ formatMoney(paidAmount) }}</p>
+              </div>
+              <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-green-500/10">
+                <UIcon name="i-lucide-check-circle" class="text-lg text-green-400" />
               </div>
             </div>
           </div>
@@ -1633,18 +1611,18 @@ watch(pageCount, () => {
                       <button
                         v-if="getDisplayStatus(invoice) === 'in_review'"
                         class="ap-mobile-card-action rounded-md border border-green-500/20 bg-green-500/10 px-2 py-0.5 text-[10px] font-semibold text-green-400 opacity-0 transition-all hover:bg-green-500/20 group-hover:opacity-100"
-                        title="Mark as Paid"
+                        title="Mark as Successful Payment"
                         @click.stop="handleMarkAsPaid(invoice)"
                       >
-                        Mark as Paid
+                        Mark as Successful
                       </button>
                       <button
                         v-if="getDisplayStatus(invoice) === 'paid'"
                         class="ap-mobile-card-action rounded-md border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-400 opacity-0 transition-all hover:bg-red-500/20 group-hover:opacity-100"
-                        title="Initiate Chargeback"
+                        title="Mark as Late Payment"
                         @click.stop="handleRequestChargeback(invoice)"
                       >
-                        Initiate Chargeback
+                        Mark Late
                       </button>
                       <button
                         class="ap-mobile-card-action rounded-md p-1 text-muted opacity-0 transition-all hover:bg-black/[0.05] hover:text-highlighted group-hover:opacity-100 dark:hover:bg-white/[0.07]"
@@ -1769,7 +1747,7 @@ watch(pageCount, () => {
                         @click.stop="handleMarkAsPaid(invoice)"
                       >
                         <UIcon name="i-lucide-check-circle" class="text-xs" />
-                        Mark Paid
+                        Mark Successful
                       </button>
                       <button
                         v-if="getDisplayStatus(invoice) === 'paid'"
@@ -1777,7 +1755,7 @@ watch(pageCount, () => {
                         @click.stop="handleRequestChargeback(invoice)"
                       >
                         <UIcon name="i-lucide-alert-triangle" class="text-xs" />
-                        Chargeback
+                        Late Payment
                       </button>
                       <button
                         v-if="isAdminOrSuper"

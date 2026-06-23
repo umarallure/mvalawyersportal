@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { DateFormatter, getLocalTimeZone, CalendarDate, today } from '@internationalized/date'
 
@@ -20,10 +20,10 @@ import {
 type CustomerStageKey = 'new_customers_for_review' | '24_hour_approval' | 'customer_approved' | 'customer_rejected'
 
 const STAGES: { key: CustomerStageKey, label: string }[] = [
-  { key: 'new_customers_for_review', label: 'My Cases' },
-  { key: '24_hour_approval', label: '24 Hour Approval' },
+  { key: 'new_customers_for_review', label: 'Signed Retainer' },
+  { key: '24_hour_approval', label: '24 Hour Review' },
   { key: 'customer_approved', label: 'Customer Approved' },
-  { key: 'customer_rejected', label: 'Customer Rejected' }
+  { key: 'customer_rejected', label: 'Disqualified' }
 ]
 
 const getStageGuideHint = (stage: CustomerStageKey) => {
@@ -117,7 +117,7 @@ const filterExpiry = ref<string>('all')
 // ── Custom date range calendar ──
 const calendarDf = new DateFormatter('en-US', { dateStyle: 'medium' })
 
-const calendarRange = ref<{ start: CalendarDate | undefined; end: CalendarDate | undefined }>({
+const calendarRange = shallowRef<{ start: CalendarDate | undefined; end: CalendarDate | undefined }>({
   start: undefined,
   end: undefined
 })
@@ -938,7 +938,7 @@ const stageCardAccentStyle = (key: CustomerStageKey) => {
             <div class="flex items-center justify-between px-5 py-4 pl-5">
               <div>
                 <div class="flex items-start gap-1.5">
-                  <p class="text-[10px] font-medium uppercase tracking-wider text-blue-500 dark:text-blue-400">New for Review</p>
+                  <p class="text-[10px] font-medium uppercase tracking-wider text-blue-500 dark:text-blue-400">Signed Retainer</p>
                   <ProductGuideHint
                     :title="myCasesHints.newForReviewCard.title"
                     :description="myCasesHints.newForReviewCard.description"
@@ -958,7 +958,7 @@ const stageCardAccentStyle = (key: CustomerStageKey) => {
             <div class="flex items-center justify-between px-5 py-4 pl-5">
               <div>
                 <div class="flex items-start gap-1.5">
-                  <p class="text-[10px] font-medium uppercase tracking-wider text-amber-500 dark:text-amber-400">24 Hour Approval</p>
+                  <p class="text-[10px] font-medium uppercase tracking-wider text-amber-500 dark:text-amber-400">24 Hour Review</p>
                   <ProductGuideHint
                     :title="myCasesHints.approvalCard.title"
                     :description="myCasesHints.approvalCard.description"
@@ -998,7 +998,7 @@ const stageCardAccentStyle = (key: CustomerStageKey) => {
             <div class="flex items-center justify-between px-5 py-4 pl-5">
               <div>
                 <div class="flex items-start gap-1.5">
-                  <p class="text-[10px] font-medium uppercase tracking-wider text-red-500 dark:text-red-400">Rejected</p>
+                  <p class="text-[10px] font-medium uppercase tracking-wider text-red-500 dark:text-red-400">Disqualified</p>
                   <ProductGuideHint
                     :title="myCasesHints.rejectedCard.title"
                     :description="myCasesHints.rejectedCard.description"

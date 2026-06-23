@@ -84,19 +84,19 @@ const formatDateShort = (value: string | null) => {
 const getStatusLabel = (status: string) => {
   if (status === 'billable') return 'BILLABLE'
   if (status === 'pending') return 'BILLABLE'
-  if (status === 'in_review') return 'IN REVIEW'
-  if (status === 'signed_awaiting') return 'SIGNED – AWAITING PAYMENT'
+  if (status === 'in_review') return 'PENDING PAYMENT'
+  if (status === 'signed_awaiting') return 'PENDING PAYMENT'
   if (status === 'in_preview') return 'IN PREVIEW'
-  if (status === 'paid') return 'PAID'
-  return 'CHARGEBACK'
+  if (status === 'paid') return 'SUCCESSFUL PAYMENT'
+  return 'LATE PAYMENT'
 }
 
 const getStatusClass = (status: string) => {
   if (status === 'billable') return 'status-billable'
+  if (status === 'pending') return 'status-billable'
   if (status === 'paid') return 'status-paid'
-  if (status === 'pending') return 'status-pending'
   if (status === 'in_review') return 'status-in-review'
-  if (status === 'signed_awaiting') return 'status-signed-awaiting'
+  if (status === 'signed_awaiting') return 'status-in-review'
   if (status === 'in_preview') return 'status-in-preview'
   return 'status-chargeback'
 }
@@ -119,14 +119,14 @@ const handlePrint = () => {
 }
 
 const handleMarkAsPaid = async () => {
-  if (!invoice.value || invoice.value.status !== 'pending') return
+  if (!invoice.value || invoice.value.status !== 'in_review') return
   markingPaid.value = true
   markPaidError.value = null
   try {
     const updated = await markInvoiceAsPaid(invoice.value.id)
     invoice.value = updated
   } catch (e) {
-    markPaidError.value = e instanceof Error ? e.message : 'Failed to mark as paid'
+    markPaidError.value = e instanceof Error ? e.message : 'Failed to mark as successful payment'
   } finally {
     markingPaid.value = false
   }
@@ -140,7 +140,7 @@ const handleRequestChargeback = async () => {
     const updated = await requestChargeback(invoice.value.id)
     invoice.value = updated
   } catch (e) {
-    chargebackError.value = e instanceof Error ? e.message : 'Failed to request chargeback'
+    chargebackError.value = e instanceof Error ? e.message : 'Failed to mark late payment'
   } finally {
     requestingChargeback.value = false
   }
@@ -226,7 +226,7 @@ onMounted(async () => {
           :disabled="markingPaid"
           @click="handleMarkAsPaid"
         >
-          {{ markingPaid ? 'Marking...' : 'Mark as Paid' }}
+          {{ markingPaid ? 'Marking...' : 'Mark as Successful Payment' }}
         </button>
         <button
           v-if="invoice.status === 'paid'"
@@ -234,7 +234,7 @@ onMounted(async () => {
           :disabled="requestingChargeback"
           @click="handleRequestChargeback"
         >
-          {{ requestingChargeback ? 'Requesting...' : 'Request Chargeback' }}
+          {{ requestingChargeback ? 'Marking...' : 'Mark as Late Payment' }}
         </button>
         <button class="print-btn" @click="handlePrint">
           Print / Save as PDF

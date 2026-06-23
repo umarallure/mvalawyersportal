@@ -6,7 +6,7 @@ import type { DropdownMenuItem } from '@nuxt/ui'
 import { useAuth } from '../composables/useAuth'
 import { supabase } from '../lib/supabase'
 import { listInvoices, type InvoiceRow, type InvoiceStatus } from '../lib/invoices'
-import { listOrdersForLawyer, type OrderRow } from '../lib/orders'
+import { listOpenOrdersForLawyer } from '../lib/orders'
 import DashboardMetricCard from '../components/dashboard/DashboardMetricCard.vue'
 import ProductGuideHint from '../components/product-guide/ProductGuideHint.vue'
 import { productGuideHints } from '../data/product-guide-hints'
@@ -51,10 +51,7 @@ type InvoiceRowWithLawyerName = InvoiceRow & { lawyer_name?: string | null }
 const retainers = ref<RetainerRow[]>([])
 const retainerCount = ref(0)
 
-const orders = ref<OrderRow[]>([])
-const orderCount = ref(0)
-const orderQuotaTotal = ref(0)
-const orderQuotaFilled = ref(0)
+const activeStateCount = ref(0)
 
 const invoices = ref<InvoiceRowWithLawyerName[]>([])
 
@@ -88,11 +85,6 @@ const totalInvoiced = computed(() => invoices.value.reduce((s, i) => s + Number(
 const pendingInvoiceAmount = computed(() => dashboardInvoiceStageSummary.value.pending.amount)
 const paidInvoiceAmount = computed(() => dashboardInvoiceStageSummary.value.paid.amount)
 const pendingReviewInvoiceCount = computed(() => dashboardInvoiceStageSummary.value.pending.count)
-
-const fulfillmentPercent = computed(() => {
-  if (!orderQuotaTotal.value) return 0
-  return Math.round((orderQuotaFilled.value / orderQuotaTotal.value) * 100)
-})
 
 const formatMoney = (n: number) => {
   try {
@@ -176,26 +168,6 @@ const getFulfillmentRetainerStatusLabel = (status: string | null) => {
   return null
 }
 
-const getOrderDisplayStatus = (order: OrderRow) => {
-  if (order.status === 'OPEN') {
-    return order.quota_filled > 0 ? 'In Progress' : 'Pending'
-  }
-  return order.status
-}
-
-const getOrderStatusColor = (status: string) => {
-  if (status === 'Pending') return 'text-green-400 bg-green-500/10'
-  if (status === 'In Progress') return 'text-amber-400 bg-amber-500/10'
-  if (status === 'OPEN') return 'text-[var(--ap-accent)] bg-[var(--ap-accent)]/10'
-  if (status === 'FULFILLED') return 'text-green-400 bg-green-500/10'
-  return 'text-muted bg-[var(--ap-card-divide)]'
-}
-
-const orderFillPercent = (o: OrderRow) => {
-  if (!o.quota_total) return 0
-  return Math.round((o.quota_filled / o.quota_total) * 100)
-}
-
 const load = async () => {
   loading.value = true
   try {
@@ -271,16 +243,17 @@ const load = async () => {
     retainerCount.value = rCount ?? 0
 
     if (userId) {
-      const ordersData = await listOrdersForLawyer({ lawyerId: userId })
-      orders.value = ordersData.slice(0, 5)
-      orderCount.value = ordersData.length
-      orderQuotaTotal.value = ordersData.reduce((sum, order) => sum + order.quota_total, 0)
-      orderQuotaFilled.value = ordersData.reduce((sum, order) => sum + order.quota_filled, 0)
+      const openOrdersData = await listOpenOrdersForLawyer(userId)
+      const activeStates = new Set<string>()
+      openOrdersData.forEach((order) => {
+        (order.target_states ?? []).forEach((state) => {
+          const code = String(state || '').trim().toUpperCase()
+          if (code) activeStates.add(code)
+        })
+      })
+      activeStateCount.value = activeStates.size
     } else {
-      orders.value = []
-      orderCount.value = 0
-      orderQuotaTotal.value = 0
-      orderQuotaFilled.value = 0
+      activeStateCount.value = 0
     }
 
     const invFilters: { lawyer_id?: string; status?: InvoiceStatus; invoice_type?: 'lawyer' | 'publisher' } = {
@@ -330,7 +303,6 @@ const openRetainerInvoice = (row: RetainerRow) => {
   const url = router.resolve(`/invoicing/${row.invoice_id}/pdf`).href
   window.open(url, '_blank')
 }
-const openOrder = (order: OrderRow) => router.push(`/orders/${order.id}`)
 const openInvoicePdf = (invoice: InvoiceRow) => {
   const url = router.resolve(`/invoicing/${invoice.id}/pdf`).href
   window.open(url, '_blank')
@@ -346,8 +318,7 @@ onMounted(() => {
 
 const activeWorkbenchTab = ref('retainers')
 const workbenchTabs = computed(() => [
-  { key: 'retainers', label: 'Retainers', icon: 'i-lucide-briefcase', count: retainerCount.value },
-  { key: 'orders', label: 'Orders', icon: 'i-lucide-shopping-cart', count: orderCount.value },
+  { key: 'retainers', label: 'Signed Retainers', icon: 'i-lucide-briefcase', count: retainerCount.value },
   { key: 'invoices', label: 'Invoices', icon: 'i-lucide-receipt', count: invoices.value.length }
 ])
 
@@ -434,19 +405,19 @@ const invoiceStatusBreakdown = computed(() => {
   const billable = dashboardInvoiceStageSummary.value.billable.count
   const pending = dashboardInvoiceStageSummary.value.pending.count
   const paid = dashboardInvoiceStageSummary.value.paid.count
-  const chargeback = dashboardInvoiceStageSummary.value.chargeback.count
-  const total = invoices.value.length || 1
+  const total = billable + pending + paid || 1
   return [
     { label: 'Billable', count: billable, pct: Math.round((billable / total) * 100), color: 'bg-blue-400', text: 'text-blue-400' },
     { label: 'Pending', count: pending, pct: Math.round((pending / total) * 100), color: 'bg-amber-400', text: 'text-amber-400' },
-    { label: 'Paid', count: paid, pct: Math.round((paid / total) * 100), color: 'bg-green-400', text: 'text-green-400' },
-    { label: 'Chargeback', count: chargeback, pct: Math.round((chargeback / total) * 100), color: 'bg-red-400', text: 'text-red-400' }
+    { label: 'Paid', count: paid, pct: Math.round((paid / total) * 100), color: 'bg-green-400', text: 'text-green-400' }
   ]
 })
 
-// Fulfillment stats
-const totalQuota = computed(() => orderQuotaTotal.value)
-const filledQuota = computed(() => orderQuotaFilled.value)
+const invoiceBreakdownTotalCount = computed(() =>
+  dashboardInvoiceStageSummary.value.billable.count +
+  dashboardInvoiceStageSummary.value.pending.count +
+  dashboardInvoiceStageSummary.value.paid.count
+)
 
 const trendChartMax = computed(() => {
   return Math.max(...invoiceTrendData.value.map(point => point.amount), 1)
@@ -514,7 +485,22 @@ const showMonthGrowth = computed(() =>
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4 kpi-strip">
           <div class="ap-fade-in">
             <DashboardMetricCard
-              title="Retainers"
+              title="Active States"
+              :value="activeStateCount"
+              icon="i-lucide-map-pin"
+              accent="blue"
+              :loading="loading"
+              :hint-title="dashboardHints.activeStatesCard.title"
+              :hint-description="dashboardHints.activeStatesCard.description"
+              :hint-guide-target="dashboardHints.activeStatesCard.guideTarget"
+              clickable
+              @click="router.push('/intake-map')"
+            />
+          </div>
+
+          <div class="ap-fade-in ap-delay-1">
+            <DashboardMetricCard
+              title="Signed Retainers"
               :value="retainerCount"
               icon="i-lucide-briefcase"
               accent="orange-light"
@@ -527,29 +513,32 @@ const showMonthGrowth = computed(() =>
             >
               <div class="mt-3 flex items-center gap-1.5 text-xs text-muted">
                 <UIcon name="i-lucide-arrow-right" class="text-[10px] transition-transform duration-200 group-hover:translate-x-0.5" />
-                <span class="group-hover:text-orange-400 transition-colors">View all retainers</span>
+                <span class="group-hover:text-orange-400 transition-colors">View signed retainers</span>
               </div>
             </DashboardMetricCard>
           </div>
 
-          <div class="ap-fade-in ap-delay-1">
+          <div class="ap-fade-in ap-delay-2">
             <DashboardMetricCard
-              title="Active Orders"
-              :value="orderCount"
-              icon="i-lucide-shopping-cart"
-              accent="blue"
+              title="Pending Invoices"
+              :value="pendingReviewInvoiceCount"
+              icon="i-lucide-clock"
+              accent="amber"
               :loading="loading"
-              :progress="fulfillmentPercent"
-              progress-label="Fulfillment"
-              :hint-title="dashboardHints.activeOrdersCard.title"
-              :hint-description="dashboardHints.activeOrdersCard.description"
-              :hint-guide-target="dashboardHints.activeOrdersCard.guideTarget"
+              :hint-title="dashboardHints.pendingInvoicesCard.title"
+              :hint-description="dashboardHints.pendingInvoicesCard.description"
+              :hint-guide-target="dashboardHints.pendingInvoicesCard.guideTarget"
               clickable
-              @click="router.push('/fulfillment')"
-            />
+              @click="router.push('/invoicing')"
+            >
+              <div class="mt-3 flex items-center gap-1.5 text-xs text-muted">
+                <UIcon name="i-lucide-arrow-right" class="text-[10px] transition-transform duration-200 group-hover:translate-x-0.5" />
+                <span class="group-hover:text-amber-400 transition-colors">Review invoices</span>
+              </div>
+            </DashboardMetricCard>
           </div>
 
-          <div class="ap-fade-in ap-delay-2">
+          <div class="ap-fade-in ap-delay-3">
             <DashboardMetricCard
               title="Total Invoiced"
               :value="formatMoney(totalInvoiced)"
@@ -566,26 +555,6 @@ const showMonthGrowth = computed(() =>
                 <span class="text-green-500 dark:text-green-400">{{ formatMoney(paidInvoiceAmount) }} paid</span>
                 <span class="text-muted">·</span>
                 <span class="text-amber-500 dark:text-amber-400">{{ formatMoney(pendingInvoiceAmount) }} pending</span>
-              </div>
-            </DashboardMetricCard>
-          </div>
-
-          <div class="ap-fade-in ap-delay-3">
-            <DashboardMetricCard
-              title="Pending Invoices"
-              :value="pendingReviewInvoiceCount"
-              icon="i-lucide-clock"
-              accent="amber"
-              :loading="loading"
-              :hint-title="dashboardHints.pendingInvoicesCard.title"
-              :hint-description="dashboardHints.pendingInvoicesCard.description"
-              :hint-guide-target="dashboardHints.pendingInvoicesCard.guideTarget"
-              clickable
-              @click="router.push('/invoicing')"
-            >
-              <div class="mt-3 flex items-center gap-1.5 text-xs text-muted">
-                <UIcon name="i-lucide-arrow-right" class="text-[10px] transition-transform duration-200 group-hover:translate-x-0.5" />
-                <span class="group-hover:text-amber-400 transition-colors">Review invoices</span>
               </div>
             </DashboardMetricCard>
           </div>
@@ -726,15 +695,15 @@ const showMonthGrowth = computed(() =>
               <div class="space-y-2.5">
                 <button
                   class="flex w-full items-center gap-3 rounded-lg border border-[var(--ap-accent)]/15 px-3.5 py-3 text-sm text-left transition-all duration-200 hover:bg-[var(--ap-accent)]/[0.06] hover:border-[var(--ap-accent)]/30 group"
-                  @click="router.push('/intake-map?action=create-order')"
+                  @click="router.push('/intake-map')"
                 >
                   <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--ap-accent)]/10 transition-colors group-hover:bg-[var(--ap-accent)]/20">
                     <UIcon name="i-lucide-plus" class="text-sm text-[var(--ap-accent)]" />
                   </div>
                   <div class="min-w-0 flex-1">
-                    <span class="font-medium text-highlighted text-[13px]">Place New Order</span>
+                    <span class="font-medium text-highlighted text-[13px]">Open Order Map</span>
                     <p class="text-[11px] text-muted mt-0.5">
-                      Create a new case order
+                      Manage state coverage
                     </p>
                   </div>
                   <UIcon name="i-lucide-chevron-right" class="text-xs text-muted/50 transition-all duration-200 group-hover:text-[var(--ap-accent)] group-hover:translate-x-0.5" />
@@ -763,9 +732,9 @@ const showMonthGrowth = computed(() =>
                     <UIcon name="i-lucide-briefcase" class="text-sm text-orange-400" />
                   </div>
                   <div class="min-w-0 flex-1">
-                    <span class="font-medium text-highlighted text-[13px]">View Retainers</span>
+                    <span class="font-medium text-highlighted text-[13px]">View Signed Retainers</span>
                     <p class="text-[11px] text-muted mt-0.5">
-                      Browse your case retainers
+                      Browse your signed retainers
                     </p>
                   </div>
                   <UIcon name="i-lucide-chevron-right" class="text-xs text-muted/50 transition-all duration-200 group-hover:text-orange-400 group-hover:translate-x-0.5" />
@@ -785,12 +754,12 @@ const showMonthGrowth = computed(() =>
                   />
                 </div>
                 <span class="inline-flex items-center rounded-lg bg-black/[0.04] px-2.5 py-1 text-[10px] font-semibold text-muted dark:bg-white/[0.06]">
-                  {{ invoices.length }} total
+                  {{ invoiceBreakdownTotalCount }} total
                 </span>
               </div>
 
               <!-- Status bar -->
-              <div v-if="invoices.length" class="flex h-2 w-full overflow-hidden rounded-full mb-4">
+              <div v-if="invoiceBreakdownTotalCount" class="flex h-2 w-full overflow-hidden rounded-full mb-4">
                 <div
                   v-for="seg in invoiceStatusBreakdown"
                   :key="seg.label"
@@ -817,19 +786,6 @@ const showMonthGrowth = computed(() =>
                 </div>
               </div>
 
-              <!-- Fulfillment summary -->
-              <div v-if="orders.length" class="mt-5 pt-4 border-t border-black/[0.06] dark:border-white/[0.06]">
-                <div class="flex items-center justify-between mb-2">
-                  <span class="text-xs text-muted">Order Fulfillment</span>
-                  <span class="text-xs font-semibold text-highlighted">{{ filledQuota }}/{{ totalQuota }}</span>
-                </div>
-                <div class="h-1.5 w-full overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/[0.08]">
-                  <div
-                    class="h-full rounded-full bg-[var(--ap-accent)] transition-all duration-700 ease-out"
-                    :style="{ width: `${fulfillmentPercent}%` }"
-                  />
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -880,7 +836,6 @@ const showMonthGrowth = computed(() =>
               class="inline-flex items-center gap-1.5 rounded-lg border border-black/[0.06] dark:border-white/[0.08] bg-black/[0.02] dark:bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-muted transition-all hover:border-[var(--ap-accent)]/30 hover:bg-[var(--ap-accent)]/10 hover:text-[var(--ap-accent)]"
               @click="router.push(
                 activeWorkbenchTab === 'retainers' ? '/retainers'
-                : activeWorkbenchTab === 'orders' ? '/fulfillment'
                   : '/invoicing'
               )"
             >
@@ -894,7 +849,7 @@ const showMonthGrowth = computed(() =>
             <UIcon name="i-lucide-loader-2" class="animate-spin text-xl text-[var(--ap-accent)]" />
           </div>
 
-          <!-- ── Retainers Tab ── -->
+          <!-- ── Signed Retainers Tab ── -->
           <template v-else-if="activeWorkbenchTab === 'retainers'">
             <div v-if="!retainers.length" class="flex items-center justify-center p-16">
               <div class="text-center">
@@ -902,7 +857,7 @@ const showMonthGrowth = computed(() =>
                   <UIcon name="i-lucide-inbox" class="text-xl text-[var(--ap-accent)]/50" />
                 </div>
                 <p class="text-sm text-muted">
-                  No retainers found
+                  No signed retainers found
                 </p>
               </div>
             </div>
@@ -989,6 +944,7 @@ const showMonthGrowth = computed(() =>
           </template>
 
           <!-- ── Orders Tab ── -->
+          <!-- Orders workbench section removed from the dashboard. Keep this template commented for possible reuse.
           <template v-else-if="activeWorkbenchTab === 'orders'">
             <div v-if="!orders.length" class="flex items-center justify-center p-16">
               <div class="text-center">
@@ -1049,7 +1005,7 @@ const showMonthGrowth = computed(() =>
             </div>
           </template>
 
-          <!-- ── Invoices Tab ── -->
+          -->
           <template v-else-if="activeWorkbenchTab === 'invoices'">
             <div v-if="!invoices.length" class="flex items-center justify-center p-16">
               <div class="text-center">

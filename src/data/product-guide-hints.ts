@@ -9,13 +9,13 @@ export type ProductGuideHintContent = {
 export const productGuideHints = {
   dashboard: {
     retainersCard: {
-      title: 'Retainers',
-      description: 'Shows how many retained cases are currently assigned and links into the My Cases review board.',
+      title: 'Signed Retainers',
+      description: 'Shows how many signed retainers are currently assigned and links into the My Cases review board.',
       guideTarget: { sectionId: 'dashboard', subsectionId: 'dashboard-kpi-header' }
     },
-    activeOrdersCard: {
-      title: 'Active Orders',
-      description: 'Counts the firm\'s live orders and shows fulfillment progress against the total quota you purchased.',
+    activeStatesCard: {
+      title: 'Active States',
+      description: 'Counts the distinct states with open orders for the current user and opens the Order Map.',
       guideTarget: { sectionId: 'dashboard', subsectionId: 'dashboard-kpi-header' }
     },
     totalInvoicedCard: {
@@ -40,19 +40,19 @@ export const productGuideHints = {
     },
     invoiceBreakdown: {
       title: 'Invoice Breakdown',
-      description: 'Summarizes invoice volume by stage and pairs it with overall order fulfillment so finance and operations stay aligned.',
+      description: 'Summarizes invoice volume across billable, pending, and paid stages.',
       guideTarget: { sectionId: 'dashboard', subsectionId: 'dashboard-actions-breakdown' }
     },
     workbench: {
       title: 'Workbench',
-      description: 'Rotates between recent retainers, orders, and invoices so you can jump from summary metrics into live records quickly.',
+      description: 'Rotates between recent signed retainers and invoices so you can jump from summary metrics into live records quickly.',
       guideTarget: { sectionId: 'dashboard', subsectionId: 'dashboard-workbench' }
     }
   },
   orderMap: {
     createOrder: {
-      title: 'Create Order',
-      description: 'Opens the guarded order workflow where the user confirms intent first and then sets geography, case quality, quota, and expiration.',
+      title: 'Order Map Controls',
+      description: 'Opens the Order Map controls for managing general coverage while urgency orders are disabled.',
       guideTarget: { sectionId: 'order-map', subsectionId: 'order-map-create' }
     },
     map: {
@@ -73,13 +73,13 @@ export const productGuideHints = {
   },
   myCases: {
     newForReviewCard: {
-      title: 'New for Review',
-      description: 'Counts retained cases that still need the first attorney review pass.',
+      title: 'Signed Retainer',
+      description: 'Counts signed retainers that are ready for the first attorney review pass.',
       guideTarget: { sectionId: 'my-cases', subsectionId: 'my-cases-status-cards' }
     },
     approvalCard: {
-      title: '24 Hour Approval',
-      description: 'Tracks cases that are currently sitting inside the approval window before a final outcome is recorded.',
+      title: '24 Hour Review',
+      description: 'Tracks cases that are currently sitting inside the 24 hour review window before a final outcome is recorded.',
       guideTarget: { sectionId: 'my-cases', subsectionId: 'my-cases-status-cards' }
     },
     approvedCard: {
@@ -88,8 +88,8 @@ export const productGuideHints = {
       guideTarget: { sectionId: 'my-cases', subsectionId: 'my-cases-status-cards' }
     },
     rejectedCard: {
-      title: 'Rejected',
-      description: 'Shows how many retainers were declined or did not meet the firm\'s criteria.',
+      title: 'Disqualified',
+      description: 'Shows how many retainers did not meet the pre-agreed criteria.',
       guideTarget: { sectionId: 'my-cases', subsectionId: 'my-cases-status-cards' }
     },
     filters: {
@@ -98,13 +98,13 @@ export const productGuideHints = {
       guideTarget: { sectionId: 'my-cases', subsectionId: 'my-cases-filtering' }
     },
     myCasesColumn: {
-      title: 'My Cases',
-      description: 'The starting lane for newly submitted retainers that still need attorney review.',
+      title: 'Signed Retainer',
+      description: 'The starting lane for signed retainers that still need attorney review.',
       guideTarget: { sectionId: 'my-cases', subsectionId: 'my-cases-pipeline' }
     },
     approvalColumn: {
-      title: '24 Hour Approval',
-      description: 'Holds cases that are still being evaluated during the approval window.',
+      title: '24 Hour Review',
+      description: 'Holds cases that are still being evaluated during the 24 hour review window.',
       guideTarget: { sectionId: 'my-cases', subsectionId: 'my-cases-pipeline' }
     },
     approvedColumn: {
@@ -113,60 +113,55 @@ export const productGuideHints = {
       guideTarget: { sectionId: 'my-cases', subsectionId: 'my-cases-pipeline' }
     },
     rejectedColumn: {
-      title: 'Customer Rejected',
-      description: 'Contains retained cases that were declined so follow-up stays separate from approved work.',
+      title: 'Disqualified',
+      description: 'Contains retained cases that did not meet the pre-agreed criteria so follow-up stays separate from approved work.',
       guideTarget: { sectionId: 'my-cases', subsectionId: 'my-cases-pipeline' }
     }
   },
   fulfillment: {
-    totalOrdersCard: {
-      title: 'Total Orders',
-      description: 'Counts the campaigns represented in the fulfillment workspace.',
+    signedCasesCard: {
+      title: 'Signed Cases',
+      description: 'Shows assigned cases that are ready for attorney-managed fulfillment classification.',
       guideTarget: { sectionId: 'fulfillment', subsectionId: 'fulfillment-performance' }
     },
-    signedRetainersCard: {
-      title: 'Signed Retainers',
-      description: 'Shows retained leads that are still being monitored inside the post-signing workflow.',
+    activeCasesCard: {
+      title: 'Active Cases',
+      description: 'Tracks cases the attorney is actively working inside the fulfillment workspace.',
       guideTarget: { sectionId: 'fulfillment', subsectionId: 'fulfillment-performance' }
     },
-    returnedBackCard: {
-      title: 'Returned Back',
-      description: 'Tracks cases that were sent back during the return window.',
-      guideTarget: { sectionId: 'fulfillment', subsectionId: 'fulfillment-performance' }
-    },
-    droppedRetainersCard: {
-      title: 'Dropped Retainers',
-      description: 'Shows retained matters that did not progress successfully.',
+    droppedCasesCard: {
+      title: 'Dropped Cases',
+      description: 'Shows cases the attorney classified as no longer active or progressing.',
       guideTarget: { sectionId: 'fulfillment', subsectionId: 'fulfillment-performance' }
     },
     successfulCasesCard: {
       title: 'Successful Cases',
-      description: 'Highlights retained cases that stayed valid after review and the return window.',
+      description: 'Highlights cases the attorney classified as successful.',
       guideTarget: { sectionId: 'fulfillment', subsectionId: 'fulfillment-performance' }
     },
     filters: {
       title: 'Fulfillment Filters',
-      description: 'Lets the team narrow the board by search terms, geography, order type, and fulfillment stage.',
+      description: 'Lets the team narrow the board by search terms, geography, and fulfillment stage.',
       guideTarget: { sectionId: 'fulfillment', subsectionId: 'fulfillment-filters' }
     },
     signedColumn: {
-      title: 'Signed Retainers',
-      description: 'The entry lane for retained leads that are still under fulfillment review.',
+      title: 'Signed Cases',
+      description: 'The entry lane for assigned cases before the attorney moves them into a fulfillment classification.',
       guideTarget: { sectionId: 'fulfillment', subsectionId: 'fulfillment-pipeline' }
     },
-    returnedColumn: {
-      title: 'Returned Back',
-      description: 'Captures cases that moved back during the refund or replacement period.',
+    activeColumn: {
+      title: 'Active Cases',
+      description: 'Captures cases the attorney is actively managing inside fulfillment.',
       guideTarget: { sectionId: 'fulfillment', subsectionId: 'fulfillment-pipeline' }
     },
     droppedColumn: {
-      title: 'Dropped Retainers',
-      description: 'Separates unsuccessful retained matters from the successful pipeline.',
+      title: 'Dropped Cases',
+      description: 'Separates cases the attorney classified as dropped from active and successful work.',
       guideTarget: { sectionId: 'fulfillment', subsectionId: 'fulfillment-pipeline' }
     },
     successfulColumn: {
       title: 'Successful Cases',
-      description: 'Shows retained cases that held quality and stayed successful.',
+      description: 'Shows cases the attorney classified as successful.',
       guideTarget: { sectionId: 'fulfillment', subsectionId: 'fulfillment-pipeline' }
     }
   },
@@ -182,18 +177,18 @@ export const productGuideHints = {
       guideTarget: { sectionId: 'invoicing', subsectionId: 'invoicing-summary' }
     },
     pendingCard: {
-      title: 'Pending',
-      description: 'Tracks invoice value that is still awaiting review or payment progress.',
+      title: 'Pending Payment',
+      description: 'Tracks invoice value that has moved past billable and still needs payment progress.',
       guideTarget: { sectionId: 'invoicing', subsectionId: 'invoicing-summary' }
     },
     paidCard: {
-      title: 'Paid',
+      title: 'Successful Payment',
       description: 'Shows invoice value that has already been collected successfully.',
       guideTarget: { sectionId: 'invoicing', subsectionId: 'invoicing-summary' }
     },
     chargebackCard: {
-      title: 'Chargeback',
-      description: 'Highlights invoice value that has entered dispute or reversal handling.',
+      title: 'Late Payment',
+      description: 'Highlights invoice value that needs late-payment follow-up.',
       guideTarget: { sectionId: 'invoicing', subsectionId: 'invoicing-summary' }
     },
     createInvoice: {
@@ -217,18 +212,18 @@ export const productGuideHints = {
       guideTarget: { sectionId: 'invoicing', subsectionId: 'invoicing-board' }
     },
     pendingColumn: {
-      title: 'Pending',
-      description: 'Shows invoices that have been issued or are in review and still need payment progress.',
+      title: 'Pending Payment',
+      description: 'Shows invoices that have been issued and still need payment progress.',
       guideTarget: { sectionId: 'invoicing', subsectionId: 'invoicing-board' }
     },
     paidColumn: {
-      title: 'Paid',
+      title: 'Successful Payment',
       description: 'Keeps successfully collected invoices visible in one place.',
       guideTarget: { sectionId: 'invoicing', subsectionId: 'invoicing-board' }
     },
     chargebackColumn: {
-      title: 'Chargeback',
-      description: 'Tracks invoices that have entered dispute or reversal handling.',
+      title: 'Late Payment',
+      description: 'Tracks invoices that need late-payment follow-up.',
       guideTarget: { sectionId: 'invoicing', subsectionId: 'invoicing-board' }
     },
     pagination: {
@@ -274,8 +269,8 @@ export const productGuideHints = {
       guideTarget: { sectionId: 'product-offering', subsectionId: 'product-offering-tiers' }
     },
     placeOrder: {
-      title: 'Place Order',
-      description: 'Hands the buyer into the Order Map create-order workflow from the selected pricing tier.',
+      title: 'Open Order Map',
+      description: 'Hands the buyer into the Order Map from the selected pricing tier while urgency orders are disabled.',
       guideTarget: { sectionId: 'product-offering', subsectionId: 'product-offering-ordering' }
     }
   }

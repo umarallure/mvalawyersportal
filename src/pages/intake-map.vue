@@ -407,6 +407,9 @@ watch(mapFilter, () => {
 
 const blockMode = ref(false)
 const blockedStateCodes = ref<string[]>([])
+// Urgency orders are temporarily removed from the Order Map UI.
+// Flip this back on and restore the commented selector option below to reuse the flow.
+const URGENCY_ORDERS_AVAILABLE = false
 const urgencyOrdersEnabled = ref(true)
 const urgencyOrderAccessModalOpen = ref(false)
 
@@ -414,7 +417,7 @@ const blockedStateSet = computed(() => {
   return new Set(normalizeValidStateCodes(blockedStateCodes.value))
 })
 
-const canUseUrgencyOrders = computed(() => urgencyOrdersEnabled.value)
+const canUseUrgencyOrders = computed(() => URGENCY_ORDERS_AVAILABLE && urgencyOrdersEnabled.value)
 
 const isStateUnavailableForOrdering = (stateCode: string) => {
   const code = normalizeStateCode(stateCode)
@@ -953,8 +956,9 @@ const handleCreateOrderSubmit = async (close: () => void) => {
 type OrderMapView = 'general_coverage' | 'urgency_order'
 
 const orderMapViewOptions = [
-  { label: 'General Coverage', value: 'general_coverage' },
-  { label: 'Urgency Order', value: 'urgency_order' }
+  { label: 'General Coverage', value: 'general_coverage' }
+  // Urgency Order is temporarily removed. Restore when URGENCY_ORDERS_AVAILABLE is enabled again.
+  // { label: 'Urgency Order', value: 'urgency_order' }
 ]
 
 const orderMapViewSelectUi = {
@@ -972,9 +976,15 @@ const URGENCY_ORDER_ACCESS_MESSAGE = 'This account does not have permission to s
 
 const firstQueryValue = (value: unknown) => Array.isArray(value) ? value[0] : value
 
-const parseOrderMapView = (value: unknown): OrderMapView => {
+const isUrgencyOrderQueryValue = (value: unknown) => {
   const raw = String(firstQueryValue(value) || '').trim().toLowerCase()
-  if (['urgency-order', 'urgency_order', 'urgency', 'orders'].includes(raw)) return 'urgency_order'
+  return ['urgency-order', 'urgency_order', 'urgency', 'orders'].includes(raw)
+}
+
+const parseOrderMapView = (_value: unknown): OrderMapView => {
+  void _value
+  // Urgency Order is temporarily removed from the selector and route parser.
+  // if (URGENCY_ORDERS_AVAILABLE && isUrgencyOrderQueryValue(_value)) return 'urgency_order'
   return 'general_coverage'
 }
 
@@ -1006,13 +1016,18 @@ const blockUrgencyOrderAccess = (removeCreateOrderAction = false) => {
 const enforceUrgencyOrderAccessForRoute = async () => {
   if (canUseUrgencyOrders.value) return false
 
-  const requestedUrgencyView = parseOrderMapView(route.query.view) === 'urgency_order'
+  const requestedUrgencyView = isUrgencyOrderQueryValue(route.query.view)
   const requestedCreateOrder = firstQueryValue(route.query.action) === 'create-order'
   if (!requestedUrgencyView && !requestedCreateOrder) return false
 
   blockMode.value = false
   createOrderOpen.value = false
   handleStateLeave()
+  if (!URGENCY_ORDERS_AVAILABLE) {
+    await replaceRouteWithGeneralCoverage(requestedCreateOrder)
+    return true
+  }
+
   showUrgencyOrderAccessModal()
   await replaceRouteWithGeneralCoverage(requestedCreateOrder)
   return true
@@ -1025,6 +1040,11 @@ const orderMapView = computed<OrderMapView>({
     return view
   },
   set: (view) => {
+    if (view === 'urgency_order' && !URGENCY_ORDERS_AVAILABLE) {
+      void replaceRouteWithGeneralCoverage()
+      return
+    }
+
     if (view === 'urgency_order' && !canUseUrgencyOrders.value) {
       blockUrgencyOrderAccess()
       return
@@ -1040,7 +1060,7 @@ const orderMapView = computed<OrderMapView>({
 })
 
 const isCoverageView = computed(() => orderMapView.value === 'general_coverage')
-const isUrgencyView = computed(() => orderMapView.value === 'urgency_order')
+const isUrgencyView = computed(() => URGENCY_ORDERS_AVAILABLE && orderMapView.value === 'urgency_order')
 
 // ═══ GENERAL COVERAGE ═══
 const existingGeneralCoverage = ref<GeneralCoverageRow | null>(null)
