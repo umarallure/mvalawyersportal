@@ -688,6 +688,14 @@ const pendingMoveLeadId = ref<string | null>(null)
 const pendingMoveFromStage = ref<CustomerStageKey | null>(null)
 const pendingMoveToStage = ref<CustomerStageKey | null>(null)
 
+// Disqualify modal state
+const disqualifyConfirmOpen = ref(false)
+const disqualifyBusy = ref(false)
+const disqualifyNotes = ref('')
+const disqualifyFile = ref<File | null>(null)
+const disqualifyFileError = ref('')
+const disqualifyFileInput = ref<HTMLInputElement | null>(null)
+
 const pendingMoveLeadName = computed(() => {
   if (!pendingMoveLeadId.value) return ''
   return leads.value.find(l => l.id === pendingMoveLeadId.value)?.clientName ?? ''
@@ -717,7 +725,15 @@ const onDropToStage = (targetStage: CustomerStageKey) => {
   pendingMoveLeadId.value = leadId
   pendingMoveFromStage.value = fromStage
   pendingMoveToStage.value = targetStage
-  moveConfirmOpen.value = true
+
+  if (targetStage === 'customer_rejected') {
+    disqualifyNotes.value = ''
+    disqualifyFile.value = null
+    disqualifyFileError.value = ''
+    disqualifyConfirmOpen.value = true
+  } else {
+    moveConfirmOpen.value = true
+  }
 }
 
 // Touch drag-and-drop (mobile) — mirrors the native HTML5 drag path above.
@@ -738,6 +754,49 @@ const handleMoveConfirmUpdate = (v: boolean) => {
     pendingMoveToStage.value = null
     moveConfirmBusy.value = false
   }
+}
+
+const handleDisqualifyUpdate = (v: boolean) => {
+  disqualifyConfirmOpen.value = v
+  if (!v) {
+    pendingMoveLeadId.value = null
+    pendingMoveFromStage.value = null
+    pendingMoveToStage.value = null
+    disqualifyBusy.value = false
+    disqualifyNotes.value = ''
+    disqualifyFile.value = null
+    disqualifyFileError.value = ''
+  }
+}
+
+const handleDisqualifyFileChange = (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0] ?? null
+  disqualifyFileError.value = ''
+
+  if (!file) {
+    disqualifyFile.value = null
+    return
+  }
+
+  const maxSize = 20 * 1024 * 1024
+  const allowed = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/jpeg', 'image/png']
+
+  if (!allowed.includes(file.type)) {
+    disqualifyFileError.value = 'Unsupported file type. Please upload PDF, DOC, DOCX, JPG, or PNG.'
+    disqualifyFile.value = null
+    input.value = ''
+    return
+  }
+
+  if (file.size > maxSize) {
+    disqualifyFileError.value = 'File is larger than 20 MB.'
+    disqualifyFile.value = null
+    input.value = ''
+    return
+  }
+
+  disqualifyFile.value = file
 }
 
 const confirmMove = async () => {
@@ -813,6 +872,141 @@ const confirmMove = async () => {
     })
   } finally {
     moveConfirmBusy.value = false
+  }
+}
+
+const confirmDisqualify = async () => {
+  const leadId = pendingMoveLeadId.value
+  const fromStage = pendingMoveFromStage.value
+  const targetStage = pendingMoveToStage.value
+  if (!leadId || !fromStage || !targetStage) return
+
+  if (!disqualifyNotes.value.trim()) {
+    toast.add({
+      title: 'Notes required',
+      description: 'Please provide a reason for disqualifying this lead.',
+      icon: 'i-lucide-x',
+      color: 'error'
+    })
+    return
+  }
+
+  if (!disqualifyFile.value) {
+    toast.add({
+      title: 'Document required',
+      description: 'Please upload a Drop Letter document.',
+      icon: 'i-lucide-x',
+      color: 'error'
+    })
+    return
+  }
+
+  const idx = leads.value.findIndex(l => l.id === leadId)
+  if (idx < 0) return
+
+  disqualifyBusy.value = true
+
+  const prevStage = leads.value[idx].stage
+  const prevStatus = leads.value[idx].status
+  const targetDbStatus = 'attorney_rejected'
+
+  leads.value[idx] = {
+    ...leads.value[idx],
+    stage: targetStage,
+    status: targetDbStatus
+  }
+
+  try {
+    const { data: authData } = await supabase.auth.getUser()
+    const userId = authData.user?.id ?? null
+    const userName = authData.user?.user_metadata?.full_name ?? auth.state.value.profile?.display_name ?? null
+
+    // 1. Update lead status
+    const updateResult = leads.value[idx].source === 'leads'
+      ? await supabase
+        .from('leads')
+        .update({ status: targetDbStatus })
+        .eq('id', leadId)
+      : await supabase
+        .from('daily_deal_flow')
+        .update({ status: targetDbStatus })
+        .eq('id', leadId)
+
+    const { error: updateError } = updateResult
+    if (updateError) throw updateError
+
+    // 2. Upload document
+    const file = disqualifyFile.value
+    const mimeType = file.type || 'application/octet-stream'
+    const safeName = file.name.trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9._-]/g, '')
+    const uniqueId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const storagePath = `${leads.value[idx].submissionId}/other_document/${uniqueId}-${safeName}`
+    const BUCKET_NAME = 'lead-documents'
+
+    const { error: uploadError } = await supabase.storage
+      .from(BUCKET_NAME)
+      .upload(storagePath, file, { upsert: false, contentType: mimeType })
+
+    if (uploadError) throw uploadError
+
+    const { error: docInsertError } = await supabase
+      .from('lead_documents')
+      .insert({
+        submission_id: leads.value[idx].submissionId,
+        category: 'other_document',
+        file_name: file.name,
+        file_size: file.size,
+        file_type: mimeType,
+        storage_path: storagePath,
+        bucket_name: BUCKET_NAME,
+        uploaded_by: userId,
+        status: 'uploaded'
+      })
+
+    if (docInsertError) {
+      await supabase.storage.from(BUCKET_NAME).remove([storagePath])
+      throw docInsertError
+    }
+
+    // 3. Insert note
+    const { error: noteError } = await supabase
+      .from('lawyer_lead_notes')
+      .insert({
+        lead_id: leadId,
+        note: disqualifyNotes.value.trim(),
+        created_by: userId,
+        created_by_name: userName
+      })
+
+    if (noteError) throw noteError
+
+    disqualifyConfirmOpen.value = false
+    pendingMoveLeadId.value = null
+    pendingMoveFromStage.value = null
+    pendingMoveToStage.value = null
+
+    toast.add({
+      title: 'Disqualified',
+      description: 'Lead moved to Disqualified with notes and Drop Letter.',
+      icon: 'i-lucide-check-circle',
+      color: 'success'
+    })
+  } catch (err) {
+    leads.value[idx] = {
+      ...leads.value[idx],
+      stage: prevStage,
+      status: prevStatus
+    }
+
+    const msg = err instanceof Error ? err.message : 'Unable to disqualify lead'
+    toast.add({
+      title: 'Error',
+      description: msg,
+      icon: 'i-lucide-x',
+      color: 'error'
+    })
+  } finally {
+    disqualifyBusy.value = false
   }
 }
 
@@ -925,6 +1119,102 @@ const stageCardAccentStyle = (key: CustomerStageKey) => {
                   @click="confirmMove"
                 >
                   Confirm
+                </UButton>
+              </div>
+            </div>
+          </template>
+        </UModal>
+
+        <!-- Disqualify Modal (Notes + Document required) -->
+        <UModal
+          :open="disqualifyConfirmOpen"
+          title="Disqualify Lead"
+          :dismissible="false"
+          @update:open="handleDisqualifyUpdate"
+        >
+          <template #body="{ close }">
+            <div class="space-y-5">
+              <div class="flex items-start gap-3">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-500/10">
+                  <UIcon name="i-lucide-x-circle" class="text-lg text-red-400" />
+                </div>
+                <div>
+                  <p class="text-sm font-medium text-highlighted">
+                    Disqualify Lead
+                  </p>
+                  <p class="mt-0.5 text-sm text-muted">
+                    You are moving <span class="font-semibold text-highlighted">{{ pendingMoveLeadName }}</span> to
+                    <span class="font-semibold text-highlighted">Disqualified</span>.
+                    Please provide a reason and upload a Drop Letter.
+                  </p>
+                </div>
+              </div>
+
+              <!-- Notes / Reason -->
+              <div>
+                <label class="mb-1.5 block text-xs font-medium text-highlighted">
+                  Reason for Disqualification <span class="text-red-400">*</span>
+                </label>
+                <UTextarea
+                  v-model="disqualifyNotes"
+                  placeholder="Explain why this lead is being disqualified..."
+                  :rows="4"
+                  class="w-full"
+                  :ui="{
+                    base: 'block w-full rounded-lg border border-black/[0.08] dark:border-white/[0.08] bg-white/80 dark:bg-[#1a1a1a]/80 px-3 py-2 text-sm text-highlighted placeholder-muted focus:border-red-400/50 focus:ring-2 focus:ring-red-400/20 transition-all'
+                  }"
+                />
+              </div>
+
+              <!-- Document Upload -->
+              <div>
+                <label class="mb-1.5 block text-xs font-medium text-highlighted">
+                  Drop Letter <span class="text-red-400">*</span>
+                </label>
+                <div class="flex items-center gap-3">
+                  <UButton
+                    color="neutral"
+                    variant="outline"
+                    icon="i-lucide-upload"
+                    class="rounded-lg"
+                    @click="disqualifyFileInput?.click()"
+                  >
+                    {{ disqualifyFile ? 'Change File' : 'Upload Document' }}
+                  </UButton>
+                  <span v-if="disqualifyFile" class="text-xs text-muted truncate max-w-[200px]">
+                    {{ disqualifyFile.name }}
+                  </span>
+                  <span v-else class="text-xs text-muted">PDF, DOC, DOCX, JPG, PNG (max 20 MB)</span>
+                </div>
+                <input
+                  :ref="(el) => { disqualifyFileInput = el as HTMLInputElement }"
+                  type="file"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  class="hidden"
+                  @change="handleDisqualifyFileChange"
+                />
+                <p v-if="disqualifyFileError" class="mt-1.5 text-xs text-red-400">{{ disqualifyFileError }}</p>
+              </div>
+
+              <div class="flex items-center justify-end gap-2 pt-1">
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  :disabled="disqualifyBusy"
+                  class="rounded-lg"
+                  @click="() => { close() }"
+                >
+                  Cancel
+                </UButton>
+                <UButton
+                  color="error"
+                  variant="solid"
+                  :loading="disqualifyBusy"
+                  icon="i-lucide-x-circle"
+                  class="rounded-lg"
+                  @click="confirmDisqualify"
+                >
+                  Disqualify
                 </UButton>
               </div>
             </div>
