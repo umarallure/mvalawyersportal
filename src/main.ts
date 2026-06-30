@@ -19,7 +19,19 @@ const router = createRouter({
     { path: '/launch-auth', component: () => import('./pages/launch-auth.vue'), meta: { public: true } },
     { path: '/managed-auth/callback', component: () => import('./pages/managed-auth-callback.vue'), meta: { public: true } },
     { path: '/dashboard', component: () => import('./pages/dashboard.vue') },
-    { path: '/inbox', component: () => import('./pages/not-found.vue') },
+    { path: '/notifications', component: () => import('./pages/notifications.vue') },
+    {
+      path: '/inbox',
+      redirect: to => ({
+        path: '/notifications',
+        query: {
+          ...to.query,
+          ...(typeof to.query.id === 'string' && !to.query.notificationId
+            ? { notificationId: to.query.id }
+            : {})
+        }
+      })
+    },
     { path: '/intake-map', component: () => import('./pages/intake-map.vue') },
     { path: '/orders/:id', component: () => import('./pages/orders-details.vue') },
     { path: '/retainers', component: () => import('./pages/retainers.vue') },
