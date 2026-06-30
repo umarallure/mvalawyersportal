@@ -76,8 +76,17 @@ export const buildNotificationEmailContent = (delivery, options) => {
 
   const addedLine = assignedDate
     ? `<div style="height:1px;line-height:1px;font-size:1px;background:rgba(255,255,255,0.08);margin:16px 0 14px 0;">&nbsp;</div>`
-      + `<p style="margin:0;color:#8f8780;font-size:13px;line-height:1.5;font-family:${fontStack};">Added <span style="color:#cfc4ba;">${escapeHtml(assignedDate)}</span></p>`
+      + `<p class="ap-date-text" style="margin:0;color:#8f8780;-webkit-text-fill-color:#8f8780;font-size:13px;line-height:1.5;font-family:${fontStack};">Added <span class="ap-date-value" style="color:#cfc4ba;-webkit-text-fill-color:#cfc4ba;">${escapeHtml(assignedDate)}</span></p>`
     : ''
+
+  const mobileCss =
+    '@media (max-width:620px){body,.ap-bg{background:#050505 !important;background-color:#050505 !important;background-image:linear-gradient(#050505,#050505) !important;padding:18px 10px !important;}.ap-card{background:#0b0b0d !important;background-color:#0b0b0d !important;background-image:linear-gradient(#0b0b0d,#0b0b0d) !important;border:1px solid #30251d !important;border-radius:18px !important;}.ap-pad{padding-left:22px !important;padding-right:22px !important;}.ap-header{background:#080808 !important;background-color:#080808 !important;background-image:linear-gradient(#080808,#080808) !important;padding-top:24px !important;padding-bottom:22px !important;}.ap-logo-cell,.ap-pill-cell{display:block !important;width:100% !important;text-align:left !important;}.ap-pill-cell{padding-top:14px !important;}.ap-pill{background:#111113 !important;background-color:#111113 !important;background-image:linear-gradient(#111113,#111113) !important;border:1px solid #3a2e25 !important;}.ap-pill-dot,.ap-case-label,.ap-secondary-link,.ap-secondary-text{color:#f7c480 !important;-webkit-text-fill-color:#f7c480 !important;}.ap-pill-text{color:#e4dbd2 !important;-webkit-text-fill-color:#e4dbd2 !important;}.ap-lead{padding-top:30px !important;}.ap-lead-text{color:#f7f1eb !important;-webkit-text-fill-color:#f7f1eb !important;}.ap-hero,.ap-case-title{font-size:25px !important;line-height:1.2 !important;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;}.ap-case-card{background:#121213 !important;background-color:#121213 !important;background-image:linear-gradient(#121213,#121213) !important;border:1px solid #342820 !important;}.ap-date-text{color:#a99f96 !important;-webkit-text-fill-color:#a99f96 !important;}.ap-date-value{color:#ddd4cc !important;-webkit-text-fill-color:#ddd4cc !important;}.ap-copy{color:#d8cec4 !important;-webkit-text-fill-color:#d8cec4 !important;}.ap-actions{width:100% !important;}.ap-btn-cell{display:block !important;width:100% !important;background:#ae4010 !important;background-color:#ae4010 !important;background-image:linear-gradient(#ae4010,#ae4010) !important;border-radius:14px !important;}.ap-btn{display:block !important;width:100% !important;box-sizing:border-box !important;text-align:center !important;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;}.ap-btn-text{color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;}.ap-secondary-cell{display:block !important;width:100% !important;padding-left:0 !important;padding-top:16px !important;text-align:center !important;}.ap-secondary-link{display:block !important;margin:0 !important;padding:0 !important;text-align:center !important;color:#f7c480 !important;-webkit-text-fill-color:#f7c480 !important;}.ap-footer{background:#080808 !important;background-color:#080808 !important;background-image:linear-gradient(#080808,#080808) !important;}.ap-footer-text{color:#bfb5ac !important;-webkit-text-fill-color:#bfb5ac !important;}.ap-footer-meta{color:#928a83 !important;-webkit-text-fill-color:#928a83 !important;}}'
+
+  const mobileDarkCss =
+    '@media (max-width:620px) and (prefers-color-scheme:dark){body,.ap-bg{background:#050505 !important;background-color:#050505 !important;background-image:linear-gradient(#050505,#050505) !important;}.ap-card{background:#0b0b0d !important;background-color:#0b0b0d !important;background-image:linear-gradient(#0b0b0d,#0b0b0d) !important;border-color:#30251d !important;}.ap-header,.ap-footer{background:#080808 !important;background-color:#080808 !important;background-image:linear-gradient(#080808,#080808) !important;}.ap-case-card{background:#121213 !important;background-color:#121213 !important;background-image:linear-gradient(#121213,#121213) !important;border-color:#342820 !important;}.ap-pill-text{color:#e4dbd2 !important;-webkit-text-fill-color:#e4dbd2 !important;}.ap-lead-text,.ap-hero,.ap-case-title,.ap-btn,.ap-btn-text{color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;}.ap-copy{color:#d8cec4 !important;-webkit-text-fill-color:#d8cec4 !important;}.ap-date-text{color:#a99f96 !important;-webkit-text-fill-color:#a99f96 !important;}.ap-date-value{color:#ddd4cc !important;-webkit-text-fill-color:#ddd4cc !important;}.ap-case-label,.ap-secondary-link,.ap-secondary-text{color:#f7c480 !important;-webkit-text-fill-color:#f7c480 !important;}.ap-footer-text{color:#bfb5ac !important;-webkit-text-fill-color:#bfb5ac !important;}.ap-footer-meta{color:#928a83 !important;-webkit-text-fill-color:#928a83 !important;}}'
+
+  const outlookDarkCss =
+    '[data-ogsc] body,[data-ogsc] .ap-bg,[data-ogsb] body,[data-ogsb] .ap-bg{background:#050505 !important;background-color:#050505 !important;background-image:linear-gradient(#050505,#050505) !important;}[data-ogsc] .ap-card,[data-ogsb] .ap-card{background:#0b0b0d !important;background-color:#0b0b0d !important;background-image:linear-gradient(#0b0b0d,#0b0b0d) !important;}[data-ogsc] .ap-case-card,[data-ogsb] .ap-case-card{background:#121213 !important;background-color:#121213 !important;background-image:linear-gradient(#121213,#121213) !important;}[data-ogsc] .ap-lead-text,[data-ogsb] .ap-lead-text,[data-ogsc] .ap-case-title,[data-ogsb] .ap-case-title,[data-ogsc] .ap-btn,[data-ogsb] .ap-btn,[data-ogsc] .ap-btn-text,[data-ogsb] .ap-btn-text{color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;}[data-ogsc] .ap-copy,[data-ogsb] .ap-copy{color:#d8cec4 !important;-webkit-text-fill-color:#d8cec4 !important;}[data-ogsc] .ap-pill-text,[data-ogsb] .ap-pill-text{color:#e4dbd2 !important;-webkit-text-fill-color:#e4dbd2 !important;}[data-ogsc] .ap-case-label,[data-ogsb] .ap-case-label,[data-ogsc] .ap-secondary-link,[data-ogsb] .ap-secondary-link,[data-ogsc] .ap-secondary-text,[data-ogsb] .ap-secondary-text{color:#f7c480 !important;-webkit-text-fill-color:#f7c480 !important;}'
 
   const html = [
     '<!doctype html>',
@@ -90,9 +99,9 @@ export const buildNotificationEmailContent = (delivery, options) => {
     '<title>New case assigned</title>',
     '<style>',
     "@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap');",
-    '@media (max-width:620px){body,.ap-bg{background:#050505 !important;background-color:#050505 !important;background-image:linear-gradient(#050505,#050505) !important;padding:18px 10px !important;}.ap-card{background:#0b0b0d !important;background-color:#0b0b0d !important;background-image:linear-gradient(#0b0b0d,#0b0b0d) !important;border-color:#27201a !important;border-radius:18px !important;}.ap-pad{padding-left:22px !important;padding-right:22px !important;}.ap-header{background:#080808 !important;background-color:#080808 !important;background-image:linear-gradient(#080808,#080808) !important;padding-top:24px !important;padding-bottom:22px !important;}.ap-logo-cell,.ap-pill-cell{display:block !important;width:100% !important;text-align:left !important;}.ap-pill-cell{padding-top:14px !important;}.ap-pill{background:#111113 !important;background-color:#111113 !important;background-image:linear-gradient(#111113,#111113) !important;border-color:#342a20 !important;}.ap-lead{padding-top:30px !important;}.ap-hero{font-size:25px !important;line-height:1.2 !important;color:#ffffff !important;}.ap-case-card{background:#121213 !important;background-color:#121213 !important;background-image:linear-gradient(#121213,#121213) !important;border-color:#322922 !important;}.ap-copy{color:#d6cbc0 !important;}.ap-btn-cell{display:block !important;width:100% !important;background-image:linear-gradient(#ae4010,#ae4010) !important;}.ap-btn{display:block !important;text-align:center !important;color:#ffffff !important;}.ap-secondary{display:block !important;margin:16px 0 0 0 !important;padding-left:0 !important;text-align:center !important;color:#f7c480 !important;}.ap-footer{background:#080808 !important;background-color:#080808 !important;background-image:linear-gradient(#080808,#080808) !important;}}',
-    '@media (max-width:620px) and (prefers-color-scheme:dark){body,.ap-bg{background:#050505 !important;background-color:#050505 !important;background-image:linear-gradient(#050505,#050505) !important;}.ap-card{background:#0b0b0d !important;background-color:#0b0b0d !important;background-image:linear-gradient(#0b0b0d,#0b0b0d) !important;}.ap-header,.ap-footer{background:#080808 !important;background-color:#080808 !important;background-image:linear-gradient(#080808,#080808) !important;}.ap-case-card{background:#121213 !important;background-color:#121213 !important;background-image:linear-gradient(#121213,#121213) !important;}}',
-    '[data-ogsc] body,[data-ogsc] .ap-bg,[data-ogsb] body,[data-ogsb] .ap-bg{background:#050505 !important;background-color:#050505 !important;background-image:linear-gradient(#050505,#050505) !important;}[data-ogsc] .ap-card,[data-ogsb] .ap-card{background:#0b0b0d !important;background-color:#0b0b0d !important;background-image:linear-gradient(#0b0b0d,#0b0b0d) !important;}[data-ogsc] .ap-case-card,[data-ogsb] .ap-case-card{background:#121213 !important;background-color:#121213 !important;background-image:linear-gradient(#121213,#121213) !important;}',
+    mobileCss,
+    mobileDarkCss,
+    outlookDarkCss,
     'a.ap-btn:hover{background:#7c2c0a !important;}',
     '</style>',
     '</head>',
@@ -107,13 +116,13 @@ export const buildNotificationEmailContent = (delivery, options) => {
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">',
     '<tr>',
     `<td class="ap-logo-cell" style="vertical-align:middle;"><img src="${safeLogoUrl}" width="150" alt="Accident Payments" style="display:block;max-width:150px;height:auto;border:0;outline:none;text-decoration:none;"></td>`,
-    `<td class="ap-pill-cell" align="right" style="vertical-align:middle;white-space:nowrap;"><span class="ap-pill" style="display:inline-block;border:1px solid rgba(255,255,255,0.14);border-radius:999px;padding:6px 13px;font-size:12px;font-weight:600;font-family:${fontStack};"><span style="color:#f7c480;">&bull;</span>&nbsp;<span style="color:rgba(255,255,255,0.82);">Lawyer Portal</span></span></td>`,
+    `<td class="ap-pill-cell" align="right" style="vertical-align:middle;white-space:nowrap;"><span class="ap-pill" style="display:inline-block;border:1px solid rgba(255,255,255,0.14);border-radius:999px;padding:6px 13px;font-size:12px;font-weight:600;font-family:${fontStack};"><span class="ap-pill-dot" style="color:#f7c480;-webkit-text-fill-color:#f7c480;">&bull;</span>&nbsp;<span class="ap-pill-text" style="color:rgba(255,255,255,0.82);-webkit-text-fill-color:#dcd3ca;">Lawyer Portal</span></span></td>`,
     '</tr>',
     '</table>',
     '</td>',
     '</tr>',
     '<tr>',
-    `<td class="ap-pad ap-lead" style="padding:40px 40px 0 40px;"><p style="margin:0;color:rgba(255,255,255,0.92);font-size:18px;line-height:1.5;font-weight:600;font-family:${fontStack};">You've been assigned a new case.</p></td>`,
+    `<td class="ap-pad ap-lead" style="padding:40px 40px 0 40px;"><p class="ap-lead-text" style="margin:0;color:rgba(255,255,255,0.92);-webkit-text-fill-color:#f7f1eb;font-size:18px;line-height:1.5;font-weight:600;font-family:${fontStack};">You've been assigned a new case.</p></td>`,
     '</tr>',
     '<tr>',
     '<td class="ap-pad" style="padding:20px 40px 0 40px;">',
@@ -121,8 +130,8 @@ export const buildNotificationEmailContent = (delivery, options) => {
     '<tr>',
     '<td width="4" style="width:4px;background:#f7c480;font-size:0;line-height:0;">&nbsp;</td>',
     '<td style="padding:22px 24px;">',
-    `<p style="margin:0 0 10px 0;color:#f7c480;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;font-family:${fontStack};">Case</p>`,
-    `<p class="ap-hero" style="margin:0;color:#ffffff;font-size:30px;line-height:1.18;font-weight:700;letter-spacing:0;font-family:${fontStack};">${safeCaseName}</p>`,
+    `<p class="ap-case-label" style="margin:0 0 10px 0;color:#f7c480;-webkit-text-fill-color:#f7c480;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;font-family:${fontStack};">Case</p>`,
+    `<p class="ap-hero ap-case-title" style="margin:0;color:#ffffff;-webkit-text-fill-color:#ffffff;font-size:30px;line-height:1.18;font-weight:700;letter-spacing:0;font-family:${fontStack};">${safeCaseName}</p>`,
     addedLine,
     '</td>',
     '</tr>',
@@ -130,22 +139,22 @@ export const buildNotificationEmailContent = (delivery, options) => {
     '</td>',
     '</tr>',
     '<tr>',
-    `<td class="ap-pad" style="padding:22px 40px 0 40px;"><p class="ap-copy" style="margin:0;color:rgba(255,255,255,0.6);font-size:15px;line-height:1.65;font-family:${fontStack};">${safeBody}</p></td>`,
+    `<td class="ap-pad" style="padding:22px 40px 0 40px;"><p class="ap-copy" style="margin:0;color:rgba(255,255,255,0.6);-webkit-text-fill-color:#d8cec4;font-size:15px;line-height:1.65;font-family:${fontStack};">${safeBody}</p></td>`,
     '</tr>',
     '<tr>',
     '<td class="ap-pad" style="padding:30px 40px 36px 40px;">',
-    '<table role="presentation" cellspacing="0" cellpadding="0" border="0">',
+    '<table class="ap-actions" role="presentation" cellspacing="0" cellpadding="0" border="0">',
     '<tr>',
-    `<td class="ap-btn-cell" style="border-radius:14px;background:#ae4010;box-shadow:0 12px 28px rgba(174,64,16,0.40);"><a class="ap-btn" href="${safePortalUrl}" style="display:inline-block;padding:15px 26px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;line-height:1;font-family:${fontStack};border-radius:14px;">Open case</a></td>`,
-    `<td class="ap-secondary" style="padding-left:8px;"><a class="ap-secondary" href="${safeNotificationsUrl}" style="display:inline-block;padding:15px 16px;color:#f7c480;text-decoration:none;font-size:14px;font-weight:600;line-height:1;font-family:${fontStack};">View all notifications</a></td>`,
+    `<td class="ap-btn-cell" style="border-radius:14px;background:#ae4010;box-shadow:0 12px 28px rgba(174,64,16,0.40);"><a class="ap-btn" href="${safePortalUrl}" style="display:inline-block;padding:15px 26px;color:#ffffff;-webkit-text-fill-color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;line-height:1;font-family:${fontStack};border-radius:14px;"><span class="ap-btn-text" style="color:#ffffff;-webkit-text-fill-color:#ffffff;">Open case</span></a></td>`,
+    `<td class="ap-secondary-cell" style="padding-left:8px;"><a class="ap-secondary-link" href="${safeNotificationsUrl}" style="display:inline-block;padding:15px 16px;color:#f7c480;-webkit-text-fill-color:#f7c480;text-decoration:none;font-size:14px;font-weight:600;line-height:1;font-family:${fontStack};"><span class="ap-secondary-text" style="color:#f7c480;-webkit-text-fill-color:#f7c480;">View all notifications</span></a></td>`,
     '</tr>',
     '</table>',
     '</td>',
     '</tr>',
     '<tr>',
     `<td class="ap-pad ap-footer" bgcolor="#080808" style="padding:22px 40px 26px 40px;background-color:#080808;background-image:radial-gradient(140% 170% at 20% 150%,rgba(247,196,128,0.22) 0%,rgba(174,64,16,0.12) 34%,rgba(8,8,9,0) 60%);border-top:1px solid rgba(255,255,255,0.07);">`,
-    `<p style="margin:0 0 6px 0;color:#7c746d;font-size:12px;line-height:1.6;font-family:${fontStack};">You're getting this because a case was assigned to your Lawyer Portal account. If that doesn't look right, contact your administrator.</p>`,
-    `<p style="margin:0;color:#5f5853;font-size:12px;line-height:1.6;font-family:${fontStack};">&copy; ${year} Accident Payments &middot; Lawyer Portal</p>`,
+    `<p class="ap-footer-text" style="margin:0 0 6px 0;color:#7c746d;-webkit-text-fill-color:#bfb5ac;font-size:12px;line-height:1.6;font-family:${fontStack};">You're getting this because a case was assigned to your Lawyer Portal account. If that doesn't look right, contact your administrator.</p>`,
+    `<p class="ap-footer-meta" style="margin:0;color:#5f5853;-webkit-text-fill-color:#928a83;font-size:12px;line-height:1.6;font-family:${fontStack};">&copy; ${year} Accident Payments &middot; Lawyer Portal</p>`,
     '</td>',
     '</tr>',
     '</table>',
