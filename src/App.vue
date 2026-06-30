@@ -5,6 +5,13 @@ import { useStorage } from '@vueuse/core'
 import type { NavigationMenuItem } from '@nuxt/ui'
 
 import { useAuth } from './composables/useAuth'
+import { useNotifications } from './composables/useNotifications'
+import {
+  getNotificationMessage,
+  getNotificationMeta,
+  getNotificationsLocation
+} from './lib/notifications'
+import type { AppNotification } from './types'
 
 type HubSpotWindow = Window & typeof globalThis & {
   HubSpotConversations?: {
@@ -21,6 +28,14 @@ const toast = useToast()
 const route = useRoute()
 const router = useRouter()
 const auth = useAuth()
+const {
+  unreadCount,
+  lastRealtimeNotification,
+  fetchInitialNotifications,
+  initializeRealtimeListener,
+  cleanup: cleanupNotifications,
+  markAsRead
+} = useNotifications()
 
 const open = ref(false)
 const sidebarCollapsed = ref(false)
@@ -101,6 +116,11 @@ const isAdmin = computed(() => role.value === 'super_admin' || role.value === 'a
 const isSuperAdmin = computed(() => role.value === 'super_admin')
 const isAccounts = computed(() => role.value === 'accounts')
 const isAdminOrAccounts = computed(() => isAdmin.value || isAccounts.value)
+const canSeeNotifications = computed(() =>
+  Boolean(auth.state.value.user)
+  && ['super_admin', 'admin', 'lawyer'].includes(role.value ?? '')
+)
+const unreadBadge = computed(() => unreadCount.value > 99 ? '99+' : String(unreadCount.value))
 
 const links = computed(() => [[
   // Pages hidden from accounts role
@@ -133,6 +153,14 @@ const links = computed(() => [[
     to: '/invoicing/lawyer',
     onSelect: () => { open.value = false }
   },
+
+  ...(canSeeNotifications.value ? [{
+    label: 'Notifications',
+    icon: unreadCount.value > 0 ? 'i-lucide-bell-ring' : 'i-lucide-bell',
+    to: '/notifications',
+    badge: unreadCount.value > 0 ? unreadBadge.value : undefined,
+    onSelect: () => { open.value = false }
+  }] : []),
 
   // Publisher Invoicing — admin, super_admin, accounts
   ...(isAdminOrAccounts.value ? [{
@@ -253,6 +281,51 @@ const handleEndManagedSession = async () => {
     await router.push('/login')
   }
 }
+
+const openRealtimeNotification = async (notification: AppNotification) => {
+  if (!notification.is_read) {
+    await markAsRead(notification.id)
+  }
+
+  await router.push(notification.redirect_url || getNotificationsLocation(notification.id))
+}
+
+watch(
+  [() => auth.state.value.user?.id ?? null, isPublicPage],
+  ([userId, publicPage]) => {
+    if (publicPage || !userId) {
+      cleanupNotifications()
+      return
+    }
+
+    void fetchInitialNotifications(userId).then(() => {
+      if (auth.state.value.user?.id !== userId || isPublicPage.value) return
+      initializeRealtimeListener(userId)
+    })
+  },
+  { immediate: true }
+)
+
+watch(lastRealtimeNotification, (notification) => {
+  if (!notification) return
+
+  const meta = getNotificationMeta(notification.category)
+
+  toast.add({
+    title: notification.title,
+    description: getNotificationMessage(notification),
+    icon: meta.icon,
+    color: notification.category === 'invoice_created' ? 'success' : 'primary',
+    actions: [{
+      label: 'Open',
+      color: 'neutral',
+      variant: 'outline',
+      onClick: () => {
+        void openRealtimeNotification(notification)
+      }
+    }]
+  })
+})
 
 const cookie = useStorage('cookie-consent', 'pending')
 if (cookie.value !== 'accepted') {
