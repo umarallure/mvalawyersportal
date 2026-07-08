@@ -11,6 +11,7 @@ const DEFAULT_ENV_FILE = '.env'
 const DEFAULT_TEMPLATE_KEY = 'standard_notification_email'
 const BELIEF_BROKER_TEMPLATE_KEY = 'belief_broker_retainer_assignment'
 const DEFAULT_LEAD_DOCUMENTS_BUCKET = 'lead-documents'
+const DEFAULT_RETAINER_AGREEMENTS_BUCKET = 'retainer-agreements'
 
 class RetryableDeliveryError extends Error {
   constructor(message, code) {
@@ -194,6 +195,86 @@ const hasNewerAssignmentEmailDelivery = async (
   return Boolean(data?.length)
 }
 
+const normalizeRetainerAgreementDocument = (row) => {
+  if (!row.document_storage_path) return null
+
+  return {
+    ...row,
+    id: row.id,
+    file_name: row.document_file_name || 'signed-retainer-agreement.pdf',
+    file_type: row.document_content_type || 'application/pdf',
+    storage_path: row.document_storage_path,
+    bucket_name: row.document_bucket || DEFAULT_RETAINER_AGREEMENTS_BUCKET,
+    file_size: row.document_size
+  }
+}
+
+const fetchLatestRetainerAgreementDocument = async (supabaseAdmin, lead) => {
+  const selectColumns = [
+    'id',
+    'lead_id',
+    'submission_id',
+    'status',
+    'document_bucket',
+    'document_storage_path',
+    'document_file_name',
+    'document_content_type',
+    'document_size',
+    'document_stored_at',
+    'signed_at',
+    'updated_at'
+  ].join(',')
+
+  const fetchBy = async (column, value) => {
+    const { data, error } = await supabaseAdmin
+      .from('retainer_agreements')
+      .select(selectColumns)
+      .eq(column, value)
+      .eq('status', 'signed')
+      .not('document_storage_path', 'is', null)
+      .order('document_stored_at', { ascending: false })
+      .order('signed_at', { ascending: false })
+      .order('updated_at', { ascending: false })
+      .limit(1)
+
+    if (error) {
+      const message = error.message || ''
+      if (message.includes('retainer_agreements') && message.toLowerCase().includes('does not exist')) {
+        return null
+      }
+      throw new Error(message)
+    }
+
+    const row = data?.[0] ?? null
+    return row ? normalizeRetainerAgreementDocument(row) : null
+  }
+
+  const byLeadId = await fetchBy('lead_id', lead.id)
+  if (byLeadId) return byLeadId
+
+  return lead.submission_id ? fetchBy('submission_id', lead.submission_id) : null
+}
+
+const fetchLatestLeadDocumentRetainer = async (supabaseAdmin, lead) => {
+  if (!lead.submission_id) return null
+
+  const { data: documentRows, error: documentError } = await supabaseAdmin
+    .from('lead_documents')
+    .select('id,submission_id,category,file_name,file_size,file_type,storage_path,bucket_name,uploaded_at,status')
+    .eq('submission_id', lead.submission_id)
+    .eq('category', 'retainer_document')
+    .in('status', ['uploaded', 'verified'])
+    .order('uploaded_at', { ascending: false })
+    .limit(1)
+
+  if (documentError) throw new Error(documentError.message)
+  return documentRows?.[0] ?? null
+}
+
+const fetchSignedRetainerDocument = async (supabaseAdmin, lead) =>
+  (await fetchLatestRetainerAgreementDocument(supabaseAdmin, lead)) ||
+  (await fetchLatestLeadDocumentRetainer(supabaseAdmin, lead))
+
 const fetchBeliefBrokerRetainerMessage = async (supabaseAdmin, delivery) => {
   const leadId = delivery.lead_id || getPayloadString(delivery, 'lead_id')
   if (!leadId) throw new Error('Missing lead_id for Belief broker retainer email')
@@ -258,25 +339,7 @@ const fetchBeliefBrokerRetainerMessage = async (supabaseAdmin, delivery) => {
     `Broker profile not found for Belief broker retainer email: ${brokerId}`
   )
 
-  if (!lead.submission_id) {
-    throw new RetryableDeliveryError(
-      `Lead ${leadId} has no submission_id for retainer document lookup`,
-      'EMISSING_RETAINER_DOCUMENT'
-    )
-  }
-
-  const { data: documentRows, error: documentError } = await supabaseAdmin
-    .from('lead_documents')
-    .select('id,submission_id,category,file_name,file_size,file_type,storage_path,bucket_name,uploaded_at,status')
-    .eq('submission_id', lead.submission_id)
-    .eq('category', 'retainer_document')
-    .in('status', ['uploaded', 'verified'])
-    .order('uploaded_at', { ascending: false })
-    .limit(1)
-
-  if (documentError) throw new Error(documentError.message)
-
-  const document = documentRows?.[0] ?? null
+  const document = await fetchSignedRetainerDocument(supabaseAdmin, lead)
   if (!document) {
     throw new RetryableDeliveryError(
       `Missing retainer document attachment for lead ${leadId}`,
@@ -464,6 +527,8 @@ const processPendingDeliveries = async () => {
           status,
           last_error: message.slice(0, 2000),
           next_attempt_at: shouldRetry ? nextAttemptAt(delivery.attempt_count) : new Date().toISOString(),
+          sent_at: null,
+          provider_message_id: null,
           locked_at: null,
           locked_by: null
         })
