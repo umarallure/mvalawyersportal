@@ -39,7 +39,7 @@ export const buildNotificationEmailContent = (delivery, options) => {
   const bgUrl = options?.backgroundUrl?.trim() || getPublicAssetUrl(appBaseUrl, '/assets/email.jpg')
   const caseName = delivery.lead_name?.trim() || 'New case'
   const description = delivery.description?.trim() || ''
-  const assignedDate = formatAssignedDate(delivery.created_at)
+  const assignedDate = formatAssignedDate(delivery.delivery_created_at || delivery.created_at)
   const year = new Date().getFullYear()
 
   const defaultBody =
@@ -155,6 +155,371 @@ export const buildNotificationEmailContent = (delivery, options) => {
     `<td class="ap-pad ap-footer" bgcolor="#080808" style="padding:22px 40px 26px 40px;background-color:#080808;background-image:radial-gradient(140% 170% at 20% 150%,rgba(247,196,128,0.22) 0%,rgba(174,64,16,0.12) 34%,rgba(8,8,9,0) 60%);border-top:1px solid rgba(255,255,255,0.07);">`,
     `<p class="ap-footer-text" style="margin:0 0 6px 0;color:#7c746d;-webkit-text-fill-color:#bfb5ac;font-size:12px;line-height:1.6;font-family:${fontStack};">You're getting this because a case was assigned to your Lawyer Portal account. If that doesn't look right, contact your administrator.</p>`,
     `<p class="ap-footer-meta" style="margin:0;color:#5f5853;-webkit-text-fill-color:#928a83;font-size:12px;line-height:1.6;font-family:${fontStack};">&copy; ${year} Accident Payments &middot; Lawyer Portal</p>`,
+    '</td>',
+    '</tr>',
+    '</table>',
+    '</td>',
+    '</tr>',
+    '</table>',
+    '</body>',
+    '</html>'
+  ].join('')
+
+  return { subject, text, html }
+}
+
+const isBlankValue = (value) => {
+  if (value === null || value === undefined) return true
+  if (typeof value === 'string') return value.trim() === ''
+  if (Array.isArray(value)) return value.length === 0
+  if (typeof value === 'object') return Object.keys(value).length === 0
+  return false
+}
+
+const humanizeKey = (key) =>
+  String(key ?? '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, char => char.toUpperCase())
+
+const formatDateLikeValue = (value) => {
+  if (typeof value !== 'string') return null
+  if (!/^\d{4}-\d{2}-\d{2}/.test(value)) return null
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  const hasTime = /T|\s\d{2}:\d{2}/.test(value)
+  return new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    ...(hasTime
+      ? {
+          hour: '2-digit',
+          minute: '2-digit'
+        }
+      : {})
+  }).format(date)
+}
+
+const maskIdentifier = (value) => {
+  const raw = String(value ?? '').trim()
+  if (!raw) return ''
+
+  const visible = raw.replace(/\D/g, '').slice(-4) || raw.slice(-4)
+  return visible ? `***-**-${visible}` : '***'
+}
+
+const formatLeadValue = (key, value) => {
+  if (key === 'social_security' || key === 'driver_license') {
+    return maskIdentifier(value)
+  }
+
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  if (typeof value === 'number') return String(value)
+  if (Array.isArray(value)) return value.join(', ')
+
+  const dateValue = formatDateLikeValue(value)
+  if (dateValue) return dateValue
+
+  if (typeof value === 'object' && value !== null) return JSON.stringify(value)
+  return String(value ?? '')
+}
+
+const leadFieldGroups = [
+  {
+    title: 'Client Details',
+    fields: [
+      'customer_full_name',
+      'phone_number',
+      'alternate_phone',
+      'can_receive_texts',
+      'email',
+      'date_of_birth',
+      'age',
+      'birth_state',
+      'social_security',
+      'driver_license'
+    ]
+  },
+  {
+    title: 'Address',
+    fields: ['street_address', 'city', 'state', 'zip_code']
+  },
+  {
+    title: 'Accident Details',
+    fields: [
+      'accident_date',
+      'accident_location',
+      'accident_scenario',
+      'was_client_driver',
+      'accident_last_12_months',
+      'is_lead_at_fault',
+      'other_party_admit_fault',
+      'police_attended',
+      'passengers_count'
+    ]
+  },
+  {
+    title: 'Medical And Injury Details',
+    fields: [
+      'is_injured',
+      'injuries',
+      'medical_attention',
+      'received_medical_treatment',
+      'health_conditions',
+      'medical_treatment_proof'
+    ]
+  },
+  {
+    title: 'Representation And Insurance',
+    fields: [
+      'prior_attorney_involved',
+      'prior_attorney_details',
+      'currently_represented',
+      'signed_contract_with_attorney',
+      'insured',
+      'insurance_company',
+      'vehicle_registration',
+      'third_party_vehicle_registration',
+      'insurance_documents',
+      'police_report'
+    ]
+  },
+  {
+    title: 'Alternate Contact And Notes',
+    fields: ['contact_name', 'contact_number', 'contact_address', 'additional_notes']
+  },
+  {
+    title: 'Lead Source And Workflow',
+    fields: [
+      'submission_id',
+      'submission_date',
+      'lead_vendor',
+      'buffer_agent',
+      'agent',
+      'status',
+      'tag',
+      'product_tier',
+      'product_tier_price',
+      'fulfillment_stage',
+      'source_url',
+      'trustedform_cert_url',
+      'ip_address'
+    ]
+  },
+  {
+    title: 'Assignment And Admin',
+    fields: [
+      'id',
+      'assigned_attorney_id',
+      'assigned_broker_attorney_id',
+      'assigned_agent_id',
+      'assigned_agent_by',
+      'assigned_agent_at',
+      'broker_rejection_note',
+      'broker_rejection_note_updated_at',
+      'broker_dropped_note',
+      'broker_dropped_note_updated_at',
+      'broker_invoice_id',
+      'linked_lead_id',
+      'linked_relationship',
+      'created_at',
+      'updated_at',
+      'bulk_enriched_at'
+    ]
+  }
+]
+
+const buildLeadDetailSections = (lead) => {
+  const usedKeys = new Set()
+
+  const sections = leadFieldGroups
+    .map((group) => {
+      const rows = group.fields
+        .filter((key) => {
+          usedKeys.add(key)
+          return !isBlankValue(lead?.[key])
+        })
+        .map((key) => ({
+          label: humanizeKey(key),
+          value: formatLeadValue(key, lead[key])
+        }))
+
+      return rows.length ? { title: group.title, rows } : null
+    })
+    .filter(Boolean)
+
+  const remainingRows = Object.entries(lead ?? {})
+    .filter(([key, value]) => !usedKeys.has(key) && !isBlankValue(value))
+    .map(([key, value]) => ({
+      label: humanizeKey(key),
+      value: formatLeadValue(key, value)
+    }))
+
+  if (remainingRows.length) {
+    sections.push({
+      title: 'Other Lead Details',
+      rows: remainingRows
+    })
+  }
+
+  return sections
+}
+
+const renderDetailRows = (rows, fontStack) =>
+  rows
+    .map((row) => (
+      '<tr>'
+      + `<td style="padding:9px 12px;border-top:1px solid rgba(255,255,255,0.07);color:#9f958c;-webkit-text-fill-color:#9f958c;font-size:12px;line-height:1.45;font-family:${fontStack};vertical-align:top;width:38%;">${escapeHtml(row.label)}</td>`
+      + `<td style="padding:9px 12px;border-top:1px solid rgba(255,255,255,0.07);color:#f4eee8;-webkit-text-fill-color:#f4eee8;font-size:13px;line-height:1.45;font-family:${fontStack};vertical-align:top;word-break:break-word;">${escapeHtml(row.value)}</td>`
+      + '</tr>'
+    ))
+    .join('')
+
+const renderDetailSections = (sections, fontStack) =>
+  sections
+    .map((section) => (
+      '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#121213" style="margin:0 0 14px 0;background:#121213;border:1px solid rgba(255,255,255,0.10);border-radius:14px;overflow:hidden;">'
+      + '<tr>'
+      + `<td colspan="2" style="padding:13px 12px;color:#f7c480;-webkit-text-fill-color:#f7c480;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;font-family:${fontStack};">${escapeHtml(section.title)}</td>`
+      + '</tr>'
+      + renderDetailRows(section.rows, fontStack)
+      + '</table>'
+    ))
+    .join('')
+
+const buildTextDetailSections = (sections) =>
+  sections
+    .flatMap((section) => [
+      section.title,
+      ...section.rows.map(row => `${row.label}: ${row.value}`),
+      ''
+    ])
+    .join('\n')
+    .trim()
+
+export const buildBeliefBrokerRetainerEmailContent = (context, options) => {
+  const appBaseUrl = normalizeBaseUrl(options?.appBaseUrl)
+  const portalBaseUrl = normalizeBaseUrl(options?.brokerAppBaseUrl || options?.appBaseUrl)
+  const delivery = context?.delivery ?? {}
+  const lead = context?.lead ?? {}
+  const broker = context?.broker ?? {}
+  const attorney = context?.attorney ?? {}
+  const document = context?.document ?? {}
+  const portalUrl = buildPortalUrl(portalBaseUrl, delivery.redirect_url || `/retainers/${lead.id}`)
+  const logoUrl = options?.logoUrl?.trim() || getPublicAssetUrl(appBaseUrl, '/assets/logo.svg')
+  const bgUrl = options?.backgroundUrl?.trim() || getPublicAssetUrl(appBaseUrl, '/assets/email.jpg')
+  const caseName = String(lead.customer_full_name || delivery.lead_name || 'Unknown Client').trim()
+  const attorneyName = String(attorney.attorney_name || 'Assigned broker attorney').trim()
+  const brokerName = String(broker.full_name || broker.company_name || 'Belief Marketing').trim()
+  const assignedDate = formatAssignedDate(delivery.delivery_created_at || delivery.created_at || lead.updated_at || lead.created_at)
+  const sections = buildLeadDetailSections(lead)
+  const sectionHtml = renderDetailSections(sections, "'Montserrat','Helvetica Neue',Helvetica,Arial,sans-serif")
+  const detailText = buildTextDetailSections(sections)
+  const year = new Date().getFullYear()
+  const fontStack = "'Montserrat','Helvetica Neue',Helvetica,Arial,sans-serif"
+
+  const safeCaseName = escapeHtml(caseName)
+  const safeAttorneyName = escapeHtml(attorneyName)
+  const safeBrokerName = escapeHtml(brokerName)
+  const safePortalUrl = escapeHtml(portalUrl)
+  const safeLogoUrl = escapeHtml(logoUrl)
+  const safeBgUrl = escapeHtml(bgUrl)
+  const safeDocumentName = escapeHtml(document.file_name || 'Signed retainer document')
+  const safeAssignedDate = assignedDate ? escapeHtml(assignedDate) : null
+  const subject = `New signed retainer assigned: ${caseName}`
+
+  const text = [
+    `A new signed retainer was assigned to ${attorneyName}.`,
+    '',
+    `Broker: ${brokerName}`,
+    `Client: ${caseName}`,
+    assignedDate ? `Assigned: ${assignedDate}` : null,
+    `Attached document: ${document.file_name || 'Signed retainer document'}`,
+    '',
+    'Lead details',
+    detailText,
+    '',
+    `Open the case: ${portalUrl}`,
+    '',
+    'SSN and driver license values are masked in this email body. The signed retainer is attached.',
+    '',
+    `Copyright ${year} Accident Payments`
+  ]
+    .filter((line) => line !== null)
+    .join('\n')
+
+  const html = [
+    '<!doctype html>',
+    '<html lang="en">',
+    '<head>',
+    '<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
+    '<meta name="color-scheme" content="dark">',
+    '<meta name="supported-color-schemes" content="dark">',
+    '<title>New signed retainer assigned</title>',
+    '<style>',
+    "@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap');",
+    '@media (max-width:620px){body,.ap-bg{background:#050505 !important;background-color:#050505 !important;background-image:linear-gradient(#050505,#050505) !important;padding:18px 10px !important;}.ap-card{border-radius:18px !important;}.ap-pad{padding-left:22px !important;padding-right:22px !important;}.ap-logo-cell,.ap-pill-cell{display:block !important;width:100% !important;text-align:left !important;}.ap-pill-cell{padding-top:14px !important;}.ap-title{font-size:25px !important;line-height:1.2 !important;}.ap-btn-cell{display:block !important;width:100% !important;}.ap-btn{display:block !important;width:100% !important;box-sizing:border-box !important;text-align:center !important;}}',
+    '</style>',
+    '</head>',
+    `<body style="margin:0;padding:0;background:#000000;font-family:${fontStack};color:#ffffff;-webkit-text-size-adjust:100%;text-size-adjust:100%;color-scheme:dark;supported-color-schemes:dark;">`,
+    '<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">A new signed retainer was assigned to one of your attorneys.</div>',
+    `<table class="ap-bg" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#000000" background="${safeBgUrl}" style="background-color:#000000;background-image:linear-gradient(180deg,rgba(0,0,0,0.50),rgba(0,0,0,0.78)),url('${safeBgUrl}');background-position:center;background-size:cover;background-repeat:no-repeat;margin:0;padding:36px 12px;">`,
+    '<tr>',
+    '<td align="center">',
+    '<table class="ap-card" role="presentation" width="680" cellspacing="0" cellpadding="0" border="0" bgcolor="#0b0b0d" style="width:100%;max-width:680px;background-color:rgba(11,11,13,0.88);border:1px solid rgba(255,255,255,0.08);border-radius:24px;overflow:hidden;">',
+    '<tr>',
+    `<td class="ap-pad" bgcolor="#080808" style="padding:30px 40px;background-color:#080808;background-image:radial-gradient(135% 150% at 80% 138%,rgba(247,196,128,0.30) 0%,rgba(174,64,16,0.15) 32%,rgba(8,8,9,0) 62%);border-bottom:1px solid rgba(255,255,255,0.07);">`,
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">',
+    '<tr>',
+    `<td class="ap-logo-cell" style="vertical-align:middle;"><img src="${safeLogoUrl}" width="150" alt="Accident Payments" style="display:block;max-width:150px;height:auto;border:0;outline:none;text-decoration:none;"></td>`,
+    `<td class="ap-pill-cell" align="right" style="vertical-align:middle;white-space:nowrap;"><span style="display:inline-block;border:1px solid rgba(255,255,255,0.14);border-radius:999px;padding:6px 13px;font-size:12px;font-weight:600;font-family:${fontStack};"><span style="color:#f7c480;-webkit-text-fill-color:#f7c480;">&bull;</span>&nbsp;<span style="color:#e4dbd2;-webkit-text-fill-color:#e4dbd2;">Broker Notice</span></span></td>`,
+    '</tr>',
+    '</table>',
+    '</td>',
+    '</tr>',
+    '<tr>',
+    `<td class="ap-pad" style="padding:38px 40px 0 40px;"><p style="margin:0;color:#f7f1eb;-webkit-text-fill-color:#f7f1eb;font-size:18px;line-height:1.5;font-weight:600;font-family:${fontStack};">A new signed retainer was assigned to your attorney.</p></td>`,
+    '</tr>',
+    '<tr>',
+    '<td class="ap-pad" style="padding:20px 40px 0 40px;">',
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#121213" style="background:#121213;border:1px solid rgba(255,255,255,0.10);border-radius:16px;overflow:hidden;">',
+    '<tr>',
+    '<td width="4" style="width:4px;background:#f7c480;font-size:0;line-height:0;">&nbsp;</td>',
+    '<td style="padding:22px 24px;">',
+    `<p style="margin:0 0 10px 0;color:#f7c480;-webkit-text-fill-color:#f7c480;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;font-family:${fontStack};">Client</p>`,
+    `<p class="ap-title" style="margin:0;color:#ffffff;-webkit-text-fill-color:#ffffff;font-size:30px;line-height:1.18;font-weight:700;letter-spacing:0;font-family:${fontStack};">${safeCaseName}</p>`,
+    `<div style="height:1px;line-height:1px;font-size:1px;background:rgba(255,255,255,0.08);margin:16px 0 14px 0;">&nbsp;</div>`,
+    `<p style="margin:0;color:#cfc4ba;-webkit-text-fill-color:#cfc4ba;font-size:13px;line-height:1.6;font-family:${fontStack};">Attorney: ${safeAttorneyName}</p>`,
+    `<p style="margin:4px 0 0 0;color:#cfc4ba;-webkit-text-fill-color:#cfc4ba;font-size:13px;line-height:1.6;font-family:${fontStack};">Broker: ${safeBrokerName}</p>`,
+    safeAssignedDate ? `<p style="margin:4px 0 0 0;color:#cfc4ba;-webkit-text-fill-color:#cfc4ba;font-size:13px;line-height:1.6;font-family:${fontStack};">Assigned: ${safeAssignedDate}</p>` : '',
+    `<p style="margin:4px 0 0 0;color:#cfc4ba;-webkit-text-fill-color:#cfc4ba;font-size:13px;line-height:1.6;font-family:${fontStack};">Attachment: ${safeDocumentName}</p>`,
+    '</td>',
+    '</tr>',
+    '</table>',
+    '</td>',
+    '</tr>',
+    '<tr>',
+    `<td class="ap-pad" style="padding:22px 40px 0 40px;"><p style="margin:0;color:#d8cec4;-webkit-text-fill-color:#d8cec4;font-size:15px;line-height:1.65;font-family:${fontStack};">The signed retainer is attached. SSN and driver license values are masked in the email body.</p></td>`,
+    '</tr>',
+    '<tr>',
+    `<td class="ap-pad" style="padding:22px 40px 0 40px;">${sectionHtml}</td>`,
+    '</tr>',
+    '<tr>',
+    '<td class="ap-pad" style="padding:18px 40px 36px 40px;">',
+    '<table role="presentation" cellspacing="0" cellpadding="0" border="0">',
+    '<tr>',
+    `<td class="ap-btn-cell" style="border-radius:14px;background:#ae4010;box-shadow:0 12px 28px rgba(174,64,16,0.40);"><a class="ap-btn" href="${safePortalUrl}" style="display:inline-block;padding:15px 26px;color:#ffffff;-webkit-text-fill-color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;line-height:1;font-family:${fontStack};border-radius:14px;">Open case</a></td>`,
+    '</tr>',
+    '</table>',
+    '</td>',
+    '</tr>',
+    '<tr>',
+    `<td class="ap-pad" bgcolor="#080808" style="padding:22px 40px 26px 40px;background-color:#080808;background-image:radial-gradient(140% 170% at 20% 150%,rgba(247,196,128,0.22) 0%,rgba(174,64,16,0.12) 34%,rgba(8,8,9,0) 60%);border-top:1px solid rgba(255,255,255,0.07);">`,
+    `<p style="margin:0 0 6px 0;color:#bfb5ac;-webkit-text-fill-color:#bfb5ac;font-size:12px;line-height:1.6;font-family:${fontStack};">You're getting this because a case was sent to one of Belief Marketing's broker attorneys.</p>`,
+    `<p style="margin:0;color:#928a83;-webkit-text-fill-color:#928a83;font-size:12px;line-height:1.6;font-family:${fontStack};">&copy; ${year} Accident Payments &middot; Broker Portal</p>`,
     '</td>',
     '</tr>',
     '</table>',
