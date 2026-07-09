@@ -377,8 +377,6 @@ export const buildBeliefBrokerRetainerEmailContent = (context, options) => {
     'Lead details',
     detailText,
     '',
-    'SSN and driver license values are masked in this email body. The signed retainer is attached.',
-    '',
     `Copyright ${year} Accident Payments`
   ]
     .filter((line) => line !== null)
@@ -434,9 +432,6 @@ export const buildBeliefBrokerRetainerEmailContent = (context, options) => {
     '</tr>',
     '</table>',
     '</td>',
-    '</tr>',
-    '<tr>',
-    `<td class="ap-pad" style="padding:22px 40px 0 40px;"><p style="margin:0;color:#d8cec4;-webkit-text-fill-color:#d8cec4;font-size:15px;line-height:1.65;font-family:${fontStack};">The signed retainer is attached. SSN and driver license values are masked in the email body.</p></td>`,
     '</tr>',
     '<tr>',
     `<td class="ap-pad" style="padding:22px 40px 0 40px;">${sectionHtml}</td>`,
