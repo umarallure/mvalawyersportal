@@ -289,58 +289,14 @@ const leadFieldGroups = [
   {
     title: 'Alternate Contact And Notes',
     fields: ['contact_name', 'contact_number', 'contact_address', 'additional_notes']
-  },
-  {
-    title: 'Lead Source And Workflow',
-    fields: [
-      'submission_id',
-      'submission_date',
-      'lead_vendor',
-      'buffer_agent',
-      'agent',
-      'status',
-      'tag',
-      'product_tier',
-      'product_tier_price',
-      'fulfillment_stage',
-      'source_url',
-      'trustedform_cert_url',
-      'ip_address'
-    ]
-  },
-  {
-    title: 'Assignment And Admin',
-    fields: [
-      'id',
-      'assigned_attorney_id',
-      'assigned_broker_attorney_id',
-      'assigned_agent_id',
-      'assigned_agent_by',
-      'assigned_agent_at',
-      'broker_rejection_note',
-      'broker_rejection_note_updated_at',
-      'broker_dropped_note',
-      'broker_dropped_note_updated_at',
-      'broker_invoice_id',
-      'linked_lead_id',
-      'linked_relationship',
-      'created_at',
-      'updated_at',
-      'bulk_enriched_at'
-    ]
   }
 ]
 
-const buildLeadDetailSections = (lead) => {
-  const usedKeys = new Set()
-
-  const sections = leadFieldGroups
+const buildLeadDetailSections = (lead) =>
+  leadFieldGroups
     .map((group) => {
       const rows = group.fields
-        .filter((key) => {
-          usedKeys.add(key)
-          return !isBlankValue(lead?.[key])
-        })
+        .filter((key) => !isBlankValue(lead?.[key]))
         .map((key) => ({
           label: humanizeKey(key),
           value: formatLeadValue(key, lead[key])
@@ -349,23 +305,6 @@ const buildLeadDetailSections = (lead) => {
       return rows.length ? { title: group.title, rows } : null
     })
     .filter(Boolean)
-
-  const remainingRows = Object.entries(lead ?? {})
-    .filter(([key, value]) => !usedKeys.has(key) && !isBlankValue(value))
-    .map(([key, value]) => ({
-      label: humanizeKey(key),
-      value: formatLeadValue(key, value)
-    }))
-
-  if (remainingRows.length) {
-    sections.push({
-      title: 'Other Lead Details',
-      rows: remainingRows
-    })
-  }
-
-  return sections
-}
 
 const renderDetailRows = (rows, fontStack) =>
   rows
@@ -401,13 +340,11 @@ const buildTextDetailSections = (sections) =>
 
 export const buildBeliefBrokerRetainerEmailContent = (context, options) => {
   const appBaseUrl = normalizeBaseUrl(options?.appBaseUrl)
-  const portalBaseUrl = normalizeBaseUrl(options?.brokerAppBaseUrl || options?.appBaseUrl)
   const delivery = context?.delivery ?? {}
   const lead = context?.lead ?? {}
   const broker = context?.broker ?? {}
   const attorney = context?.attorney ?? {}
   const document = context?.document ?? {}
-  const portalUrl = buildPortalUrl(portalBaseUrl, delivery.redirect_url || `/retainers/${lead.id}`)
   const logoUrl = options?.logoUrl?.trim() || getPublicAssetUrl(appBaseUrl, '/assets/logo.svg')
   const bgUrl = options?.backgroundUrl?.trim() || getPublicAssetUrl(appBaseUrl, '/assets/email.jpg')
   const caseName = String(lead.customer_full_name || delivery.lead_name || 'Unknown Client').trim()
@@ -423,7 +360,6 @@ export const buildBeliefBrokerRetainerEmailContent = (context, options) => {
   const safeCaseName = escapeHtml(caseName)
   const safeAttorneyName = escapeHtml(attorneyName)
   const safeBrokerName = escapeHtml(brokerName)
-  const safePortalUrl = escapeHtml(portalUrl)
   const safeLogoUrl = escapeHtml(logoUrl)
   const safeBgUrl = escapeHtml(bgUrl)
   const safeDocumentName = escapeHtml(document.file_name || 'Signed retainer document')
@@ -440,8 +376,6 @@ export const buildBeliefBrokerRetainerEmailContent = (context, options) => {
     '',
     'Lead details',
     detailText,
-    '',
-    `Open the case: ${portalUrl}`,
     '',
     'SSN and driver license values are masked in this email body. The signed retainer is attached.',
     '',
@@ -461,7 +395,7 @@ export const buildBeliefBrokerRetainerEmailContent = (context, options) => {
     '<title>New signed retainer assigned</title>',
     '<style>',
     "@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap');",
-    '@media (max-width:620px){body,.ap-bg{background:#050505 !important;background-color:#050505 !important;background-image:linear-gradient(#050505,#050505) !important;padding:18px 10px !important;}.ap-card{border-radius:18px !important;}.ap-pad{padding-left:22px !important;padding-right:22px !important;}.ap-logo-cell,.ap-pill-cell{display:block !important;width:100% !important;text-align:left !important;}.ap-pill-cell{padding-top:14px !important;}.ap-title{font-size:25px !important;line-height:1.2 !important;}.ap-btn-cell{display:block !important;width:100% !important;}.ap-btn{display:block !important;width:100% !important;box-sizing:border-box !important;text-align:center !important;}}',
+    '@media (max-width:620px){body,.ap-bg{background:#050505 !important;background-color:#050505 !important;background-image:linear-gradient(#050505,#050505) !important;padding:18px 10px !important;}.ap-card{border-radius:18px !important;}.ap-pad{padding-left:22px !important;padding-right:22px !important;}.ap-logo-cell,.ap-pill-cell{display:block !important;width:100% !important;text-align:left !important;}.ap-pill-cell{padding-top:14px !important;}.ap-title{font-size:25px !important;line-height:1.2 !important;}}',
     '</style>',
     '</head>',
     `<body style="margin:0;padding:0;background:#000000;font-family:${fontStack};color:#ffffff;-webkit-text-size-adjust:100%;text-size-adjust:100%;color-scheme:dark;supported-color-schemes:dark;">`,
@@ -506,15 +440,6 @@ export const buildBeliefBrokerRetainerEmailContent = (context, options) => {
     '</tr>',
     '<tr>',
     `<td class="ap-pad" style="padding:22px 40px 0 40px;">${sectionHtml}</td>`,
-    '</tr>',
-    '<tr>',
-    '<td class="ap-pad" style="padding:18px 40px 36px 40px;">',
-    '<table role="presentation" cellspacing="0" cellpadding="0" border="0">',
-    '<tr>',
-    `<td class="ap-btn-cell" style="border-radius:14px;background:#ae4010;box-shadow:0 12px 28px rgba(174,64,16,0.40);"><a class="ap-btn" href="${safePortalUrl}" style="display:inline-block;padding:15px 26px;color:#ffffff;-webkit-text-fill-color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;line-height:1;font-family:${fontStack};border-radius:14px;">Open case</a></td>`,
-    '</tr>',
-    '</table>',
-    '</td>',
     '</tr>',
     '<tr>',
     `<td class="ap-pad" bgcolor="#080808" style="padding:22px 40px 26px 40px;background-color:#080808;background-image:radial-gradient(140% 170% at 20% 150%,rgba(247,196,128,0.22) 0%,rgba(174,64,16,0.12) 34%,rgba(8,8,9,0) 60%);border-top:1px solid rgba(255,255,255,0.07);">`,
