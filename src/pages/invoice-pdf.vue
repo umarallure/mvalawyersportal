@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { useAuth } from '../composables/useAuth'
-import { getInvoice, getLawyerProfile, markInvoiceAsPaid, requestChargeback, type InvoiceItem, type InvoiceRow } from '../lib/invoices'
+import { getInvoice, getLawyerProfile, type InvoiceItem, type InvoiceRow } from '../lib/invoices'
 import { supabase } from '../lib/supabase'
 
 const route = useRoute()
@@ -15,6 +15,9 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 
 const invoice = ref<InvoiceRow | null>(null)
+const invoicePaper = ref<HTMLElement | null>(null)
+const downloadingPdf = ref(false)
+const pdfDownloadError = ref<string | null>(null)
 
 const lawyerInfo = ref<{
   full_name: string | null
@@ -39,7 +42,7 @@ const vendorInfo = ref<{
 const isPublisherInvoice = computed(() => invoice.value?.invoice_type === 'publisher')
 
 const billToName = computed(() => {
-  if (isPublisherInvoice.value) return vendorInfo.value?.center_name ?? vendorInfo.value?.lead_vendor ?? '—'
+  if (isPublisherInvoice.value) return vendorInfo.value?.center_name ?? vendorInfo.value?.lead_vendor ?? '-'
   return lawyerName.value
 })
 
@@ -49,7 +52,7 @@ const billToSubName = computed(() => {
 })
 
 const billToEmail = computed(() => {
-  if (isPublisherInvoice.value) return vendorInfo.value?.contact_email ?? '—'
+  if (isPublisherInvoice.value) return vendorInfo.value?.contact_email ?? '-'
   return lawyerEmail.value
 })
 
@@ -62,7 +65,7 @@ const formatMoney = (n: number) => {
 }
 
 const formatDate = (value: string | null) => {
-  if (!value) return '—'
+  if (!value) return '-'
   try {
     const d = new Date(value)
     return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
@@ -72,7 +75,7 @@ const formatDate = (value: string | null) => {
 }
 
 const formatDateShort = (value: string | null) => {
-  if (!value) return '—'
+  if (!value) return '-'
   try {
     const d = new Date(value)
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -101,48 +104,108 @@ const getStatusClass = (status: string) => {
   return 'status-chargeback'
 }
 
+const getStatusBadgeWidth = (status: string) => {
+  const label = getStatusLabel(status)
+  if (label === 'SUCCESSFUL PAYMENT') return 162
+  if (label === 'PENDING PAYMENT') return 142
+  if (label === 'LATE PAYMENT') return 116
+  if (label === 'IN PREVIEW') return 102
+  return 86
+}
+
+const getStatusBadgeSvgWidth = (status: string) => getStatusBadgeWidth(status) + 8
+const statusBadgeSvgHeight = 38
+const pdfPaperWidthPx = 816
+const pdfPaperHeightPx = 1056
+
 const lawyerName = computed(() =>
-  lawyerInfo.value?.full_name || lawyerFallback.value?.display_name || lawyerFallback.value?.email || '—'
+  lawyerInfo.value?.full_name || lawyerFallback.value?.display_name || lawyerFallback.value?.email || '-'
 )
 
 const lawyerEmail = computed(() =>
-  lawyerInfo.value?.primary_email || lawyerFallback.value?.email || '—'
+  lawyerInfo.value?.primary_email || lawyerFallback.value?.email || '-'
 )
 
-const markingPaid = ref(false)
-const markPaidError = ref<string | null>(null)
-const requestingChargeback = ref(false)
-const chargebackError = ref<string | null>(null)
+const pdfFileName = computed(() => {
+  const fallback = 'invoice'
+  const raw = invoice.value?.invoice_number || fallback
+  const safe = raw.trim().replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '') || fallback
+  return `${safe}.pdf`
+})
 
-const handlePrint = () => {
-  window.print()
-}
+const waitForInvoiceAssets = async (element: HTMLElement) => {
+  const images = Array.from(element.querySelectorAll('img'))
+  await Promise.all(images.map((img) => {
+    if (img.complete) return Promise.resolve()
+    return new Promise<void>((resolve) => {
+      img.addEventListener('load', () => resolve(), { once: true })
+      img.addEventListener('error', () => resolve(), { once: true })
+    })
+  }))
 
-const handleMarkAsPaid = async () => {
-  if (!invoice.value || invoice.value.status !== 'in_review') return
-  markingPaid.value = true
-  markPaidError.value = null
-  try {
-    const updated = await markInvoiceAsPaid(invoice.value.id)
-    invoice.value = updated
-  } catch (e) {
-    markPaidError.value = e instanceof Error ? e.message : 'Failed to mark as successful payment'
-  } finally {
-    markingPaid.value = false
+  if (document.fonts) {
+    await document.fonts.ready
   }
 }
 
-const handleRequestChargeback = async () => {
-  if (!invoice.value || invoice.value.status !== 'paid') return
-  requestingChargeback.value = true
-  chargebackError.value = null
+const handleDownloadPdf = async () => {
+  const paper = invoicePaper.value
+  if (!paper || downloadingPdf.value) return
+
+  downloadingPdf.value = true
+  pdfDownloadError.value = null
+
   try {
-    const updated = await requestChargeback(invoice.value.id)
-    invoice.value = updated
+    await waitForInvoiceAssets(paper)
+
+    const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+      import('html2canvas'),
+      import('jspdf')
+    ])
+
+    const canvas = await html2canvas(paper, {
+      backgroundColor: '#ffffff',
+      height: pdfPaperHeightPx,
+      scale: Math.min(3, Math.max(2, window.devicePixelRatio || 1)),
+      scrollX: 0,
+      scrollY: 0,
+      useCORS: true,
+      width: pdfPaperWidthPx,
+      logging: false,
+      windowWidth: pdfPaperWidthPx,
+      windowHeight: pdfPaperHeightPx,
+      onclone: (clonedDocument) => {
+        const clonedPaper = clonedDocument.querySelector('.invoice-paper') as HTMLElement | null
+        if (!clonedPaper) return
+        clonedPaper.style.border = '0'
+        clonedPaper.style.borderRadius = '0'
+        clonedPaper.style.boxShadow = 'none'
+        clonedPaper.style.boxSizing = 'border-box'
+        clonedPaper.style.height = `${pdfPaperHeightPx}px`
+        clonedPaper.style.maxHeight = `${pdfPaperHeightPx}px`
+        clonedPaper.style.maxWidth = `${pdfPaperWidthPx}px`
+        clonedPaper.style.minHeight = `${pdfPaperHeightPx}px`
+        clonedPaper.style.overflow = 'hidden'
+        clonedPaper.style.width = `${pdfPaperWidthPx}px`
+      }
+    })
+
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'pt',
+      format: 'letter'
+    })
+
+    const pageWidth = pdf.internal.pageSize.getWidth()
+    const pageHeight = pdf.internal.pageSize.getHeight()
+    const imageData = canvas.toDataURL('image/png')
+
+    pdf.addImage(imageData, 'PNG', 0, 0, pageWidth, pageHeight)
+    pdf.save(pdfFileName.value)
   } catch (e) {
-    chargebackError.value = e instanceof Error ? e.message : 'Failed to mark late payment'
+    pdfDownloadError.value = e instanceof Error ? e.message : 'Failed to download PDF'
   } finally {
-    requestingChargeback.value = false
+    downloadingPdf.value = false
   }
 }
 
@@ -218,676 +281,788 @@ onMounted(async () => {
 
     <!-- Invoice -->
     <div v-else-if="invoice" class="invoice-container">
-      <!-- Action Buttons (hidden on print) -->
-      <div class="print-actions no-print">
+      <!-- PDF action (hidden on print) -->
+      <div class="pdf-action-bar no-print">
+        <div class="pdf-action-copy">
+          <span class="pdf-action-eyebrow">PDF ready</span>
+          <strong>Download the PDF version</strong>
+        </div>
         <button
-          v-if="invoice.status === 'in_review'"
-          class="mark-paid-btn"
-          :disabled="markingPaid"
-          @click="handleMarkAsPaid"
+          class="pdf-download-btn"
+          type="button"
+          :disabled="downloadingPdf"
+          @click="handleDownloadPdf"
         >
-          {{ markingPaid ? 'Marking...' : 'Mark as Successful Payment' }}
-        </button>
-        <button
-          v-if="invoice.status === 'paid'"
-          class="chargeback-btn"
-          :disabled="requestingChargeback"
-          @click="handleRequestChargeback"
-        >
-          {{ requestingChargeback ? 'Marking...' : 'Mark as Late Payment' }}
-        </button>
-        <button class="print-btn" @click="handlePrint">
-          Print / Save as PDF
+          {{ downloadingPdf ? 'Preparing PDF...' : 'Download PDF' }}
         </button>
       </div>
-      <div v-if="markPaidError" class="mark-paid-error no-print">
-        {{ markPaidError }}
-      </div>
-      <div v-if="chargebackError" class="mark-paid-error no-print">
-        {{ chargebackError }}
+      <div v-if="pdfDownloadError" class="pdf-download-error no-print">
+        {{ pdfDownloadError }}
       </div>
 
-      <div class="invoice-paper">
-        <!-- Top accent bar -->
-        <div class="accent-bar" />
+      <div ref="invoicePaper" class="invoice-paper">
+        <div class="paper-content">
 
-        <!-- Header -->
-        <div class="invoice-header">
-          <div class="header-left">
-            <img src="/assets/logo-black.png" alt="Accident Payments" class="company-logo">
-          </div>
-          <div class="header-right">
-            <div class="invoice-title">INVOICE</div>
-            <div class="invoice-number">{{ invoice.invoice_number }}</div>
-            <div :class="['status-badge', getStatusClass(invoice.status)]">
-              {{ getStatusLabel(invoice.status) }}
+          <!-- Header -->
+          <header class="invoice-header">
+            <div class="brand-mark">
+              <img src="/assets/logo-black.png" alt="Accident Payments" class="company-logo">
             </div>
-          </div>
+            <div class="invoice-id-block">
+              <div class="invoice-number-label">No.</div>
+              <div class="invoice-number">{{ invoice.invoice_number }}</div>
+              <svg
+                :class="['status-badge', getStatusClass(invoice.status)]"
+                :width="getStatusBadgeSvgWidth(invoice.status)"
+                :height="statusBadgeSvgHeight"
+                :viewBox="`0 0 ${getStatusBadgeSvgWidth(invoice.status)} ${statusBadgeSvgHeight}`"
+                overflow="visible"
+                role="img"
+                :aria-label="getStatusLabel(invoice.status)"
+              >
+                <rect
+                  class="status-badge-bg"
+                  x="4.75"
+                  y="7.75"
+                  :width="getStatusBadgeWidth(invoice.status) - 1.5"
+                  height="22.5"
+                  rx="11.25"
+                />
+                <text
+                  class="status-badge-text"
+                  :x="getStatusBadgeSvgWidth(invoice.status) / 2"
+                  :y="statusBadgeSvgHeight / 2"
+                  dominant-baseline="middle"
+                  text-anchor="middle"
+                >
+                  {{ getStatusLabel(invoice.status) }}
+                </text>
+              </svg>
+            </div>
+          </header>
+
+          <section class="title-section">
+            <div class="invoice-kicker">{{ isPublisherInvoice ? 'Publisher Statement' : 'Legal Services Statement' }}</div>
+            <h1>INVOICE</h1>
+            <div class="invoice-date-line">
+              <span>Date:</span>
+              <strong>{{ formatDate(invoice.created_at) }}</strong>
+            </div>
+          </section>
+
+          <!-- Billing Info -->
+          <section class="billing-section" aria-label="Billing details">
+            <div class="billing-card billing-card-to">
+              <div class="billing-label">Billed to:</div>
+              <div class="billing-name">{{ billToName }}</div>
+              <div v-if="billToSubName" class="billing-detail">{{ billToSubName }}</div>
+              <div class="billing-detail">{{ billToEmail }}</div>
+              <div v-if="!isPublisherInvoice && lawyerInfo?.office_address" class="billing-detail">
+                {{ lawyerInfo.office_address }}
+              </div>
+              <div v-if="!isPublisherInvoice && lawyerInfo?.direct_phone" class="billing-detail">
+                {{ lawyerInfo.direct_phone }}
+              </div>
+            </div>
+
+            <div class="billing-card">
+              <div class="billing-label">From:</div>
+              <div class="billing-name">Accident Payments</div>
+              <div class="billing-detail">Motor Vehicle Accident Division</div>
+              <div class="billing-detail">admin@accidentpayments.com</div>
+            </div>
+          </section>
+
+          <section class="invoice-meta-grid" aria-label="Invoice dates">
+            <div class="meta-item">
+              <span>Due date</span>
+              <strong>{{ formatDate(invoice.due_date) }}</strong>
+            </div>
+            <div class="meta-item">
+              <span>Service period</span>
+              <strong>{{ formatDateShort(invoice.date_range_start) }} - {{ formatDateShort(invoice.date_range_end) }}</strong>
+            </div>
+            <div class="meta-item">
+              <span>Invoice type</span>
+              <strong>{{ isPublisherInvoice ? 'Publisher' : 'Lawyer' }}</strong>
+            </div>
+          </section>
+
+          <!-- Line Items Table -->
+          <section class="items-section" aria-label="Invoice line items">
+            <table class="items-table">
+              <thead>
+                <tr>
+                  <th class="th-desc">Item</th>
+                  <th class="th-qty">Quantity</th>
+                  <th class="th-price">Price</th>
+                  <th class="th-amount">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(item, idx) in (invoice.items as InvoiceItem[])" :key="idx">
+                  <td class="td-desc">
+                    <span class="item-index">{{ String(idx + 1).padStart(2, '0') }}</span>
+                    <span>{{ item.description }}</span>
+                  </td>
+                  <td class="td-qty">{{ item.quantity }}</td>
+                  <td class="td-price">{{ formatMoney(item.unit_price) }}</td>
+                  <td class="td-amount">{{ formatMoney(item.amount) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <!-- Totals -->
+          <section class="summary-section" aria-label="Invoice summary">
+            <div class="totals-box">
+              <div class="total-row">
+                <span class="total-label">Subtotal</span>
+                <span class="total-value">{{ formatMoney(Number(invoice.subtotal)) }}</span>
+              </div>
+              <div v-if="Number(invoice.tax_rate) > 0" class="total-row">
+                <span class="total-label">Tax ({{ (Number(invoice.tax_rate) * 100).toFixed(1) }}%)</span>
+                <span class="total-value">{{ formatMoney(Number(invoice.tax_amount)) }}</span>
+              </div>
+              <div class="total-row total-grand">
+                <span class="total-label">Total</span>
+                <span class="total-value">{{ formatMoney(Number(invoice.total_amount)) }}</span>
+              </div>
+            </div>
+          </section>
         </div>
 
-        <!-- Divider -->
-        <div class="divider" />
-
-        <!-- Billing Info -->
-        <div class="billing-section">
-          <div class="billing-from">
-            <div class="billing-label">FROM</div>
-            <div class="billing-name">Accident Payments</div>
-            <div class="billing-detail">Motor Vehicle Accident Division</div>
-            <div class="billing-detail">admin@accidentpayments.com</div>
+        <footer class="invoice-footer" aria-label="Invoice footer">
+          <div class="footer-wave footer-wave-light" />
+          <div class="footer-wave footer-wave-dark" />
+          <div class="footer-content">
+            <div>Thank you for your business.</div>
+            <div>{{ invoice.invoice_number }}</div>
           </div>
-
-          <div class="billing-to">
-            <div class="billing-label">BILL TO</div>
-            <div class="billing-name">{{ billToName }}</div>
-            <div v-if="billToSubName" class="billing-detail">{{ billToSubName }}</div>
-            <div class="billing-detail">{{ billToEmail }}</div>
-          </div>
-
-          <div class="billing-dates">
-            <div class="date-row">
-              <span class="date-label">Invoice Date</span>
-              <span class="date-value">{{ formatDate(invoice.created_at) }}</span>
-            </div>
-            <div class="date-row">
-              <span class="date-label">Due Date</span>
-              <span class="date-value">{{ formatDate(invoice.due_date) }}</span>
-            </div>
-            <div class="date-row">
-              <span class="date-label">Period</span>
-              <span class="date-value">{{ formatDateShort(invoice.date_range_start) }} — {{ formatDateShort(invoice.date_range_end) }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Line Items Table -->
-        <div class="items-section">
-          <table class="items-table">
-            <thead>
-              <tr>
-                <th class="th-num">#</th>
-                <th class="th-desc">Description</th>
-                <th class="th-qty">Qty</th>
-                <th class="th-price">Unit Price</th>
-                <th class="th-amount">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(item, idx) in (invoice.items as InvoiceItem[])" :key="idx">
-                <td class="td-num">{{ idx + 1 }}</td>
-                <td class="td-desc">{{ item.description }}</td>
-                <td class="td-qty">{{ item.quantity }}</td>
-                <td class="td-price">{{ formatMoney(item.unit_price) }}</td>
-                <td class="td-amount">{{ formatMoney(item.amount) }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Totals -->
-        <div class="totals-section">
-          <div class="totals-box">
-            <div class="total-row">
-              <span class="total-label">Subtotal</span>
-              <span class="total-value">{{ formatMoney(Number(invoice.subtotal)) }}</span>
-            </div>
-            <div v-if="Number(invoice.tax_rate) > 0" class="total-row">
-              <span class="total-label">Tax ({{ (Number(invoice.tax_rate) * 100).toFixed(1) }}%)</span>
-              <span class="total-value">{{ formatMoney(Number(invoice.tax_amount)) }}</span>
-            </div>
-            <div class="total-row total-grand">
-              <span class="total-label">Total Due</span>
-              <span class="total-value">{{ formatMoney(Number(invoice.total_amount)) }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Notes -->
-        <div v-if="invoice.notes" class="notes-section">
-          <div class="notes-label">Notes</div>
-          <div class="notes-text">{{ invoice.notes }}</div>
-        </div>
-
-        <!-- Footer -->
-        <div class="invoice-footer">
-          <div class="footer-left">
-            <div class="footer-text">Thank you for your business.</div>
-            <div class="footer-sub">Payment is due by {{ formatDate(invoice.due_date) }}.</div>
-          </div>
-          <div class="footer-right" />
-        </div>
+        </footer>
       </div>
     </div>
   </div>
 </template>
 
 <style>
-/* Reset for PDF page — Accident Payments brand palette */
+/* Redesigned invoice presentation */
 .invoice-pdf-page {
-  min-height: 100vh;
-  background: #f5f0ec;
-  font-family: 'Montserrat', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  color: #141010;
-  -webkit-print-color-adjust: exact;
-  print-color-adjust: exact;
-}
-
-.loading-state,
-.error-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  gap: 16px;
-  color: #7c6a5a;
-}
-
-.spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid #e8ddd3;
-  border-top-color: #ae4010;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.error-state p {
-  color: #ae4010;
-  font-size: 14px;
+  background:
+    linear-gradient(135deg, rgba(174, 64, 16, 0.08), transparent 28%),
+    #ece8e2;
+  color: #171514;
+  font-family: 'Montserrat', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  letter-spacing: 0;
 }
 
 .invoice-container {
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: 40px 20px;
+  max-width: 940px;
+  padding: 34px 20px 48px;
 }
 
-.print-actions {
+.pdf-action-bar {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(23, 21, 20, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 14px 36px rgba(23, 21, 20, 0.08);
   display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-bottom: 20px;
+  gap: 16px;
+  justify-content: space-between;
+  margin: 0 auto 18px;
+  max-width: 816px;
+  padding: 12px 12px 12px 16px;
 }
 
-.mark-paid-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 24px;
-  background: #16a34a;
-  color: white;
-  border: none;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
-  font-family: inherit;
+.pdf-action-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
 }
 
-.mark-paid-btn:hover {
-  background: #15803d;
+.pdf-action-eyebrow {
+  color: #ae4010;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
-.mark-paid-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.mark-paid-error {
-  text-align: right;
-  color: #b91c1c;
+.pdf-action-copy strong {
+  color: #171514;
   font-size: 13px;
-  margin-bottom: 12px;
+  font-weight: 900;
 }
 
-.chargeback-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 24px;
-  background: #b91c1c;
-  color: white;
-  border: none;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
+.pdf-download-btn {
+  background: #171514;
+  border: 0;
+  border-radius: 6px;
+  box-shadow: 0 10px 24px rgba(23, 21, 20, 0.16);
+  color: #ffffff;
   cursor: pointer;
-  transition: background 0.2s;
+  flex: 0 0 auto;
   font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0;
+  padding: 11px 18px;
+  transition: background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
 }
 
-.chargeback-btn:hover {
-  background: #991b1b;
+.pdf-download-btn:hover {
+  background: #2a2522;
+  box-shadow: 0 12px 26px rgba(23, 21, 20, 0.2);
+  transform: translateY(-1px);
 }
 
-.chargeback-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.pdf-download-btn:disabled {
+  cursor: wait;
+  opacity: 0.65;
+  transform: none;
 }
 
-.print-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 24px;
-  background: #ae4010;
-  color: white;
-  border: none;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
-  font-family: inherit;
+.pdf-download-btn:active {
+  transform: translateY(0);
 }
 
-.print-btn:hover {
-  background: #7c2c0a;
+.pdf-download-error {
+  color: #b42318;
+  font-size: 12px;
+  font-weight: 700;
+  margin: -8px auto 14px;
+  max-width: 816px;
+  text-align: right;
 }
 
-/* Invoice Paper */
 .invoice-paper {
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 4px 32px rgba(174, 64, 16, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04);
-  padding: 48px;
-  position: relative;
+  background: #ffffff;
+  border: 1px solid rgba(23, 21, 20, 0.08);
+  border-radius: 6px;
+  box-shadow: 0 24px 80px rgba(23, 21, 20, 0.14);
+  margin: 0 auto;
+  max-width: 816px;
+  min-height: 1056px;
   overflow: hidden;
+  padding: 0;
+  position: relative;
 }
 
-.accent-bar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 5px;
-  background: linear-gradient(90deg, #7c2c0a, #ae4010, #f7c480);
+.paper-content {
+  padding: 54px 64px 214px;
+  position: relative;
+  z-index: 2;
 }
 
-/* Header */
 .invoice-header {
+  align-items: flex-start;
   display: flex;
   justify-content: space-between;
+  margin-bottom: 38px;
+  padding: 0;
+}
+
+.brand-mark {
   align-items: flex-start;
-  margin-bottom: 32px;
-  padding-top: 8px;
+  display: flex;
+  min-height: 42px;
 }
 
 .company-logo {
-  height: 44px;
-  width: auto;
+  height: 34px;
+  max-width: 168px;
   object-fit: contain;
+  object-position: left center;
 }
 
-.company-tagline {
-  font-size: 11px;
-  color: #9a8a7c;
-  margin-top: 6px;
-  letter-spacing: 0.3px;
-}
-
-.header-right {
+.invoice-id-block {
+  align-items: flex-end;
+  color: #26211e;
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  line-height: 1;
   text-align: right;
 }
 
-.invoice-title {
-  font-size: 30px;
+.invoice-number-label {
+  color: #6e6762;
+  font-size: 11px;
   font-weight: 800;
-  color: #ae4010;
-  letter-spacing: 5px;
+  letter-spacing: 0;
+  line-height: 14px;
+  text-transform: uppercase;
 }
 
 .invoice-number {
-  font-size: 14px;
-  font-weight: 600;
-  color: #7c6a5a;
-  margin-top: 4px;
+  color: #171514;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 18px;
+  margin-top: 1px;
 }
 
 .status-badge {
-  display: inline-block;
-  margin-top: 8px;
-  padding: 4px 14px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 1px;
+  display: block;
+  flex: 0 0 auto;
+  margin-top: 5px;
+  overflow: visible;
 }
 
-.status-billable {
-  background: #eff6ff;
-  color: #1d4ed8;
+.status-badge-bg {
+  fill: #fff5ef;
+  shape-rendering: geometricPrecision;
+  stroke: currentColor;
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+}
+
+.status-badge-text {
+  dominant-baseline: middle;
+  fill: currentColor;
+  font-family: 'Montserrat', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-anchor: middle;
+}
+
+.status-billable,
+.status-in-review,
+.status-in-preview {
+  color: #ae4010;
 }
 
 .status-paid {
-  background: #e6f4ea;
-  color: #1a7a3a;
-}
-
-.status-pending {
-  background: #fef3e2;
-  color: #ae4010;
-}
-
-.status-in-review {
-  background: #f5f3ff;
-  color: #6d28d9;
-}
-
-.status-signed-awaiting {
-  background: #ecfdf5;
-  color: #065f46;
-}
-
-.status-in-preview {
-  background: #e0f2fe;
-  color: #0369a1;
+  color: #1b7a3d;
 }
 
 .status-chargeback {
-  background: #fde8e8;
-  color: #b91c1c;
+  color: #b42318;
 }
 
-/* Divider */
-.divider {
-  height: 1px;
-  background: linear-gradient(90deg, transparent, #e8ddd3, transparent);
-  margin: 24px 0;
+.status-paid .status-badge-bg {
+  fill: #effaf2;
 }
 
-/* Billing Section */
+.status-chargeback .status-badge-bg {
+  fill: #fff1f1;
+}
+
+.title-section {
+  margin-bottom: 30px;
+}
+
+.invoice-kicker {
+  color: #ae4010;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.title-section h1 {
+  color: #171514;
+  font-size: clamp(48px, 8vw, 70px);
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 0.92;
+  margin: 0;
+}
+
+.invoice-date-line {
+  align-items: baseline;
+  color: #171514;
+  display: flex;
+  font-size: 13px;
+  gap: 7px;
+  margin-top: 24px;
+}
+
+.invoice-date-line span,
+.billing-label,
+.total-label,
+.meta-item span {
+  color: #171514;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.invoice-date-line strong,
+.meta-item strong {
+  color: #342f2c;
+  font-weight: 600;
+}
+
 .billing-section {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 32px;
-  margin-bottom: 40px;
+  gap: 54px;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  margin: 0 0 26px;
+}
+
+.billing-card {
+  min-width: 0;
 }
 
 .billing-label {
-  font-size: 10px;
-  font-weight: 700;
-  color: #ae4010;
-  letter-spacing: 2px;
-  margin-bottom: 8px;
+  font-size: 13px;
+  margin-bottom: 9px;
 }
 
 .billing-name {
+  color: #171514;
   font-size: 15px;
-  font-weight: 700;
-  color: #141010;
-  margin-bottom: 4px;
+  font-weight: 800;
+  margin-bottom: 5px;
 }
 
 .billing-detail {
+  color: #524a45;
   font-size: 13px;
-  color: #7c6a5a;
-  line-height: 1.6;
+  line-height: 1.48;
+  overflow-wrap: anywhere;
 }
 
-.billing-dates {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.invoice-meta-grid {
+  border-bottom: 1px solid #e3dfdc;
+  border-top: 1px solid #e3dfdc;
+  display: grid;
+  gap: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 18px 0 30px;
 }
 
-.date-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 12px;
-  background: #faf7f4;
-  border-radius: 8px;
-  border: 1px solid #f0e8e0;
+.meta-item {
+  border-right: 1px solid #e3dfdc;
+  padding: 14px 18px 14px 0;
 }
 
-.date-label {
+.meta-item + .meta-item {
+  padding-left: 18px;
+}
+
+.meta-item:last-child {
+  border-right: 0;
+}
+
+.meta-item span,
+.meta-item strong {
+  display: block;
+}
+
+.meta-item span {
+  font-size: 11px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.meta-item strong {
   font-size: 12px;
-  font-weight: 600;
-  color: #9a8a7c;
 }
 
-.date-value {
-  font-size: 13px;
-  font-weight: 600;
-  color: #141010;
-}
-
-/* Items Table */
 .items-section {
-  margin-bottom: 32px;
+  margin: 0 0 28px;
 }
 
 .items-table {
-  width: 100%;
   border-collapse: collapse;
+  color: #171514;
+  table-layout: fixed;
+  width: 100%;
 }
 
 .items-table thead tr {
-  background: #faf7f4;
+  background: #e9e8e7;
 }
 
 .items-table th {
-  padding: 12px 16px;
-  font-size: 10px;
-  font-weight: 700;
-  color: #ae4010;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
+  border: 0;
+  color: #3c3632;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  padding: 12px 14px;
   text-align: left;
-  border-bottom: 2px solid #e8ddd3;
+  text-transform: none;
 }
-
-.th-num { width: 50px; }
-.th-desc { width: auto; }
-.th-qty { width: 80px; text-align: center; }
-.th-price { width: 120px; text-align: right; }
-.th-amount { width: 120px; text-align: right; }
 
 .items-table td {
-  padding: 14px 16px;
-  font-size: 14px;
-  color: #3d3530;
-  border-bottom: 1px solid #f0e8e0;
+  border-bottom: 1px solid #e6e2df;
+  color: #302b28;
+  font-size: 13px;
+  padding: 14px;
+  vertical-align: top;
 }
 
-.td-num {
-  color: #9a8a7c;
-  font-weight: 600;
-  font-size: 13px;
+.items-table tbody tr:last-child td {
+  border-bottom: 2px solid #171514;
+}
+
+.th-desc {
+  width: auto;
+}
+
+.th-qty,
+.td-qty {
+  text-align: center;
+  width: 92px;
+}
+
+.th-price,
+.td-price,
+.th-amount,
+.td-amount {
+  text-align: right;
+  width: 124px;
 }
 
 .td-desc {
-  font-weight: 500;
+  color: #171514;
+  font-weight: 700;
 }
 
-.td-qty {
-  text-align: center;
-  color: #7c6a5a;
+.item-index {
+  color: #9a928c;
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 800;
+  margin-right: 12px;
+  width: 24px;
 }
 
+.td-qty,
 .td-price {
-  text-align: right;
-  color: #7c6a5a;
+  color: #5d5550;
   font-variant-numeric: tabular-nums;
 }
 
 .td-amount {
-  text-align: right;
-  font-weight: 600;
-  color: #141010;
+  color: #171514;
   font-variant-numeric: tabular-nums;
+  font-weight: 900;
 }
 
-.items-table tbody tr:last-child td {
-  border-bottom: 2px solid #e8ddd3;
-}
-
-/* Totals */
-.totals-section {
+.summary-section {
   display: flex;
   justify-content: flex-end;
-  margin-bottom: 40px;
 }
 
 .totals-box {
-  width: 300px;
+  color: #171514;
+  max-width: 100%;
+  width: 292px;
 }
 
 .total-row {
+  align-items: center;
   display: flex;
   justify-content: space-between;
-  align-items: center;
   padding: 8px 0;
 }
 
-.total-label {
-  font-size: 14px;
-  color: #7c6a5a;
+.total-label,
+.total-value {
+  font-size: 13px;
 }
 
 .total-value {
-  font-size: 14px;
-  font-weight: 600;
-  color: #3d3530;
+  color: #171514;
   font-variant-numeric: tabular-nums;
+  font-weight: 800;
 }
 
 .total-grand {
-  border-top: 2px solid #e8ddd3;
+  border-top: 2px solid #171514;
   margin-top: 8px;
-  padding-top: 12px;
+  padding-top: 13px;
 }
 
 .total-grand .total-label {
-  font-size: 16px;
-  font-weight: 800;
-  color: #141010;
+  color: #171514;
+  font-size: 15px;
 }
 
 .total-grand .total-value {
-  font-size: 22px;
-  font-weight: 800;
   color: #ae4010;
+  font-size: 20px;
+  font-weight: 900;
 }
 
-/* Notes */
-.notes-section {
-  background: #faf7f4;
-  border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 40px;
-  border: 1px solid #f0e8e0;
-}
-
-.notes-label {
-  font-size: 10px;
-  font-weight: 700;
-  color: #ae4010;
-  letter-spacing: 2px;
-  margin-bottom: 8px;
-}
-
-.notes-text {
-  font-size: 13px;
-  color: #7c6a5a;
-  line-height: 1.6;
-  white-space: pre-wrap;
-}
-
-/* Footer */
 .invoice-footer {
+  border: 0;
+  bottom: 0;
+  height: 190px;
+  left: 0;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  right: 0;
+  z-index: 1;
+}
+
+.footer-wave {
+  position: absolute;
+  transform-origin: center bottom;
+}
+
+.footer-wave-light {
+  background: #d85a1e;
+  border-radius: 56% 44% 0 0 / 72% 58% 0 0;
+  bottom: -96px;
+  height: 218px;
+  left: -22%;
+  right: 20%;
+  transform: rotate(4deg);
+}
+
+.footer-wave-dark {
+  background: #171917;
+  border-radius: 52% 48% 0 0 / 64% 54% 0 0;
+  bottom: -118px;
+  height: 250px;
+  left: -9%;
+  right: -18%;
+  transform: rotate(-5deg);
+}
+
+.footer-content {
+  align-items: end;
+  bottom: 18px;
+  color: rgba(255, 255, 255, 0.86);
   display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  padding-top: 24px;
-  border-top: 1px solid #e8ddd3;
-}
-
-.footer-text {
-  font-size: 14px;
-  font-weight: 600;
-  color: #141010;
-}
-
-.footer-sub {
-  font-size: 12px;
-  color: #9a8a7c;
-  margin-top: 4px;
-}
-
-.footer-id {
   font-size: 11px;
-  color: #c4b8ac;
-  font-family: monospace;
+  font-weight: 700;
+  justify-content: space-between;
+  left: 64px;
+  position: absolute;
+  right: 64px;
+  z-index: 3;
 }
 
-/* Print Styles */
 @media print {
   .no-print {
     display: none !important;
   }
 
   .invoice-pdf-page {
-    background: white;
-    padding: 0;
+    background: #ffffff;
   }
 
   .invoice-container {
-    padding: 0;
     max-width: none;
+    padding: 0;
   }
 
   .invoice-paper {
-    box-shadow: none;
+    border: 0;
     border-radius: 0;
-    padding: 24px;
+    box-shadow: none;
+    max-width: none;
+    min-height: 11in;
+    width: 100%;
   }
 
-  body {
-    margin: 0;
-    padding: 0;
+  .paper-content {
+    padding: 0.55in 0.62in 2.05in;
+  }
+
+  .invoice-footer {
+    height: 1.85in;
   }
 
   @page {
-    margin: 0.5in;
+    margin: 0;
     size: letter;
   }
 }
 
-/* Responsive */
 @media (max-width: 768px) {
+  .invoice-container {
+    padding: 18px 12px 32px;
+  }
+
+  .pdf-action-bar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .pdf-download-btn {
+    width: 100%;
+  }
+
   .invoice-paper {
-    padding: 24px;
+    border-radius: 4px;
+    min-height: auto;
+    padding: 0;
+  }
+
+  .paper-content {
+    padding: 34px 24px 178px;
   }
 
   .invoice-header {
-    flex-direction: column;
-    gap: 16px;
+    flex-direction: row;
+    gap: 18px;
+    margin-bottom: 30px;
   }
 
-  .header-right {
-    text-align: left;
+  .company-logo {
+    height: 28px;
+    max-width: 136px;
+  }
+
+  .title-section h1 {
+    font-size: 44px;
   }
 
   .billing-section {
     grid-template-columns: 1fr;
-    gap: 20px;
+    gap: 24px;
+  }
+
+  .summary-section {
+    justify-content: stretch;
+  }
+
+  .totals-box {
+    width: 100%;
+  }
+
+  .invoice-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .meta-item,
+  .meta-item + .meta-item {
+    border-right: 0;
+    border-top: 1px solid #e3dfdc;
+    padding: 12px 0;
+  }
+
+  .meta-item:first-child {
+    border-top: 0;
+  }
+
+  .items-section {
+    overflow-x: auto;
   }
 
   .items-table {
-    font-size: 12px;
+    min-width: 560px;
   }
 
   .items-table th,
   .items-table td {
-    padding: 8px;
+    padding: 11px 10px;
+  }
+
+  .footer-content {
+    left: 24px;
+    right: 24px;
   }
 }
 </style>
