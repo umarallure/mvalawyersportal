@@ -916,40 +916,29 @@ const confirmDisqualify = async () => {
     status: targetDbStatus
   }
 
+  let storagePath: string | null = null
+  let documentId: string | null = null
+  const bucketName = 'lead-documents'
+
   try {
     const { data: authData } = await supabase.auth.getUser()
     const userId = authData.user?.id ?? null
-    const userName = authData.user?.user_metadata?.full_name ?? auth.state.value.profile?.display_name ?? null
+    if (!userId) throw new Error('Authentication is required')
 
-    // 1. Update lead status
-    const updateResult = leads.value[idx].source === 'leads'
-      ? await supabase
-        .from('leads')
-        .update({ status: targetDbStatus })
-        .eq('id', leadId)
-      : await supabase
-        .from('daily_deal_flow')
-        .update({ status: targetDbStatus })
-        .eq('id', leadId)
-
-    const { error: updateError } = updateResult
-    if (updateError) throw updateError
-
-    // 2. Upload document
+    // 1. Stage the required Drop Letter.
     const file = disqualifyFile.value
     const mimeType = file.type || 'application/octet-stream'
     const safeName = file.name.trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9._-]/g, '')
     const uniqueId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    const storagePath = `${leads.value[idx].submissionId}/other_document/${uniqueId}-${safeName}`
-    const BUCKET_NAME = 'lead-documents'
+    storagePath = `${leads.value[idx].submissionId}/other_document/${uniqueId}-${safeName}`
 
     const { error: uploadError } = await supabase.storage
-      .from(BUCKET_NAME)
+      .from(bucketName)
       .upload(storagePath, file, { upsert: false, contentType: mimeType })
 
     if (uploadError) throw uploadError
 
-    const { error: docInsertError } = await supabase
+    const { data: document, error: docInsertError } = await supabase
       .from('lead_documents')
       .insert({
         submission_id: leads.value[idx].submissionId,
@@ -958,27 +947,24 @@ const confirmDisqualify = async () => {
         file_size: file.size,
         file_type: mimeType,
         storage_path: storagePath,
-        bucket_name: BUCKET_NAME,
+        bucket_name: bucketName,
         uploaded_by: userId,
         status: 'uploaded'
       })
+      .select('id')
+      .single()
 
-    if (docInsertError) {
-      await supabase.storage.from(BUCKET_NAME).remove([storagePath])
-      throw docInsertError
-    }
+    if (docInsertError) throw docInsertError
+    documentId = String(document.id)
 
-    // 3. Insert note
-    const { error: noteError } = await supabase
-      .from('lawyer_lead_notes')
-      .insert({
-        lead_id: leadId,
-        note: disqualifyNotes.value.trim(),
-        created_by: userId,
-        created_by_name: userName
-      })
+    // 2. Atomically classify the rejection note and update the lead status.
+    const { error: rejectionError } = await supabase.rpc('reject_lawyer_lead', {
+      p_lead_id: leadId,
+      p_reason: disqualifyNotes.value.trim(),
+      p_document_id: documentId
+    })
 
-    if (noteError) throw noteError
+    if (rejectionError) throw rejectionError
 
     disqualifyConfirmOpen.value = false
     pendingMoveLeadId.value = null
@@ -992,6 +978,18 @@ const confirmDisqualify = async () => {
       color: 'success'
     })
   } catch (err) {
+    let canRemoveStagedObject = documentId === null
+    if (documentId) {
+      const { error: cleanupDocumentError } = await supabase
+        .from('lead_documents')
+        .delete()
+        .eq('id', documentId)
+      canRemoveStagedObject = !cleanupDocumentError
+    }
+    if (storagePath && canRemoveStagedObject) {
+      await supabase.storage.from(bucketName).remove([storagePath]).catch(() => undefined)
+    }
+
     leads.value[idx] = {
       ...leads.value[idx],
       stage: prevStage,
@@ -1157,6 +1155,7 @@ const stageCardAccentStyle = (key: CustomerStageKey) => {
                 </label>
                 <UTextarea
                   v-model="disqualifyNotes"
+                  :maxlength="4000"
                   placeholder="Explain why this lead is being disqualified..."
                   :rows="4"
                   class="w-full"

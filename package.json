@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "email-worker:local": "node scripts/run-notification-email-worker.mjs",
+    "verify:lawyer-rejection-notes": "node scripts/verify-lawyer-rejection-note-contract.mjs",
     "lint": "eslint --ext .js,.vue src",
     "typecheck": "vue-tsc -p ./tsconfig.app.json"
   },

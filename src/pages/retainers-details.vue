@@ -22,6 +22,23 @@ type DailyDealFlow = Record<string, unknown> & {
 
 type AnyRow = Record<string, unknown>
 
+type RejectionNote = {
+  id: string
+  note: string
+  created_at: string
+  created_by: string | null
+  created_by_name: string | null
+}
+
+type RejectedLeadDetail = {
+  lead_id: string
+  submission_id: string
+  status: 'attorney_rejected'
+  assigned_attorney_id: string | null
+  assigned_attorney_name: string | null
+  rejection_note: RejectionNote | null
+}
+
 const route = useRoute()
 const router = useRouter()
 const auth = useAuth()
@@ -38,6 +55,7 @@ const isSuperAdmin = computed(() => auth.state.value.profile?.role === 'super_ad
 const loading = ref(false)
 const error = ref<string | null>(null)
 const row = ref<DailyDealFlow | null>(null)
+const rejectedLead = ref<RejectedLeadDetail | null>(null)
 const centerLookupId = ref<string | null>(null)
 const actionLoading = ref(false)
 
@@ -50,6 +68,7 @@ const tabs = [
 ]
 
 const headerTitle = computed(() => {
+  if (rejectedLead.value) return `Rejected case - ${rejectedLead.value.submission_id}`
   if (!row.value) return 'Lead details'
   const name = row.value.insured_name || 'Unknown'
   const phone = row.value.client_phone_number || 'N/A'
@@ -141,9 +160,23 @@ const getCurrentDealId = () => {
 const load = async () => {
   loading.value = true
   error.value = null
+  rejectedLead.value = null
 
   try {
     await auth.init()
+
+    // Fail closed: determine whether this is a rejected lead through a
+    // sanitized RPC before requesting any customer or accident fields.
+    const { data: rejectedData, error: rejectedError } = await supabase.rpc(
+      'get_lawyer_rejected_lead_detail',
+      { p_lead_id: id.value }
+    )
+    if (rejectedError) throw rejectedError
+    if (rejectedData) {
+      rejectedLead.value = rejectedData as RejectedLeadDetail
+      row.value = null
+      return
+    }
 
     const userId = auth.state.value.profile?.user_id
     const userRole = auth.state.value.profile?.role
@@ -438,6 +471,51 @@ const accidentDetailsFields = computed(() => {
 
       <div v-else-if="loading" class="flex h-full min-h-64 items-center justify-center">
         <UIcon name="i-lucide-loader-circle" class="size-8 animate-spin text-dimmed" />
+      </div>
+
+      <div
+        v-else-if="rejectedLead"
+        class="relative min-h-[560px] overflow-hidden rounded-xl border border-default bg-elevated/20"
+      >
+        <div aria-hidden="true" class="pointer-events-none absolute inset-0 select-none p-6 blur-md opacity-45">
+          <div class="mb-5 h-9 w-2/5 rounded-lg bg-muted/50" />
+          <div class="grid gap-4 md:grid-cols-2">
+            <div v-for="index in 8" :key="index" class="h-24 rounded-xl border border-default bg-elevated/60" />
+          </div>
+          <div class="mt-5 h-48 rounded-xl border border-default bg-elevated/60" />
+        </div>
+
+        <div class="relative z-10 flex min-h-[560px] items-center justify-center p-5 md:p-10">
+          <UCard class="w-full max-w-2xl border-error/30 shadow-2xl">
+            <div class="space-y-5">
+              <div class="flex items-start gap-3">
+                <div class="flex size-11 shrink-0 items-center justify-center rounded-full bg-error/10 text-error">
+                  <UIcon name="i-lucide-circle-x" class="size-6" />
+                </div>
+                <div>
+                  <h2 class="text-lg font-semibold text-highlighted">Lead disqualified</h2>
+                  <p class="mt-1 text-sm text-muted">
+                    Case {{ rejectedLead.submission_id }} is read-only. Its personal information was not loaded.
+                  </p>
+                </div>
+              </div>
+
+              <div class="rounded-xl border border-error/20 bg-error/5 p-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-error">Attorney rejection note</p>
+                <p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-highlighted">
+                  {{ rejectedLead.rejection_note?.note || 'Legacy rejection — reason unavailable.' }}
+                </p>
+                <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+                  <span v-if="rejectedLead.rejection_note">
+                    Rejected by {{ rejectedLead.rejection_note.created_by_name || 'Unknown lawyer' }}
+                  </span>
+                  <span>Recipient: {{ rejectedLead.assigned_attorney_name || 'Unknown lawyer' }}</span>
+                  <span>{{ formatDateTime(rejectedLead.rejection_note?.created_at) }}</span>
+                </div>
+              </div>
+            </div>
+          </UCard>
+        </div>
       </div>
 
       <div v-else-if="row" class="space-y-4">
